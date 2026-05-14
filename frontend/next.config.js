@@ -13,7 +13,12 @@ const nextConfig = {
   output: "standalone",
   async rewrites() {
     if (!backendUrl) return [];
-    return [{ source: "/api/:path*", destination: `${backendUrl}/api/:path*` }];
+    // beforeFiles: proxy /api before App Router resolves missing /api/* as not-found (404 HTML).
+    return {
+      beforeFiles: [
+        { source: "/api/:path*", destination: `${backendUrl}/api/:path*` },
+      ],
+    };
   },
 };
 
