@@ -6,17 +6,21 @@ import { api } from "@/lib/api";
 import { logActivity } from "@/lib/activityLog";
 import AgentActivity from "@/components/AgentActivity";
 import type { JobApplication } from "@/types";
-import { PenTool, Loader2, AlertCircle, Copy, CheckCircle, ArrowRight, X, Briefcase } from "lucide-react";
+import {
+  PenTool, Loader2, AlertCircle, Copy, CheckCircle, ArrowRight,
+  X, Briefcase, Download, RefreshCw, BookOpen, Save,
+} from "lucide-react";
 import clsx from "clsx";
 
 const RESUME_KEY = "aijob_resume_text";
 const JD_KEY = "aijob_jd_text";
 
 const TONES = [
-  { value: "professional", label: "Professional" },
-  { value: "enthusiastic", label: "Enthusiastic" },
-  { value: "concise", label: "Concise" },
-  { value: "creative", label: "Creative" },
+  { value: "professional", label: "Professional", desc: "Formal & polished" },
+  { value: "enthusiastic", label: "Enthusiastic", desc: "Energetic & passionate" },
+  { value: "concise", label: "Concise", desc: "Short & punchy (~200 words)" },
+  { value: "creative", label: "Creative", desc: "Distinctive & memorable" },
+  { value: "storytelling", label: "Storytelling", desc: "Narrative-driven & warm" },
 ];
 
 const COVER_LETTER_STEPS = [
@@ -27,6 +31,10 @@ const COVER_LETTER_STEPS = [
   "Refining tone and style",
   "Finalizing cover letter",
 ];
+
+function wordCount(text: string) {
+  return text.trim() ? text.trim().split(/\s+/).length : 0;
+}
 
 function CoverLetterContent() {
   const searchParams = useSearchParams();
@@ -42,8 +50,9 @@ function CoverLetterContent() {
   const [error, setError] = useState<string | null>(null);
   const [letter, setLetter] = useState<string | null>(null);
   const [copied, setCopied] = useState(false);
+  const [savedToJob, setSavedToJob] = useState(false);
+  const [saving, setSaving] = useState(false);
 
-  // Pre-fill from localStorage + query params on mount
   useEffect(() => {
     const savedResume = localStorage.getItem(RESUME_KEY) ?? "";
     const savedJD = localStorage.getItem(JD_KEY) ?? "";
@@ -57,7 +66,6 @@ function CoverLetterContent() {
       setJobDescription(`Role: ${paramRole}\nCompany: ${paramCompany}\n\n(Paste the full job description here)`);
     }
 
-    // Load saved jobs for the selector
     api.listJobs().then(setJobs).catch(() => {});
   }, [searchParams]);
 
@@ -67,10 +75,8 @@ function CoverLetterContent() {
     const job = jobs.find((j) => String(j.id) === jobId);
     if (!job) return;
 
-    // Always fill company and role
     setCompanyName(job.company);
 
-    // Build a useful JD template so the user sees real content, not confusion
     const matchNote = job.notes?.includes("AI Match Score")
       ? `\n\n--- From Job Matcher ---\n${job.notes}`
       : "";
@@ -82,8 +88,6 @@ function CoverLetterContent() {
       `Position: ${job.role}\nCompany: ${job.company}${meta ? `\n${meta}` : ""}${matchNote}\n\n` +
       `--- Paste the full job description below ---\n`
     );
-
-    // Resume is already loaded from localStorage on mount — no action needed
   };
 
   const generate = async (overrideTone?: string) => {
@@ -92,6 +96,7 @@ function CoverLetterContent() {
     setDone(false);
     setError(null);
     setLetter(null);
+    setSavedToJob(false);
     try {
       const data = await api.generateCoverLetter(resumeText, jobDescription, companyName, activeTone);
       setDone(true);
@@ -107,8 +112,6 @@ function CoverLetterContent() {
       setLoading(false);
     }
   };
-
-  const [savedToJob, setSavedToJob] = useState(false);
 
   const copy = async () => {
     if (!letter) return;
@@ -132,37 +135,33 @@ function CoverLetterContent() {
     if (!letter || !selectedJobId) return;
     const job = jobs.find((j) => String(j.id) === selectedJobId);
     if (!job) return;
+    setSaving(true);
     try {
       const notePrefix = job.notes ? job.notes + "\n\n" : "";
       await api.updateJob(job.id, {
-        notes: `${notePrefix}Cover Letter (${tone} tone, ${new Date().toLocaleDateString()}):\n${letter.slice(0, 300)}...`,
+        notes: `${notePrefix}Cover Letter (${tone}, ${new Date().toLocaleDateString()}):\n${letter.slice(0, 300)}…`,
       });
       setSavedToJob(true);
-      setTimeout(() => setSavedToJob(false), 2500);
+      setTimeout(() => setSavedToJob(false), 3000);
       logActivity({
         type: "cover_letter_generated",
         summary: `Saved cover letter to ${job.company} — ${job.role}`,
         detail: `Tone: ${tone}`,
       });
-    } catch { /* ignore */ }
-  };
-
-  const regenerateConcise = () => {
-    setTone("concise");
-    setLetter(null);
-    setDone(false);
-    // Small delay so tone state updates before generate runs
-    setTimeout(() => generate(), 50);
+    } catch { /* ignore */ } finally {
+      setSaving(false);
+    }
   };
 
   const savedResume = typeof window !== "undefined" ? localStorage.getItem(RESUME_KEY) : null;
   const savedJD = typeof window !== "undefined" ? localStorage.getItem(JD_KEY) : null;
+  const letterWords = letter ? wordCount(letter) : 0;
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
+      <div className="mb-6">
         <h1 className="text-2xl font-bold text-slate-900">Cover Letter Generator</h1>
-        <p className="text-slate-500 mt-1">Generate a tailored, AI-written cover letter from your resume and job description.</p>
+        <p className="text-slate-500 mt-1">AI-written, tailored to your resume and the job description.</p>
       </div>
 
       <div className="card p-5 mb-5">
@@ -194,7 +193,10 @@ function CoverLetterContent() {
         {/* Inputs */}
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <div>
-            <label htmlFor="cl-resume" className="label">Your Resume</label>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="cl-resume" className="label mb-0">Your Resume</label>
+              <span className="text-xs text-slate-400">{wordCount(resumeText)} words</span>
+            </div>
             <textarea
               id="cl-resume"
               className="textarea h-52"
@@ -212,7 +214,10 @@ function CoverLetterContent() {
             )}
           </div>
           <div>
-            <label htmlFor="cl-jd" className="label">Job Description</label>
+            <div className="flex items-center justify-between mb-1">
+              <label htmlFor="cl-jd" className="label mb-0">Job Description</label>
+              <span className="text-xs text-slate-400">{wordCount(jobDescription)} words</span>
+            </div>
             <textarea
               id="cl-jd"
               className="textarea h-52"
@@ -244,14 +249,15 @@ function CoverLetterContent() {
           </div>
           <div>
             <label className="label">Tone</label>
-            <div className="grid grid-cols-2 sm:flex gap-2">
+            <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex gap-2">
               {TONES.map((t) => (
                 <button
                   key={t.value}
                   type="button"
+                  title={t.desc}
                   onClick={() => setTone(t.value)}
                   className={clsx(
-                    "px-3.5 py-2 rounded-lg text-sm font-medium border transition-all duration-150",
+                    "px-3 py-2 rounded-lg text-sm font-medium border transition-all duration-150 text-left",
                     tone === t.value
                       ? "bg-indigo-600 text-white border-indigo-600"
                       : "bg-white text-slate-600 border-slate-200 hover:border-indigo-300"
@@ -261,6 +267,11 @@ function CoverLetterContent() {
                 </button>
               ))}
             </div>
+            {tone && (
+              <p className="text-xs text-slate-400 mt-1.5">
+                {TONES.find((t) => t.value === tone)?.desc}
+              </p>
+            )}
           </div>
         </div>
 
@@ -283,6 +294,12 @@ function CoverLetterContent() {
             ? <><Loader2 size={16} className="animate-spin" /> Generating cover letter…</>
             : <><PenTool size={16} /> Generate Cover Letter</>}
         </button>
+
+        {(resumeText.length < 50 || jobDescription.length < 50) && !loading && (
+          <p className="text-xs text-slate-400 text-center mt-2">
+            Add your resume and job description to enable generation
+          </p>
+        )}
       </div>
 
       <AgentActivity steps={COVER_LETTER_STEPS} isRunning={loading} isDone={done} className="mb-5" />
@@ -290,21 +307,24 @@ function CoverLetterContent() {
       {/* Generated Letter */}
       {letter && (
         <div className="card animate-slide-up">
+          {/* Header */}
           <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3 px-5 py-4 border-b border-slate-100">
             <div className="flex items-center gap-2 min-w-0">
               <PenTool size={16} className="text-indigo-500 shrink-0" />
-              <h2 className="font-semibold text-slate-800 truncate">Generated Cover Letter</h2>
+              <h2 className="font-semibold text-slate-800">Cover Letter</h2>
               {companyName && <span className="text-xs text-slate-400 truncate">— {companyName}</span>}
+              <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium shrink-0 capitalize">
+                {tone}
+              </span>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button type="button" onClick={download} className="btn-secondary text-sm py-2 px-4">
-                Download
+              <button type="button" onClick={download}
+                className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3">
+                <Download size={14} /> Download
               </button>
-              <button
-                type="button"
-                onClick={copy}
+              <button type="button" onClick={copy}
                 className={clsx(
-                  "flex items-center gap-2 px-4 py-2 rounded-lg text-sm font-semibold transition-all",
+                  "flex items-center gap-1.5 px-3 py-2 rounded-lg text-sm font-semibold transition-all",
                   copied ? "bg-green-100 text-green-700" : "btn-primary"
                 )}
               >
@@ -313,17 +333,80 @@ function CoverLetterContent() {
             </div>
           </div>
 
-          <div className="p-6">
-            <div className="bg-slate-50 border border-slate-200 rounded-xl p-4 sm:p-8 font-serif text-slate-700 leading-relaxed whitespace-pre-wrap text-sm shadow-inner max-w-3xl mx-auto">
+          {/* Letter body */}
+          <div className="p-5 sm:p-6">
+            <div className="bg-white border border-slate-200 rounded-xl p-5 sm:p-8 font-serif text-slate-700 leading-relaxed whitespace-pre-wrap text-sm shadow-sm max-w-3xl mx-auto">
               {letter}
             </div>
+            <p className="text-xs text-slate-400 text-center mt-3">{letterWords} words</p>
           </div>
 
-          <div className="px-6 pb-5">
-            <button type="button" onClick={() => { setLetter(null); setDone(false); }} className="btn-secondary text-sm">
-              Regenerate
-            </button>
+          {/* Actions footer */}
+          <div className="px-5 pb-5 flex flex-col sm:flex-row items-start sm:items-center gap-3 border-t border-slate-100 pt-4">
+            <div className="flex flex-wrap gap-2 flex-1">
+              <button
+                type="button"
+                onClick={() => { setLetter(null); setDone(false); }}
+                className="flex items-center gap-1.5 btn-secondary text-sm"
+              >
+                <RefreshCw size={13} /> Regenerate
+              </button>
+
+              {/* Regenerate with different tone shortcuts */}
+              {TONES.filter((t) => t.value !== tone).slice(0, 2).map((t) => (
+                <button
+                  key={t.value}
+                  type="button"
+                  onClick={() => { setTone(t.value); generate(t.value); }}
+                  className="text-xs px-3 py-1.5 border border-slate-200 rounded-lg text-slate-500 hover:border-indigo-300 hover:text-indigo-600 transition-colors"
+                >
+                  Try {t.label}
+                </button>
+              ))}
+            </div>
+
+            {/* Save to job tracker */}
+            {selectedJobId && (
+              <button
+                type="button"
+                onClick={saveToApplication}
+                disabled={saving || savedToJob}
+                className={clsx(
+                  "flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all shrink-0",
+                  savedToJob
+                    ? "bg-green-100 text-green-700"
+                    : "bg-slate-800 hover:bg-slate-900 text-white"
+                )}
+              >
+                {saving
+                  ? <><Loader2 size={13} className="animate-spin" /> Saving…</>
+                  : savedToJob
+                  ? <><CheckCircle size={13} /> Saved to Tracker</>
+                  : <><Save size={13} /> Save to Application</>}
+              </button>
+            )}
           </div>
+        </div>
+      )}
+
+      {/* Tips when no letter yet */}
+      {!letter && !loading && (
+        <div className="card p-5">
+          <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <BookOpen size={15} className="text-indigo-500" /> Tips for a better cover letter
+          </h3>
+          <ul className="space-y-2">
+            {[
+              "Paste the full job description — the more detail, the better the match",
+              "Use your resume from the Resume Analyzer for best results",
+              "Try different tones — Creative works great for startups, Professional for corporate",
+              "Select a saved job from your tracker to pre-fill company and role details",
+            ].map((tip, i) => (
+              <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                <span className="text-indigo-400 font-bold shrink-0">→</span> {tip}
+              </li>
+            ))}
+          </ul>
         </div>
       )}
     </div>

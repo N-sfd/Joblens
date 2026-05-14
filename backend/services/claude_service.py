@@ -72,8 +72,16 @@ Return this exact JSON structure:
   "interview_preparation": ["<tip>", "<tip>", "<tip>"]
 }}"""
 
+TONE_GUIDE = {
+    "professional": "Formal and polished. Confident but not boastful. Clear, precise language. No slang.",
+    "enthusiastic": "Energetic and passionate. Show genuine excitement about the company and role. Upbeat but still professional.",
+    "concise": "Short and punchy. 2-3 tight paragraphs max (~200 words). Every sentence earns its place. No filler.",
+    "creative": "Distinctive voice. Open with an unexpected hook or story. Memorable and fresh — avoid clichés like 'I am writing to apply'.",
+    "storytelling": "Narrative-driven. Open with a brief personal story or moment that connects to the role. Warm and human.",
+}
+
 COVER_LETTER_PROMPT = """\
-You are an expert career coach and professional writer. Create a compelling, tailored cover letter.
+You are a top-tier career coach and ghostwriter. Write a compelling, highly personalized cover letter.
 
 Resume:
 {resume_text}
@@ -82,17 +90,20 @@ Job Description:
 {job_description}
 
 Company: {company_name}
-Tone: {tone}
+Requested tone: {tone}
+Tone guidance: {tone_guide}
 
-Write a cover letter that:
-- Opens with a strong hook mentioning the specific role
-- Highlights 2-3 quantifiable achievements from the resume that match the role
-- Addresses key requirements from the job description
-- Closes with a confident call to action
-- Is 3-4 paragraphs (~300-400 words)
-- Matches the requested tone: {tone}
+Instructions:
+- Start with "Dear Hiring Manager," (or a specific name if found in the JD)
+- Opening paragraph: hook that directly references the specific role and company — never start with "I am writing to apply"
+- Middle paragraph(s): highlight 2-3 quantifiable achievements from the resume that directly match the JD requirements; weave in specific keywords and technologies from the job description naturally
+- Closing paragraph: confident call to action, express genuine interest, include availability for interview
+- End with: "Sincerely," followed by a blank line for signature
+- Length: match the tone — concise ~200 words, others ~320-380 words
+- Strictly match the requested tone throughout
+- Do NOT include a date line or address block — just the letter body starting from the salutation
 
-Return ONLY the cover letter text, properly formatted with paragraph breaks."""
+Return ONLY the cover letter text with proper paragraph breaks. No markdown, no explanations."""
 
 
 async def analyze_resume(resume_text: str) -> dict:
@@ -214,6 +225,7 @@ async def generate_cover_letter(
     tone: str = "professional",
 ) -> str:
     client = get_client()
+    tone_guide = TONE_GUIDE.get(tone, TONE_GUIDE["professional"])
     response = client.chat.completions.create(
         model=MODEL,
         max_tokens=1024,
@@ -225,6 +237,7 @@ async def generate_cover_letter(
                     job_description=job_description,
                     company_name=company_name,
                     tone=tone,
+                    tone_guide=tone_guide,
                 ),
             }
         ],
