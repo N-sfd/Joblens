@@ -1,7 +1,30 @@
-const BASE = process.env.NEXT_PUBLIC_API_URL || "http://localhost:8000";
+/** Base URL for FastAPI (no trailing slash). See README / .env.example for Vercel + Render. */
+function getApiBase(): string {
+  const nextPublic = process.env.NEXT_PUBLIC_API_URL?.trim();
+  if (nextPublic) return nextPublic.replace(/\/$/, "");
+  if (typeof window !== "undefined") {
+    if (window.location.hostname === "localhost") return "http://localhost:8000";
+    return "";
+  }
+  const serverBackend = process.env.BACKEND_URL?.trim() || "http://localhost:8000";
+  return serverBackend.replace(/\/$/, "");
+}
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
-  const res = await fetch(`${BASE}${path}`, init);
+  const base = getApiBase();
+  let res: Response;
+  try {
+    res = await fetch(`${base}${path}`, init);
+  } catch (e) {
+    const hint =
+      typeof window !== "undefined" &&
+      window.location.hostname !== "localhost" &&
+      !process.env.NEXT_PUBLIC_API_URL
+        ? " Configure BACKEND_URL on Vercel (same-origin proxy) or NEXT_PUBLIC_API_URL to your API URL."
+        : " Is the backend running and reachable? Check NEXT_PUBLIC_API_URL / CORS.";
+    const msg = e instanceof Error ? e.message : "Network error";
+    throw new Error(`${msg}.${hint}`);
+  }
   if (!res.ok) {
     const body = await res.text();
     let detail = body;
