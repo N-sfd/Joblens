@@ -275,7 +275,7 @@ function CoverLetterContent() {
 
         <button
           type="button"
-          onClick={generate}
+          onClick={() => generate()}
           disabled={loading || resumeText.length < 50 || jobDescription.length < 50}
           className="btn-primary flex items-center gap-2 w-full justify-center py-3"
         >
