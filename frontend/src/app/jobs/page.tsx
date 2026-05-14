@@ -81,7 +81,8 @@ export default function JobsPage() {
     setSaving(true);
     try {
       const payload = {
-        company: form.company, role: form.role, status: form.status,
+        company: form.company, role: form.role,
+        status: form.status as "Applied" | "Interviewing" | "Offer" | "Rejected" | "Saved",
         location: form.location || null, job_url: form.job_url || null,
         salary_range: form.salary_range || null, notes: form.notes || null,
         date_applied: form.date_applied || null,
