@@ -22,7 +22,7 @@ const STATUS_COLORS: Record<string, string> = {
 };
 
 const emptyForm = {
-  company: "", role: "", status: "Applied" as string, location: "",
+  company: "", role: "", status: "Applied" as JobApplicationStatus, location: "",
   job_url: "", salary_range: "", notes: "", date_applied: "", follow_up_date: "",
 };
 
