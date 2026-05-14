@@ -479,7 +479,7 @@ export default function JobsPage() {
                 <div>
                   <label htmlFor="modal-status" className="label">Status</label>
                   <select id="modal-status" className="input" value={form.status}
-                    onChange={(e) => setForm({ ...form, status: e.target.value })}>
+                    onChange={(e) => setForm({ ...form, status: e.target.value as JobApplicationStatus })}>
                     {STATUSES.map((s) => <option key={s}>{s}</option>)}
                   </select>
                 </div>
