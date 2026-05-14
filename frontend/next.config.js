@@ -1,6 +1,12 @@
-const backendUrl = (process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "")
-  .trim()
-  .replace(/\/$/, "");
+/** Service root only (e.g. https://x.onrender.com). Strips accidental /api suffix so rewrites do not become /api/api/... */
+function normalizeBackendOrigin(raw) {
+  return String(raw || "")
+    .trim()
+    .replace(/\/$/, "")
+    .replace(/\/api\/?$/i, "");
+}
+
+const backendUrl = normalizeBackendOrigin(process.env.BACKEND_URL || process.env.NEXT_PUBLIC_API_URL || "");
 
 if (process.env.VERCEL === "1" && !backendUrl) {
   console.warn(

@@ -1,13 +1,18 @@
+/** Origin only (no /api). Avoids https://host/api + /api/jobs → /api/api/jobs (404). */
+function normalizeOrigin(url: string): string {
+  return url.trim().replace(/\/$/, "").replace(/\/api\/?$/i, "");
+}
+
 /** Base URL for FastAPI (no trailing slash). See README / .env.example for Vercel + Render. */
 function getApiBase(): string {
   const nextPublic = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (nextPublic) return nextPublic.replace(/\/$/, "");
+  if (nextPublic) return normalizeOrigin(nextPublic);
   if (typeof window !== "undefined") {
     if (window.location.hostname === "localhost") return "http://localhost:8000";
     return "";
   }
   const serverBackend = process.env.BACKEND_URL?.trim() || "http://localhost:8000";
-  return serverBackend.replace(/\/$/, "");
+  return normalizeOrigin(serverBackend);
 }
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
@@ -46,8 +51,10 @@ export const api = {
 
   // Jobs
   getStats: () => request<import("@/types").JobStats>("/api/jobs/stats/summary"),
-  listJobs: (status?: string) =>
-    request<import("@/types").JobApplication[]>(`/api/jobs/${status ? `?status=${encodeURIComponent(status)}` : ""}`),
+  listJobs: (status?: string) => {
+    const qs = status ? `?status=${encodeURIComponent(status)}` : "";
+    return request<import("@/types").JobApplication[]>(`/api/jobs${qs}`);
+  },
   createJob: (data: Omit<import("@/types").JobApplication, "id" | "created_at">) =>
     request<import("@/types").JobApplication>("/api/jobs/", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),

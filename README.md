@@ -77,7 +77,7 @@ Alternatively, use the `render.yaml` in the repo root for one-click deploy.
 1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import repo.
 2. Set **Root Directory** to `frontend`.
 3. Add **one** of these (required — otherwise the UI calls `localhost` and shows “Failed to fetch”):
-   - **Recommended:** `BACKEND_URL` = your Render backend URL, e.g. `https://joblens-api.onrender.com` (no trailing slash). The Next.js config rewrites `/api/*` to that host so the browser uses same-origin requests (no mixed content, no public API URL in the bundle). Rewrites use `beforeFiles` so `/api` is proxied before the App Router can return a 404 page for those paths.
+   - **Recommended:** `BACKEND_URL` = your Render **service root only**, e.g. `https://joblens-api.onrender.com` — **do not** add `/api` (we append `/api/...` automatically; including `/api` causes `/api/api/...` and a **Not Found** error from the API).
    - **Alternative:** `NEXT_PUBLIC_API_URL` = the same backend URL. The browser calls the API directly; use **https** and set `ALLOWED_ORIGINS` on the backend to your Vercel site.
 4. Redeploy after changing env vars (rewrites are applied at build time).
 5. Deploy — Vercel auto-detects Next.js.
@@ -99,7 +99,7 @@ Alternatively, use the `render.yaml` in the repo root for one-click deploy.
 | Variable | Description |
 |---|---|
 | `NEXT_PUBLIC_API_URL` | Backend URL for **local** dev (default in browser on `localhost` is `http://localhost:8000` if unset). On Vercel you can use this **or** `BACKEND_URL`. |
-| `BACKEND_URL` | **Vercel (recommended):** backend origin, e.g. `https://joblens-api.onrender.com` (no trailing slash). Used at **build** time for Next.js rewrites so `/api/*` is proxied — browser stays same-origin and avoids “Failed to fetch” from calling `localhost`. |
+| `BACKEND_URL` | **Vercel (recommended):** backend origin only, e.g. `https://joblens-api.onrender.com` — **not** `.../api` or `.../docs`. Used at **build** time for Next.js rewrites (`beforeFiles`) so `/api/*` is proxied to the backend. |
 
 ---
 
