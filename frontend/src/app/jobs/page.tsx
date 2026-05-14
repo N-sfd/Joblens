@@ -3,7 +3,7 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { JobApplication } from "@/types";
+import type { JobApplication, JobApplicationStatus } from "@/types";
 import {
   Plus, Pencil, Trash2, ExternalLink, Briefcase, Loader2,
   AlertCircle, X, Sparkles, Target, PenTool, RefreshCw,
@@ -82,7 +82,7 @@ export default function JobsPage() {
     try {
       const payload = {
         company: form.company, role: form.role,
-        status: form.status as "Applied" | "Interviewing" | "Offer" | "Rejected" | "Saved",
+        status: form.status as JobApplicationStatus,
         location: form.location || null, job_url: form.job_url || null,
         salary_range: form.salary_range || null, notes: form.notes || null,
         date_applied: form.date_applied || null,
@@ -168,11 +168,11 @@ export default function JobsPage() {
     }
   };
 
-  const handleStatusChange = async (job: JobApplication, newStatus: string) => {
+  const handleStatusChange = async (job: JobApplication, newStatus: JobApplicationStatus) => {
     setUpdatingStatus(job.id);
     try {
       await api.updateJob(job.id, { status: newStatus });
-      setJobs((prev) => prev.map((j) => j.id === job.id ? { ...j, status: newStatus as JobApplication["status"] } : j));
+      setJobs((prev) => prev.map((j) => (j.id === job.id ? { ...j, status: newStatus } : j)));
       showToast(`Status updated to ${newStatus}`);
     } catch {
       setError("Failed to update status.");
@@ -305,7 +305,7 @@ export default function JobsPage() {
                     ) : (
                       <select
                         value={job.status}
-                        onChange={(e) => handleStatusChange(job, e.target.value)}
+                        onChange={(e) => handleStatusChange(job, e.target.value as JobApplicationStatus)}
                         aria-label={`Status for ${job.company}`}
                         className={clsx(
                           "text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer appearance-none shrink-0",
@@ -391,7 +391,7 @@ export default function JobsPage() {
                         ) : (
                           <select
                             value={job.status}
-                            onChange={(e) => handleStatusChange(job, e.target.value)}
+                            onChange={(e) => handleStatusChange(job, e.target.value as JobApplicationStatus)}
                             aria-label={`Status for ${job.company} — ${job.role}`}
                             className={clsx(
                               "text-xs font-semibold px-2.5 py-1 rounded-full border-0 cursor-pointer appearance-none",

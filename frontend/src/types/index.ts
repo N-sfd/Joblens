@@ -12,6 +12,8 @@ export interface JobApplication {
   created_at: string;
 }
 
+export type JobApplicationStatus = JobApplication["status"];
+
 export interface JobStats {
   total: number;
   by_status: Record<string, number>;
