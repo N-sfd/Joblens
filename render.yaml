@@ -11,7 +11,7 @@ services:
       - key: DATABASE_URL
         value: sqlite:///./aijob.db
       - key: ALLOWED_ORIGINS
-        sync: false          # set to your Vercel frontend URL
+        sync: false          # e.g. https://your-app.vercel.app (or hostname only; API adds https://)
     disk:
       name: sqlite-data
       mountPath: /opt/render/project/src/backend

@@ -23,7 +23,24 @@ app = FastAPI(
     lifespan=lifespan,
 )
 
-allowed_origins = os.getenv("ALLOWED_ORIGINS", "http://localhost:3000").split(",")
+def _normalize_cors_origin(entry: str) -> str:
+    """Allow Render env like 'myapp.vercel.app' without scheme (browser sends https://...)."""
+    p = entry.strip()
+    if not p:
+        return ""
+    if p.startswith(("http://", "https://")):
+        return p.rstrip("/")
+    if p.startswith(("localhost", "127.0.0.1")):
+        return f"http://{p}".rstrip("/")
+    return f"https://{p}".rstrip("/")
+
+
+def _parse_allowed_origins(raw: str) -> list[str]:
+    origins = [_normalize_cors_origin(x) for x in raw.split(",")]
+    return [o for o in origins if o] or ["http://localhost:3000"]
+
+
+allowed_origins = _parse_allowed_origins(os.getenv("ALLOWED_ORIGINS", "http://localhost:3000"))
 
 app.add_middleware(
     CORSMiddleware,

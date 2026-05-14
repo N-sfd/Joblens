@@ -67,7 +67,7 @@ App: http://localhost:3000
 5. Set **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
 6. Add environment variables in Render dashboard:
    - `ANTHROPIC_API_KEY` = your key
-   - `ALLOWED_ORIGINS` = your Vercel URL (added after frontend deploy)
+   - `ALLOWED_ORIGINS` = your Vercel site, e.g. `https://joblens-rosy.vercel.app` (scheme required for browsers; hostname-only like `myapp.vercel.app` is OK — the API normalizes it to `https://…`)
 7. Add a **Disk** (1 GB) mounted at `/opt/render/project/src/backend` for SQLite persistence.
 
 Alternatively, use the `render.yaml` in the repo root for one-click deploy.
@@ -92,7 +92,7 @@ Alternatively, use the `render.yaml` in the repo root for one-click deploy.
 |---|---|
 | `ANTHROPIC_API_KEY` | Your Anthropic API key |
 | `DATABASE_URL` | SQLite path (default: `sqlite:///./aijob.db`) |
-| `ALLOWED_ORIGINS` | Comma-separated list of allowed CORS origins |
+| `ALLOWED_ORIGINS` | Comma-separated browser origins allowed for CORS. Use full URLs (`https://your-app.vercel.app`) or hostnames without scheme (`your-app.vercel.app` → `https://…`). Include `http://localhost:3000` for local dev if needed. |
 
 ### Frontend (`frontend/.env.local` or Vercel env)
 
