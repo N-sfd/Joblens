@@ -17,7 +17,7 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="AI Job Analyzer API",
+    title="JobLens API",
     description="Resume analysis, job matching, cover letter generation, and job tracking.",
     version="1.0.0",
     lifespan=lifespan,
@@ -41,7 +41,7 @@ app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover
 
 @app.get("/", tags=["Health"])
 async def root():
-    return {"message": "AI Job Analyzer API", "status": "running", "version": "1.0.0"}
+    return {"message": "JobLens API", "status": "running", "version": "1.0.0"}
 
 
 @app.get("/health", tags=["Health"])

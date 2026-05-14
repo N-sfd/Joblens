@@ -1,6 +1,6 @@
 services:
   - type: web
-    name: aijob-analyzer-api
+    name: joblens-api
     runtime: python
     rootDir: backend
     buildCommand: pip install -r requirements.txt
