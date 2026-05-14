@@ -1,0 +1,18 @@
+services:
+  - type: web
+    name: aijob-analyzer-api
+    runtime: python
+    rootDir: backend
+    buildCommand: pip install -r requirements.txt
+    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    envVars:
+      - key: ANTHROPIC_API_KEY
+        sync: false          # set manually in Render dashboard
+      - key: DATABASE_URL
+        value: sqlite:///./aijob.db
+      - key: ALLOWED_ORIGINS
+        sync: false          # set to your Vercel frontend URL
+    disk:
+      name: sqlite-data
+      mountPath: /opt/render/project/src/backend
+      sizeGB: 1
