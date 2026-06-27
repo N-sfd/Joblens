@@ -13,7 +13,27 @@ The app includes a resume analyzer, job matcher, job tracker, cover letter assis
 | **Job Matcher** | Paste a job description and get a match score + tailoring suggestions |
 | **Cover Letter Generator** | AI-generates a tailored cover letter in your chosen tone |
 
-## Tech Stack
+## Public access (no login)
+
+This app is **fully public** — there is no user authentication, no `middleware.ts`, and no NextAuth (or similar). Anyone with the link can use every feature immediately.
+
+| Area | Behavior |
+|---|---|
+| Resume / Match / Cover letter | No account; calls go straight to the API |
+| Job tracker | Each browser gets a random **`guestId`** in `localStorage`; sent as **`X-Guest-Id`** so your jobs stay private to that device |
+| Resume text & match context | Stored in `localStorage` only (not synced to a server) |
+
+### If Vercel shows a login screen
+
+That is usually **Vercel Deployment Protection**, not this app’s code. To allow public visitors:
+
+1. Vercel project → **Settings** → **Deployment Protection**
+2. Turn off **Vercel Authentication** / password protection for **Production** (or add your share link as an exception)
+3. Redeploy
+
+There is no Sign In / Sign Up in the UI and no route guards in the codebase.
+
+---
 
 - **Frontend**: Next.js 14 (App Router), Tailwind CSS, TypeScript
 - **Backend**: FastAPI, SQLAlchemy, SQLite

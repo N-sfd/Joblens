@@ -11,9 +11,10 @@ import {
   X,
 } from "lucide-react";
 import clsx from "clsx";
+import LogoMark from "./Logo";
 
-const nav = [
-  { href: "/",             label: "Dashboard",      icon: LayoutDashboard },
+export const nav = [
+  { href: "/",             label: "Dashboard",       icon: LayoutDashboard },
   { href: "/resume",       label: "Resume Analyzer", icon: FileText },
   { href: "/jobs",         label: "Job Tracker",     icon: Briefcase },
   { href: "/match",        label: "Job Matcher",     icon: Target },
@@ -28,21 +29,23 @@ export default function Sidebar({ onClose }: Props) {
   const pathname = usePathname();
 
   return (
-    <aside className="w-64 max-w-[85vw] h-full bg-slate-900 flex flex-col">
+    <aside className="w-64 max-w-[85vw] h-full bg-gradient-to-b from-slate-900 to-slate-950 flex flex-col">
       {/* Logo */}
-      <div className="px-6 py-5 border-b border-slate-800 flex items-center justify-between">
+      <div className="px-6 py-5 border-b border-white/5 flex items-center justify-between">
         <div className="flex items-center gap-2.5">
-          <div className="w-8 h-8 bg-indigo-600 rounded-lg flex items-center justify-center">
-            <Briefcase size={16} className="text-white" />
+          <div className="w-9 h-9 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-lg flex items-center justify-center shadow-lg shadow-indigo-900/40 ring-1 ring-white/10">
+            <LogoMark size={17} className="text-white" />
           </div>
-          <p className="text-white font-bold text-base leading-none">JobLens</p>
+          <div className="leading-none">
+            <p className="text-white font-bold text-base">JobLens</p>
+          </div>
         </div>
         {/* Close button — mobile only */}
         <button
           type="button"
           aria-label="Close menu"
           onClick={onClose}
-          className="md:hidden p-1.5 text-slate-400 hover:text-white hover:bg-slate-800 rounded-lg transition-colors"
+          className="md:hidden p-1.5 text-slate-400 hover:text-white hover:bg-white/5 rounded-lg transition-colors"
         >
           <X size={18} />
         </button>
@@ -61,13 +64,16 @@ export default function Sidebar({ onClose }: Props) {
               href={href}
               onClick={onClose}
               className={clsx(
-                "flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
+                "relative flex items-center gap-3 px-3 py-2.5 rounded-lg text-sm font-medium transition-all duration-150",
                 active
-                  ? "bg-indigo-600 text-white"
-                  : "text-slate-400 hover:bg-slate-800 hover:text-white"
+                  ? "bg-white/[0.07] text-white"
+                  : "text-slate-400 hover:bg-white/5 hover:text-white"
               )}
             >
-              <Icon size={16} />
+              {active && (
+                <span className="absolute left-0 top-1.5 bottom-1.5 w-[3px] rounded-full bg-indigo-500" />
+              )}
+              <Icon size={16} className={active ? "text-indigo-400" : ""} />
               {label}
             </Link>
           );

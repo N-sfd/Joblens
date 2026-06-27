@@ -6,6 +6,8 @@ import { api } from "@/lib/api";
 import { getLog, clearLog, seedSampleActivity, type ActivityEntry } from "@/lib/activityLog";
 import type { JobApplication, JobStats } from "@/types";
 import StatusBadge from "@/components/StatusBadge";
+import DashboardHero from "@/components/illustrations/DashboardHero";
+import { EmptyJobsIllustration, EmptyActivityIllustration } from "@/components/illustrations/EmptyState";
 import {
   Briefcase, FileText, Target, PenTool, TrendingUp, ArrowRight,
   CheckCircle, Clock, Trophy, XCircle, Plus, Bot, Trash2,
@@ -83,10 +85,13 @@ export default function DashboardPage() {
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
-      <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Dashboard</h1>
-        <p className="text-slate-500 mt-1">Track your job search progress and use AI tools to stand out.</p>
+      <div className="mb-6">
+        <p className="page-kicker">Overview</p>
+        <h1 className="page-title">Dashboard</h1>
+        <p className="page-subtitle">Track your job search progress and use AI tools to stand out.</p>
       </div>
+
+      <DashboardHero />
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
@@ -128,8 +133,8 @@ export default function DashboardPage() {
                   ))
                 : recent.length === 0
                   ? (
-                    <div className="px-5 py-10 text-center">
-                      <Briefcase className="mx-auto text-slate-300 mb-2" size={28} />
+                    <div className="px-5 py-8 text-center">
+                      <EmptyJobsIllustration size={72} className="mx-auto mb-2" />
                       <p className="text-slate-500 text-sm">No applications yet.</p>
                       <Link href="/jobs" className="text-indigo-600 text-sm font-medium hover:underline mt-1 inline-block">
                         Add your first job
@@ -175,7 +180,7 @@ export default function DashboardPage() {
             </div>
             {activity.length === 0 ? (
               <div className="px-5 py-8 text-center">
-                <Bot className="mx-auto text-slate-200 mb-2" size={28} />
+                <EmptyActivityIllustration size={72} className="mx-auto mb-2" />
                 <p className="text-slate-400 text-sm">No AI activity yet.</p>
                 <p className="text-slate-400 text-xs mt-1">Analyze a resume or match a job to see history here.</p>
               </div>

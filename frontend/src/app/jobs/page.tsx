@@ -6,9 +6,11 @@ import { api } from "@/lib/api";
 import type { JobApplication, JobApplicationStatus } from "@/types";
 import {
   Plus, Pencil, Trash2, ExternalLink, Briefcase, Loader2,
-  AlertCircle, X, Sparkles, Target, PenTool, RefreshCw,
+  X, Sparkles, Target, PenTool, RefreshCw,
 } from "lucide-react";
 import clsx from "clsx";
+import { EmptyJobsIllustration } from "@/components/illustrations/EmptyState";
+import ErrorBanner from "@/components/ErrorBanner";
 
 const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
 const FILTERS = ["All", ...STATUSES] as const;
@@ -54,6 +56,7 @@ export default function JobsPage() {
     setLoading(true);
     try {
       setJobs(await api.listJobs());
+      setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load.");
     } finally {
@@ -201,8 +204,9 @@ export default function JobsPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
-          <h1 className="text-2xl font-bold text-slate-900">Job Tracker</h1>
-          <p className="text-slate-500 mt-1">Manage and track all your job applications.</p>
+          <p className="page-kicker">Pipeline</p>
+          <h1 className="page-title">Job Tracker</h1>
+          <p className="page-subtitle">Manage and track all your job applications.</p>
         </div>
         <div className="flex items-center gap-2 flex-wrap sm:shrink-0">
           {selected.size > 0 && (
@@ -241,12 +245,7 @@ export default function JobsPage() {
       </div>
 
       {error && (
-        <div className="flex items-center gap-2.5 bg-red-50 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-          <AlertCircle size={15} /> {error}
-          <button type="button" aria-label="Dismiss error" onClick={() => setError(null)} className="ml-auto">
-            <X size={14} />
-          </button>
-        </div>
+        <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={load} className="mb-4" />
       )}
 
       {/* Filter Tabs */}
@@ -275,8 +274,8 @@ export default function JobsPage() {
             <Loader2 size={24} className="animate-spin text-indigo-500" />
           </div>
         ) : visible.length === 0 ? (
-          <div className="py-16 text-center">
-            <Briefcase className="mx-auto text-slate-200 mb-3" size={40} />
+          <div className="py-12 text-center">
+            <EmptyJobsIllustration className="mx-auto mb-3" />
             <p className="text-slate-500 font-medium">No applications found.</p>
             <p className="text-slate-400 text-sm mt-1">Add a job or load demo data to get started.</p>
           </div>

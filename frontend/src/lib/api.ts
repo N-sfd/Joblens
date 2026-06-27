@@ -1,3 +1,5 @@
+import { getGuestId } from "./guestId";
+
 /** Origin only (no /api). Avoids https://host/api + /api/jobs → /api/api/jobs (404). */
 function normalizeOrigin(url: string): string {
   return url.trim().replace(/\/$/, "").replace(/\/api\/?$/i, "");
@@ -17,9 +19,13 @@ function getApiBase(): string {
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
+  const headers = new Headers(init?.headers);
+  if (path.startsWith("/api/jobs") && typeof window !== "undefined") {
+    headers.set("X-Guest-Id", getGuestId());
+  }
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, init);
+    res = await fetch(`${base}${path}`, { ...init, headers });
   } catch (e) {
     const hint =
       typeof window !== "undefined" &&

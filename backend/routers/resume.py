@@ -29,17 +29,32 @@ async def analyze_resume_file(
 ):
     content = await file.read()
     filename = file.filename or ""
+    lower = filename.lower()
 
-    if filename.lower().endswith(".pdf"):
-        text = extract_pdf_text(content)
-    elif filename.lower().endswith((".docx", ".doc")):
-        text = extract_docx_text(content)
-    elif filename.lower().endswith(".txt"):
-        text = content.decode("utf-8", errors="ignore")
-    else:
+    if lower.endswith(".doc") and not lower.endswith(".docx"):
         raise HTTPException(
             status_code=400,
-            detail="Unsupported format. Upload a PDF, DOCX, or TXT file.",
+            detail="The legacy .doc format isn't supported. Please save your resume as .docx or PDF and try again.",
+        )
+
+    try:
+        if lower.endswith(".pdf"):
+            text = extract_pdf_text(content)
+        elif lower.endswith(".docx"):
+            text = extract_docx_text(content)
+        elif lower.endswith(".txt"):
+            text = content.decode("utf-8", errors="ignore")
+        else:
+            raise HTTPException(
+                status_code=400,
+                detail="Unsupported format. Upload a PDF, DOCX, or TXT file.",
+            )
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(
+            status_code=400,
+            detail="Could not read this file. Make sure it's a valid PDF, DOCX, or TXT resume.",
         )
 
     if len(text.strip()) < 50:

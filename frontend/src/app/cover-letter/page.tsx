@@ -5,10 +5,11 @@ import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import { logActivity } from "@/lib/activityLog";
 import AgentActivity from "@/components/AgentActivity";
+import ErrorBanner from "@/components/ErrorBanner";
 import type { JobApplication } from "@/types";
 import {
-  PenTool, Loader2, AlertCircle, Copy, CheckCircle, ArrowRight,
-  X, Briefcase, Download, RefreshCw, BookOpen, Save,
+  PenTool, Loader2, Copy, CheckCircle, ArrowRight,
+  Briefcase, Download, RefreshCw, BookOpen, Save,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -160,8 +161,9 @@ function CoverLetterContent() {
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <h1 className="text-2xl font-bold text-slate-900">Cover Letter Generator</h1>
-        <p className="text-slate-500 mt-1">AI-written, tailored to your resume and the job description.</p>
+        <p className="page-kicker">AI Tool</p>
+        <h1 className="page-title">Cover Letter Generator</h1>
+        <p className="page-subtitle">AI-written, tailored to your resume and the job description.</p>
       </div>
 
       <div className="card p-5 mb-5">
@@ -276,12 +278,7 @@ function CoverLetterContent() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2.5 bg-red-50 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-            <AlertCircle size={15} /> {error}
-            <button type="button" aria-label="Dismiss error" onClick={() => setError(null)} className="ml-auto">
-              <X size={14} />
-            </button>
-          </div>
+          <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => generate()} className="mb-4" />
         )}
 
         <button

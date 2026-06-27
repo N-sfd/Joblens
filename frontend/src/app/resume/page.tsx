@@ -6,6 +6,7 @@ import { logActivity } from "@/lib/activityLog";
 import type { ResumeAnalysis } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
+import ErrorBanner from "@/components/ErrorBanner";
 import {
   Upload, FileText, CheckCircle, XCircle, AlertCircle,
   Lightbulb, Tag, Loader2,
@@ -80,8 +81,9 @@ export default function ResumePage() {
   return (
     <div className="p-4 sm:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Resume Analyzer</h1>
-        <p className="text-slate-500 mt-1">Upload your resume to get an ATS score, skill analysis, and improvement tips.</p>
+        <p className="page-kicker">AI Tool</p>
+        <h1 className="page-title">Resume Analyzer</h1>
+        <p className="page-subtitle">Upload your resume to get an ATS score, skill analysis, and improvement tips.</p>
       </div>
 
       {/* Upload Zone */}
@@ -103,7 +105,7 @@ export default function ResumePage() {
             <input
               ref={inputRef}
               type="file"
-              accept=".pdf,.docx,.doc,.txt"
+              accept=".pdf,.docx,.txt"
               aria-label="Upload resume file"
               className="hidden"
               onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFile(f); }}
@@ -126,9 +128,12 @@ export default function ResumePage() {
           )}
 
           {error && (
-            <div className="mt-4 flex items-center gap-2.5 bg-red-50 text-red-700 rounded-lg px-4 py-3 text-sm">
-              <AlertCircle size={16} /> {error}
-            </div>
+            <ErrorBanner
+              message={error}
+              onDismiss={() => setError(null)}
+              onRetry={file ? analyze : undefined}
+              className="mt-4"
+            />
           )}
         </div>
       )}

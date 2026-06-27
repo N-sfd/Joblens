@@ -2,6 +2,7 @@ from openai import OpenAI
 import json
 import os
 from typing import Optional
+from services.ats_engine import keyword_match, formatting_compliance
 
 _client: Optional[OpenAI] = None
 MODEL = "llama-3.3-70b-versatile"
@@ -57,8 +58,9 @@ Job Description:
 
 Return this exact JSON structure:
 {{
-  "match_score": <integer 0-100>,
-  "likelihood": "low|medium|high",
+  "skills_match_score": <integer 0-100, how well the candidate's hard/soft skills align with the role's required and preferred skills>,
+  "experience_match_score": <integer 0-100, how well the candidate's years and type of experience align with the role>,
+  "education_match_score": <integer 0-100, how well education/certifications align with stated requirements (100 if none specified)>,
   "summary": "<2-3 sentence summary of fit>",
   "matching_skills": ["<skill>", "<skill>"],
   "missing_skills": ["<skill>", "<skill>"],
@@ -133,7 +135,48 @@ async def match_job(resume_text: str, job_description: str) -> dict:
             }
         ],
     )
-    return json.loads(response.choices[0].message.content)
+    llm = json.loads(response.choices[0].message.content)
+
+    skills_score = int(llm.get("skills_match_score", 0))
+    experience_score = int(llm.get("experience_match_score", 0))
+    education_score = int(llm.get("education_match_score", 0))
+    semantic_score = round(skills_score * 0.5 + experience_score * 0.35 + education_score * 0.15)
+
+    keywords = keyword_match(resume_text, job_description)
+    formatting = formatting_compliance(resume_text)
+
+    # Weighted like real ATS scanners: exact keyword coverage carries the most
+    # weight, semantic fit (LLM judgment) and structural parsability fill the rest.
+    overall = round(keywords["coverage_pct"] * 0.45 + semantic_score * 0.35 + formatting["score"] * 0.20)
+    overall = max(0, min(100, overall))
+
+    if overall >= 75:
+        likelihood, verdict = "high", "Likely to Pass ATS Screen"
+    elif overall >= 50:
+        likelihood, verdict = "medium", "Borderline — Needs Optimization"
+    else:
+        likelihood, verdict = "low", "Likely Filtered Out by ATS"
+
+    return {
+        "match_score": overall,
+        "likelihood": likelihood,
+        "ats_verdict": verdict,
+        "skills_match_score": skills_score,
+        "experience_match_score": experience_score,
+        "education_match_score": education_score,
+        "keyword_match_score": keywords["coverage_pct"],
+        "formatting_score": formatting["score"],
+        "formatting_issues": formatting["issues"],
+        "keyword_report": {"matched": keywords["matched"], "missing": keywords["missing"]},
+        "summary": llm.get("summary", ""),
+        "matching_skills": llm.get("matching_skills", []),
+        "missing_skills": llm.get("missing_skills", []),
+        "matching_experience": llm.get("matching_experience", []),
+        "gaps": llm.get("gaps", []),
+        "tailoring_suggestions": llm.get("tailoring_suggestions", []),
+        "keywords_to_add": llm.get("keywords_to_add", []),
+        "interview_preparation": llm.get("interview_preparation", []),
+    }
 
 
 RESUME_BULLETS_PROMPT = """\

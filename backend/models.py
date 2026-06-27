@@ -21,6 +21,7 @@ class JobApplication(Base):
     salary_range = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
     follow_up_date = Column(DateTime, nullable=True)
+    guest_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 

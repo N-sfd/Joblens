@@ -36,6 +36,17 @@ export interface ResumeAnalysis {
 export interface MatchResult {
   match_score: number;
   likelihood: "low" | "medium" | "high";
+  ats_verdict: string;
+  skills_match_score: number;
+  experience_match_score: number;
+  education_match_score: number;
+  keyword_match_score: number;
+  formatting_score: number;
+  formatting_issues: string[];
+  keyword_report: {
+    matched: { keyword: string; jd_count: number; resume_count: number }[];
+    missing: { keyword: string; jd_count: number }[];
+  };
   summary: string;
   matching_skills: string[];
   missing_skills: string[];

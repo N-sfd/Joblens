@@ -7,6 +7,7 @@ import { logActivity } from "@/lib/activityLog";
 import type { MatchResult } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
+import ErrorBanner from "@/components/ErrorBanner";
 import {
   Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
   Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
@@ -183,8 +184,9 @@ export default function MatchPage() {
       )}
 
       <div className="mb-8">
-        <h1 className="text-2xl font-bold text-slate-900">Job Matcher</h1>
-        <p className="text-slate-500 mt-1">Paste your resume and job description to get a fit score, tailored bullets, and interview prep.</p>
+        <p className="page-kicker">AI Tool</p>
+        <h1 className="page-title">Job Matcher</h1>
+        <p className="page-subtitle">Paste your resume and job description to get a fit score, tailored bullets, and interview prep.</p>
       </div>
 
       {/* Input Panel */}
@@ -217,10 +219,7 @@ export default function MatchPage() {
         </div>
 
         {error && (
-          <div className="flex items-center gap-2.5 bg-red-50 text-red-700 rounded-lg px-4 py-3 text-sm mb-4">
-            <AlertCircle size={15} /> {error}
-            <button type="button" aria-label="Dismiss error" onClick={() => setError(null)} className="ml-auto"><X size={14} /></button>
-          </div>
+          <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={run} className="mb-4" />
         )}
 
         <button
@@ -244,11 +243,20 @@ export default function MatchPage() {
           {/* Score Hero */}
           <div className="card p-6">
             <div className="flex flex-col sm:flex-row items-center gap-6">
-              <ScoreCircle score={result.match_score} label="Match Score" size={140} />
+              <ScoreCircle score={result.match_score} label="ATS Match Score" size={140} />
               <div className="flex-1 text-center sm:text-left">
-                <span className={clsx("px-3 py-1 rounded-full text-sm font-semibold", likelihoodStyle[result.likelihood])}>
-                  {result.likelihood.charAt(0).toUpperCase() + result.likelihood.slice(1)} likelihood
-                </span>
+                <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
+                  <span className={clsx("px-3 py-1 rounded-full text-sm font-semibold", likelihoodStyle[result.likelihood])}>
+                    {result.likelihood.charAt(0).toUpperCase() + result.likelihood.slice(1)} likelihood
+                  </span>
+                  <span className={clsx(
+                    "px-3 py-1 rounded-full text-sm font-semibold",
+                    result.likelihood === "high" ? "bg-green-100 text-green-700" :
+                    result.likelihood === "medium" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
+                  )}>
+                    {result.ats_verdict}
+                  </span>
+                </div>
                 <p className="text-slate-600 text-sm mt-3 leading-relaxed">{result.summary}</p>
               </div>
             </div>
@@ -285,6 +293,88 @@ export default function MatchPage() {
               </button>
             </div>
           </div>
+
+          {/* ATS Score Breakdown */}
+          <div className="card p-5">
+            <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+              <Target size={15} className="text-indigo-500" /> ATS Score Breakdown
+            </h3>
+            <div className="space-y-3">
+              {[
+                { label: "Keyword Match", score: result.keyword_match_score, hint: "exact JD keyword coverage" },
+                { label: "Skills Fit", score: result.skills_match_score, hint: "AI-judged skills alignment" },
+                { label: "Experience Fit", score: result.experience_match_score, hint: "AI-judged experience alignment" },
+                { label: "Education Fit", score: result.education_match_score, hint: "AI-judged education alignment" },
+                { label: "Formatting Compliance", score: result.formatting_score, hint: "ATS parsability" },
+              ].map((row) => (
+                <div key={row.label}>
+                  <div className="flex items-center justify-between mb-1">
+                    <span className="text-sm font-medium text-slate-700">{row.label}</span>
+                    <span className="text-xs text-slate-400">{row.score}/100</span>
+                  </div>
+                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div
+                      className={clsx(
+                        "h-full rounded-full transition-all duration-700",
+                        row.score >= 80 ? "bg-green-500" : row.score >= 60 ? "bg-amber-500" : "bg-red-400"
+                      )}
+                      style={{ width: `${Math.min(100, Math.max(0, row.score))}%` }}
+                    />
+                  </div>
+                </div>
+              ))}
+            </div>
+          </div>
+
+          {/* Keyword Scan */}
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <CheckCircle size={15} className="text-green-500" /> Keywords Found in Resume
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {result.keyword_report.matched.length === 0 && (
+                  <p className="text-sm text-slate-400">No exact keyword overlaps detected.</p>
+                )}
+                {result.keyword_report.matched.map((k, i) => (
+                  <span key={i} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
+                    {k.keyword} <span className="text-green-400">×{k.resume_count}</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <XCircle size={15} className="text-red-400" /> Keywords Missing from Resume
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {result.keyword_report.missing.length === 0 && (
+                  <p className="text-sm text-slate-400">No missing high-frequency keywords detected.</p>
+                )}
+                {result.keyword_report.missing.map((k, i) => (
+                  <span key={i} className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium">
+                    {k.keyword} <span className="text-red-400">×{k.jd_count} in JD</span>
+                  </span>
+                ))}
+              </div>
+            </div>
+          </div>
+
+          {/* Formatting Issues */}
+          {result.formatting_issues.length > 0 && (
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <AlertCircle size={15} className="text-amber-500" /> ATS Formatting Issues
+              </h3>
+              <ul className="space-y-2">
+                {result.formatting_issues.map((issue, i) => (
+                  <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                    <AlertCircle size={13} className="text-amber-400 mt-0.5 shrink-0" /> {issue}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
 
           {/* Skills */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

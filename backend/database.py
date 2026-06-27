@@ -27,3 +27,19 @@ def get_db():
 def create_tables():
     import models  # noqa: F401 — registers models with Base
     Base.metadata.create_all(bind=engine)
+    _ensure_guest_id_column()
+
+
+def _ensure_guest_id_column():
+    """Add guest_id to existing DBs (SQLite/Postgres) without a full migration tool."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "job_applications" not in insp.get_table_names():
+        return
+    columns = {c["name"] for c in insp.get_columns("job_applications")}
+    if "guest_id" in columns:
+        return
+    with engine.begin() as conn:
+        conn.execute(text("ALTER TABLE job_applications ADD COLUMN guest_id VARCHAR(36)"))
+        conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_applications_guest_id ON job_applications (guest_id)"))

@@ -4,7 +4,7 @@ import AppShell from "@/components/AppShell";
 
 export const metadata: Metadata = {
   title: "JobLens",
-  description: "AI-powered resume analyzer and job tracking platform",
+  description: "AI-powered resume analyzer, job matcher, and application tracker.",
 };
 
 export default function RootLayout({ children }: { children: React.ReactNode }) {
