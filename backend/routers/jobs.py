@@ -6,7 +6,9 @@ from models import (
     JobApplicationCreate,
     JobApplicationUpdate,
     JobApplicationResponse,
+    FollowUpEmailResponse,
 )
+from services.claude_service import generate_follow_up_email
 from typing import List, Optional
 from datetime import datetime
 from pydantic import BaseModel
@@ -177,6 +179,25 @@ async def update_job(
     db.commit()
     db.refresh(job)
     return job
+
+
+@router.post("/{job_id}/follow-up-email", response_model=FollowUpEmailResponse)
+async def follow_up_email(
+    job_id: int,
+    guest_id: str = Depends(require_guest_id),
+    db: Session = Depends(get_db),
+):
+    job = get_guest_job(db, guest_id, job_id)
+    try:
+        email = await generate_follow_up_email(
+            company=job.company,
+            role=job.role,
+            recruiter_contact=job.recruiter_contact or "",
+            notes=job.notes or "",
+        )
+        return email
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
 
 
 @router.delete("/{job_id}")

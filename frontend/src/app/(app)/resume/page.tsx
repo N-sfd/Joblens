@@ -9,7 +9,8 @@ import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
 import {
   Upload, FileText, CheckCircle, XCircle, AlertCircle,
-  Lightbulb, Tag, Loader2,
+  Lightbulb, Tag, Loader2, Zap, MessageSquare, Copy,
+  ChevronDown, ChevronUp,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -24,13 +25,47 @@ const AGENT_STEPS = [
   "Generating improvement recommendations",
 ];
 
+const BULLETS_STEPS = [
+  "Reviewing resume bullet points",
+  "Identifying weak or vague phrasing",
+  "Rewriting with action verbs and metrics",
+  "Optimizing for ATS",
+];
+
+const QUESTIONS_STEPS = [
+  "Analyzing resume background",
+  "Identifying likely interview topics",
+  "Generating behavioral & technical questions",
+  "Preparing suggested answers",
+];
+
+interface InterviewQuestion {
+  question: string;
+  type: string;
+  suggested_answer: string;
+}
+
 export default function ResumePage() {
   const [dragging, setDragging] = useState(false);
   const [file, setFile] = useState<File | null>(null);
   const [loading, setLoading] = useState(false);
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<{ filename: string; analysis: ResumeAnalysis } | null>(null);
+  const [result, setResult] = useState<{ filename: string; resumeText: string; analysis: ResumeAnalysis } | null>(null);
+
+  // Improved bullets
+  const [bullets, setBullets] = useState<string[] | null>(null);
+  const [bulletsLoading, setBulletsLoading] = useState(false);
+  const [bulletsDone, setBulletsDone] = useState(false);
+  const [bulletsError, setBulletsError] = useState<string | null>(null);
+
+  // Interview prep
+  const [questions, setQuestions] = useState<InterviewQuestion[] | null>(null);
+  const [questionsLoading, setQuestionsLoading] = useState(false);
+  const [questionsDone, setQuestionsDone] = useState(false);
+  const [questionsError, setQuestionsError] = useState<string | null>(null);
+  const [openQuestion, setOpenQuestion] = useState<number | null>(null);
+
   const inputRef = useRef<HTMLInputElement>(null);
 
   const handleFile = (f: File) => {
@@ -38,6 +73,10 @@ export default function ResumePage() {
     setError(null);
     setResult(null);
     setDone(false);
+    setBullets(null);
+    setBulletsDone(false);
+    setQuestions(null);
+    setQuestionsDone(false);
   };
 
   const onDrop = (e: DragEvent) => {
@@ -55,7 +94,7 @@ export default function ResumePage() {
     try {
       const data = await api.analyzeResumeFile(file);
       setDone(true);
-      setResult({ filename: data.filename, analysis: data.analysis });
+      setResult({ filename: data.filename, resumeText: data.resume_text, analysis: data.analysis });
       localStorage.setItem(STORAGE_KEY, data.resume_text);
       logActivity({
         type: "resume_analyzed",
@@ -70,13 +109,56 @@ export default function ResumePage() {
     }
   };
 
+  const handleBullets = async () => {
+    if (!result) return;
+    setBulletsLoading(true);
+    setBulletsDone(false);
+    setBulletsError(null);
+    try {
+      const data = await api.generateResumeOnlyBullets(result.resumeText);
+      setBulletsDone(true);
+      setBullets(data.bullets);
+      logActivity({ type: "bullets_generated", summary: `Generated ${data.bullets.length} improved resume bullets` });
+    } catch (e) {
+      setBulletsError(e instanceof Error ? e.message : "Failed to generate bullets.");
+    } finally {
+      setBulletsLoading(false);
+    }
+  };
+
+  const handleQuestions = async () => {
+    if (!result) return;
+    setQuestionsLoading(true);
+    setQuestionsDone(false);
+    setQuestionsError(null);
+    try {
+      const data = await api.generateResumeOnlyInterviewQuestions(result.resumeText);
+      setQuestionsDone(true);
+      setQuestions(data.questions);
+      logActivity({ type: "questions_generated", summary: `Generated ${data.questions.length} interview questions` });
+    } catch (e) {
+      setQuestionsError(e instanceof Error ? e.message : "Failed to generate questions.");
+    } finally {
+      setQuestionsLoading(false);
+    }
+  };
+
   const reset = () => {
     setResult(null);
     setFile(null);
     setDone(false);
+    setBullets(null);
+    setBulletsDone(false);
+    setQuestions(null);
+    setQuestionsDone(false);
   };
 
   const priorityClass = { high: "badge-high", medium: "badge-medium", low: "badge-low" };
+  const typeColor: Record<string, string> = {
+    behavioral: "bg-blue-100 text-blue-700",
+    technical: "bg-purple-100 text-purple-700",
+    situational: "bg-amber-100 text-amber-700",
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-5xl mx-auto">
@@ -149,7 +231,7 @@ export default function ResumePage() {
       {/* Results */}
       {result && (
         <div className="space-y-5 animate-slide-up">
-          {/* Scores */}
+          {/* Score hero + breakdown */}
           <div className="card p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
@@ -160,10 +242,30 @@ export default function ResumePage() {
                 Analyze Another
               </button>
             </div>
-            <div className="flex flex-wrap gap-8 justify-center sm:justify-start">
-              <ScoreCircle score={result.analysis.ats_score} label="ATS Score" />
-              <ScoreCircle score={result.analysis.formatting_score} label="Formatting" />
-              <ScoreCircle score={result.analysis.content_score} label="Content" />
+            <div className="flex flex-col sm:flex-row items-center gap-8">
+              <ScoreCircle score={result.analysis.ats_score} label="ATS Score" size={140} />
+              <div className="flex-1 w-full space-y-3">
+                {[
+                  { label: "Formatting Score", score: result.analysis.formatting_score },
+                  { label: "Content Score", score: result.analysis.content_score },
+                ].map((row) => (
+                  <div key={row.label}>
+                    <div className="flex items-center justify-between mb-1">
+                      <span className="text-sm font-medium text-slate-700">{row.label}</span>
+                      <span className="text-xs text-slate-400">{row.score}/100</span>
+                    </div>
+                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                      <div
+                        className={clsx(
+                          "h-full rounded-full transition-all duration-700",
+                          row.score >= 80 ? "bg-green-500" : row.score >= 60 ? "bg-amber-500" : "bg-red-400"
+                        )}
+                        style={{ width: `${Math.min(100, Math.max(0, row.score))}%` }}
+                      />
+                    </div>
+                  </div>
+                ))}
+              </div>
             </div>
           </div>
 
@@ -175,7 +277,7 @@ export default function ResumePage() {
             <p className="text-sm text-slate-600 leading-relaxed">{result.analysis.overall_summary}</p>
           </div>
 
-          {/* Strengths & Weaknesses */}
+          {/* Strengths & Issues */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card p-5">
               <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
@@ -191,7 +293,7 @@ export default function ResumePage() {
             </div>
             <div className="card p-5">
               <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <XCircle size={15} className="text-red-400" /> Areas to Improve
+                <XCircle size={15} className="text-red-400" /> Issues Found
               </h3>
               <ul className="space-y-2">
                 {result.analysis.weaknesses.map((w, i) => (
@@ -203,10 +305,10 @@ export default function ResumePage() {
             </div>
           </div>
 
-          {/* Skills */}
+          {/* Skills / Matching Keywords */}
           <div className="card p-5">
             <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
-              <Tag size={15} className="text-indigo-500" /> Skills Identified
+              <Tag size={15} className="text-indigo-500" /> Matching Keywords Found
             </h3>
             <div className="space-y-3">
               <div>
@@ -228,6 +330,20 @@ export default function ResumePage() {
             </div>
           </div>
 
+          {/* Missing Keywords */}
+          {result.analysis.keywords_missing.length > 0 && (
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <AlertCircle size={15} className="text-amber-500" /> Missing Keywords
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {result.analysis.keywords_missing.map((k, i) => (
+                  <span key={i} className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-200">{k}</span>
+                ))}
+              </div>
+            </div>
+          )}
+
           {/* Recommendations */}
           <div className="card p-5">
             <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
@@ -243,15 +359,97 @@ export default function ResumePage() {
             </div>
           </div>
 
-          {/* Missing Keywords */}
-          {result.analysis.keywords_missing.length > 0 && (
-            <div className="card p-5">
+          {/* Action buttons */}
+          <div className="card p-5">
+            <h3 className="font-semibold text-slate-700 mb-3">Take it further</h3>
+            <div className="flex flex-col sm:flex-row flex-wrap gap-2">
+              <button type="button"
+                onClick={handleBullets}
+                disabled={bulletsLoading}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 w-full sm:w-auto"
+              >
+                {bulletsLoading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
+                Generate Improved Bullets
+              </button>
+              <button type="button"
+                onClick={handleQuestions}
+                disabled={questionsLoading}
+                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 w-full sm:w-auto"
+              >
+                {questionsLoading ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
+                Generate Interview Prep
+              </button>
+            </div>
+          </div>
+
+          {/* Bullets agent activity */}
+          <AgentActivity steps={BULLETS_STEPS} isRunning={bulletsLoading} isDone={bulletsDone} />
+
+          {bulletsError && (
+            <ErrorBanner message={bulletsError} onDismiss={() => setBulletsError(null)} onRetry={handleBullets} />
+          )}
+
+          {/* Improved Resume Bullets */}
+          {bullets && (
+            <div className="card p-5 animate-slide-up">
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                  <Zap size={15} className="text-purple-500" /> Improved Resume Bullets
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(bullets.map(b => `• ${b}`).join("\n"))}
+                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                >
+                  <Copy size={12} /> Copy all
+                </button>
+              </div>
+              <ul className="space-y-2.5">
+                {bullets.map((b, i) => (
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700 bg-purple-50 rounded-lg px-4 py-2.5">
+                    <span className="text-purple-500 font-bold shrink-0 mt-0.5">•</span> {b}
+                  </li>
+                ))}
+              </ul>
+            </div>
+          )}
+
+          {/* Questions agent activity */}
+          <AgentActivity steps={QUESTIONS_STEPS} isRunning={questionsLoading} isDone={questionsDone} />
+
+          {questionsError && (
+            <ErrorBanner message={questionsError} onDismiss={() => setQuestionsError(null)} onRetry={handleQuestions} />
+          )}
+
+          {/* Interview Questions */}
+          {questions && (
+            <div className="card p-5 animate-slide-up">
               <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <AlertCircle size={15} className="text-amber-500" /> Keywords to Add
+                <MessageSquare size={15} className="text-amber-500" /> Interview Preparation
               </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.analysis.keywords_missing.map((k, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-200">{k}</span>
+              <div className="space-y-2">
+                {questions.map((q, i) => (
+                  <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+                    <button
+                      type="button"
+                      onClick={() => setOpenQuestion(openQuestion === i ? null : i)}
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                    >
+                      <div className="flex items-center gap-3 min-w-0">
+                        <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", typeColor[q.type] ?? "bg-slate-100 text-slate-600")}>
+                          {q.type}
+                        </span>
+                        <span className="text-sm font-medium text-slate-800 truncate">{q.question}</span>
+                      </div>
+                      {openQuestion === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
+                    </button>
+                    {openQuestion === i && (
+                      <div className="px-4 pb-4 bg-amber-50 border-t border-slate-100">
+                        <p className="text-xs font-semibold text-amber-700 mt-3 mb-1.5">Suggested Answer</p>
+                        <p className="text-sm text-slate-700 leading-relaxed">{q.suggested_answer}</p>
+                      </div>
+                    )}
+                  </div>
                 ))}
               </div>
             </div>

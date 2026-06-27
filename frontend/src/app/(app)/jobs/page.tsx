@@ -3,10 +3,12 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
+import { logActivity } from "@/lib/activityLog";
 import type { JobApplication, JobApplicationStatus } from "@/types";
 import {
-  Plus, Pencil, Trash2, ExternalLink, Briefcase, Loader2,
-  X, Sparkles, Target, PenTool, RefreshCw,
+  Plus, Pencil, Trash2, ExternalLink, Loader2,
+  X, Sparkles, Target, PenTool, RefreshCw, MessageSquare, Mail,
+  Copy, CheckCircle, ChevronDown, ChevronUp,
 } from "lucide-react";
 import clsx from "clsx";
 import { EmptyJobsIllustration } from "@/components/illustrations/EmptyState";
@@ -14,6 +16,8 @@ import ErrorBanner from "@/components/ErrorBanner";
 
 const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
 const FILTERS = ["All", ...STATUSES] as const;
+const WORK_TYPES = ["Remote", "Hybrid", "On-site"] as const;
+const RESUME_KEY = "aijob_resume_text";
 
 const STATUS_COLORS: Record<string, string> = {
   Applied: "bg-blue-100 text-blue-700",
@@ -23,10 +27,23 @@ const STATUS_COLORS: Record<string, string> = {
   Saved: "bg-slate-100 text-slate-600",
 };
 
+const TYPE_COLOR: Record<string, string> = {
+  behavioral: "bg-blue-100 text-blue-700",
+  technical: "bg-purple-100 text-purple-700",
+  situational: "bg-amber-100 text-amber-700",
+};
+
 const emptyForm = {
   company: "", role: "", status: "Applied" as JobApplicationStatus, location: "",
-  job_url: "", salary_range: "", notes: "", date_applied: "", follow_up_date: "",
+  job_url: "", salary_range: "", work_type: "", recruiter_contact: "",
+  notes: "", date_applied: "", follow_up_date: "",
 };
+
+interface InterviewQuestion {
+  question: string;
+  type: string;
+  suggested_answer: string;
+}
 
 export default function JobsPage() {
   const router = useRouter();
@@ -46,6 +63,20 @@ export default function JobsPage() {
   const [deletingSelected, setDeletingSelected] = useState(false);
   const [updatingStatus, setUpdatingStatus] = useState<number | null>(null);
   const [toast, setToast] = useState<string | null>(null);
+
+  // Prepare Interview modal
+  const [interviewJob, setInterviewJob] = useState<JobApplication | null>(null);
+  const [interviewLoading, setInterviewLoading] = useState(false);
+  const [interviewError, setInterviewError] = useState<string | null>(null);
+  const [interviewQuestions, setInterviewQuestions] = useState<InterviewQuestion[] | null>(null);
+  const [openQuestion, setOpenQuestion] = useState<number | null>(null);
+
+  // Follow-up email modal
+  const [emailJob, setEmailJob] = useState<JobApplication | null>(null);
+  const [emailLoading, setEmailLoading] = useState(false);
+  const [emailError, setEmailError] = useState<string | null>(null);
+  const [emailDraft, setEmailDraft] = useState<{ subject: string; body: string } | null>(null);
+  const [emailCopied, setEmailCopied] = useState(false);
 
   const showToast = (msg: string) => {
     setToast(msg);
@@ -72,7 +103,8 @@ export default function JobsPage() {
     setForm({
       company: job.company, role: job.role, status: job.status,
       location: job.location ?? "", job_url: job.job_url ?? "",
-      salary_range: job.salary_range ?? "", notes: job.notes ?? "",
+      salary_range: job.salary_range ?? "", work_type: job.work_type ?? "",
+      recruiter_contact: job.recruiter_contact ?? "", notes: job.notes ?? "",
       date_applied: job.date_applied ? job.date_applied.split("T")[0] : "",
       follow_up_date: job.follow_up_date ? job.follow_up_date.split("T")[0] : "",
     });
@@ -87,7 +119,10 @@ export default function JobsPage() {
         company: form.company, role: form.role,
         status: form.status as JobApplicationStatus,
         location: form.location || null, job_url: form.job_url || null,
-        salary_range: form.salary_range || null, notes: form.notes || null,
+        salary_range: form.salary_range || null,
+        work_type: form.work_type || null,
+        recruiter_contact: form.recruiter_contact || null,
+        notes: form.notes || null,
         date_applied: form.date_applied || null,
         follow_up_date: form.follow_up_date || null,
       };
@@ -191,6 +226,70 @@ export default function JobsPage() {
 
   const handleCoverLetter = (job: JobApplication) => {
     router.push(`/cover-letter?company=${encodeURIComponent(job.company)}&role=${encodeURIComponent(job.role)}`);
+  };
+
+  const handlePrepareInterview = async (job: JobApplication) => {
+    setInterviewJob(job);
+    setInterviewQuestions(null);
+    setInterviewError(null);
+    setOpenQuestion(null);
+    setInterviewLoading(true);
+    try {
+      const resumeText = localStorage.getItem(RESUME_KEY) ?? "";
+      if (resumeText.trim().length < 50) {
+        throw new Error("Analyze your resume first on the Resume Analyzer page — interview prep is tailored to it.");
+      }
+      const contextLines = [
+        `Position: ${job.role}`,
+        `Company: ${job.company}`,
+        job.work_type ? `Work type: ${job.work_type}` : "",
+        job.location ? `Location: ${job.location}` : "",
+        job.notes ? `Notes: ${job.notes}` : "",
+      ].filter(Boolean).join("\n");
+      const data = await api.createInterviewQuestions(resumeText, contextLines);
+      setInterviewQuestions(data.questions);
+      logActivity({
+        type: "questions_generated",
+        summary: `Generated interview prep for ${job.company} — ${job.role}`,
+      });
+    } catch (e) {
+      setInterviewError(e instanceof Error ? e.message : "Failed to generate interview prep.");
+    } finally {
+      setInterviewLoading(false);
+    }
+  };
+
+  const handleFollowUpEmail = async (job: JobApplication) => {
+    setEmailJob(job);
+    setEmailDraft(null);
+    setEmailError(null);
+    setEmailCopied(false);
+    setEmailLoading(true);
+    try {
+      const data = await api.generateFollowUpEmail(job.id);
+      setEmailDraft(data);
+      logActivity({
+        type: "cover_letter_generated",
+        summary: `Drafted follow-up email for ${job.company} — ${job.role}`,
+      });
+    } catch (e) {
+      setEmailError(e instanceof Error ? e.message : "Failed to generate follow-up email.");
+    } finally {
+      setEmailLoading(false);
+    }
+  };
+
+  const copyEmail = async () => {
+    if (!emailDraft) return;
+    await navigator.clipboard.writeText(`Subject: ${emailDraft.subject}\n\n${emailDraft.body}`);
+    setEmailCopied(true);
+    setTimeout(() => setEmailCopied(false), 2500);
+  };
+
+  const mailtoHref = () => {
+    if (!emailDraft || !emailJob) return "#";
+    const to = emailJob.recruiter_contact?.includes("@") ? emailJob.recruiter_contact : "";
+    return `mailto:${to}?subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
   };
 
   return (
@@ -297,7 +396,11 @@ export default function JobsPage() {
                     <div>
                       <p className="font-semibold text-slate-800 text-sm">{job.company}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{job.role}</p>
-                      {job.location && <p className="text-xs text-slate-400 mt-0.5">{job.location}</p>}
+                      {(job.location || job.work_type) && (
+                        <p className="text-xs text-slate-400 mt-0.5">
+                          {[job.location, job.work_type].filter(Boolean).join(" · ")}
+                        </p>
+                      )}
                     </div>
                     {updatingStatus === job.id ? (
                       <Loader2 size={14} className="animate-spin text-indigo-500 shrink-0" />
@@ -319,14 +422,22 @@ export default function JobsPage() {
                     {job.salary_range && (
                       <span className="text-xs text-slate-400 mr-2">{job.salary_range}</span>
                     )}
-                    <div className="flex items-center gap-1 ml-auto">
+                    <div className="flex items-center gap-1 ml-auto flex-wrap justify-end">
                       <button type="button" onClick={() => handleAnalyzeMatch(job)} title="Analyze Match"
                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                         <Target size={14} />
                       </button>
-                      <button type="button" onClick={() => handleCoverLetter(job)} title="Cover Letter"
+                      <button type="button" onClick={() => handleCoverLetter(job)} title="Generate Cover Letter"
                         className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
                         <PenTool size={14} />
+                      </button>
+                      <button type="button" onClick={() => handlePrepareInterview(job)} title="Prepare Interview"
+                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                        <MessageSquare size={14} />
+                      </button>
+                      <button type="button" onClick={() => handleFollowUpEmail(job)} title="Send Follow-up Email"
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                        <Mail size={14} />
                       </button>
                       {job.job_url && (
                         <a href={job.job_url} target="_blank" rel="noreferrer" title="Open job listing"
@@ -363,7 +474,7 @@ export default function JobsPage() {
                         className="accent-indigo-600"
                       />
                     </th>
-                    {["Company", "Role", "Status", "Location", "Date Applied", "Salary", "Actions"].map((h) => (
+                    {["Company", "Job Title", "Status", "Location", "Date Applied", "Salary", "Actions"].map((h) => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
@@ -401,7 +512,9 @@ export default function JobsPage() {
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{job.location ?? "—"}</td>
+                      <td className="px-4 py-3 text-slate-500">
+                        {[job.location, job.work_type].filter(Boolean).join(" · ") || "—"}
+                      </td>
                       <td className="px-4 py-3 text-slate-500">
                         {job.date_applied
                           ? new Date(job.date_applied).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
@@ -414,9 +527,17 @@ export default function JobsPage() {
                             className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                             <Target size={14} />
                           </button>
-                          <button type="button" onClick={() => handleCoverLetter(job)} title="Cover Letter"
+                          <button type="button" onClick={() => handleCoverLetter(job)} title="Generate Cover Letter"
                             className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
                             <PenTool size={14} />
+                          </button>
+                          <button type="button" onClick={() => handlePrepareInterview(job)} title="Prepare Interview"
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                            <MessageSquare size={14} />
+                          </button>
+                          <button type="button" onClick={() => handleFollowUpEmail(job)} title="Send Follow-up Email"
+                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                            <Mail size={14} />
                           </button>
                           {job.job_url && (
                             <a href={job.job_url} target="_blank" rel="noreferrer" title="Open listing"
@@ -444,9 +565,11 @@ export default function JobsPage() {
       </div>
 
       {/* Action Legend — desktop only */}
-      <div className="hidden md:flex mt-3 items-center gap-4 text-xs text-slate-400 px-1">
+      <div className="hidden md:flex mt-3 items-center gap-4 text-xs text-slate-400 px-1 flex-wrap">
         <span className="flex items-center gap-1"><Target size={11} /> Analyze Match</span>
         <span className="flex items-center gap-1"><PenTool size={11} /> Cover Letter</span>
+        <span className="flex items-center gap-1"><MessageSquare size={11} /> Prepare Interview</span>
+        <span className="flex items-center gap-1"><Mail size={11} /> Follow-up Email</span>
         <span className="flex items-center gap-1"><RefreshCw size={11} /> Click status to update</span>
       </div>
 
@@ -469,7 +592,7 @@ export default function JobsPage() {
                     onChange={(e) => setForm({ ...form, company: e.target.value })} placeholder="Google" />
                 </div>
                 <div>
-                  <label htmlFor="modal-role" className="label">Role *</label>
+                  <label htmlFor="modal-role" className="label">Job Title *</label>
                   <input id="modal-role" className="input" value={form.role}
                     onChange={(e) => setForm({ ...form, role: e.target.value })} placeholder="Software Engineer" />
                 </div>
@@ -483,32 +606,47 @@ export default function JobsPage() {
                   </select>
                 </div>
                 <div>
+                  <label htmlFor="modal-worktype" className="label">Work Type</label>
+                  <select id="modal-worktype" className="input" value={form.work_type}
+                    onChange={(e) => setForm({ ...form, work_type: e.target.value })}>
+                    <option value="">— Select —</option>
+                    {WORK_TYPES.map((w) => <option key={w}>{w}</option>)}
+                  </select>
+                </div>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
                   <label htmlFor="modal-location" className="label">Location</label>
                   <input id="modal-location" className="input" value={form.location}
                     onChange={(e) => setForm({ ...form, location: e.target.value })} placeholder="Remote" />
                 </div>
-              </div>
-              <div>
-                <label htmlFor="modal-url" className="label">Job URL</label>
-                <input id="modal-url" className="input" value={form.job_url}
-                  onChange={(e) => setForm({ ...form, job_url: e.target.value })} placeholder="https://..." />
-              </div>
-              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="modal-salary" className="label">Salary Range</label>
                   <input id="modal-salary" className="input" value={form.salary_range}
                     onChange={(e) => setForm({ ...form, salary_range: e.target.value })} placeholder="$80k – $100k" />
                 </div>
+              </div>
+              <div>
+                <label htmlFor="modal-url" className="label">Job Link</label>
+                <input id="modal-url" className="input" value={form.job_url}
+                  onChange={(e) => setForm({ ...form, job_url: e.target.value })} placeholder="https://..." />
+              </div>
+              <div>
+                <label htmlFor="modal-recruiter" className="label">Recruiter Contact</label>
+                <input id="modal-recruiter" className="input" value={form.recruiter_contact}
+                  onChange={(e) => setForm({ ...form, recruiter_contact: e.target.value })} placeholder="Name, email, or phone" />
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
-                  <label htmlFor="modal-date" className="label">Date Applied</label>
+                  <label htmlFor="modal-date" className="label">Application Date</label>
                   <input id="modal-date" type="date" className="input" value={form.date_applied}
                     onChange={(e) => setForm({ ...form, date_applied: e.target.value })} />
                 </div>
-              </div>
-              <div>
-                <label htmlFor="modal-followup" className="label">Follow-up Date</label>
-                <input id="modal-followup" type="date" className="input" value={form.follow_up_date}
-                  onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })} />
+                <div>
+                  <label htmlFor="modal-followup" className="label">Follow-up Date</label>
+                  <input id="modal-followup" type="date" className="input" value={form.follow_up_date}
+                    onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })} />
+                </div>
               </div>
               <div>
                 <label htmlFor="modal-notes" className="label">Notes</label>
@@ -556,6 +694,112 @@ export default function JobsPage() {
                 className="bg-red-600 hover:bg-red-700 text-white font-semibold px-5 py-2.5 rounded-lg transition-colors">
                 Delete
               </button>
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Prepare Interview Modal */}
+      {interviewJob && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <MessageSquare size={16} className="text-amber-500" /> Interview Prep
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">{interviewJob.company} — {interviewJob.role}</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setInterviewJob(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              {interviewLoading && (
+                <div className="flex items-center justify-center gap-2 text-slate-500 py-10">
+                  <Loader2 size={18} className="animate-spin" /> Generating interview prep…
+                </div>
+              )}
+              {interviewError && (
+                <ErrorBanner message={interviewError} onDismiss={() => setInterviewError(null)} onRetry={() => handlePrepareInterview(interviewJob)} />
+              )}
+              {interviewQuestions && (
+                <div className="space-y-2">
+                  {interviewQuestions.map((q, i) => (
+                    <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+                      <button
+                        type="button"
+                        onClick={() => setOpenQuestion(openQuestion === i ? null : i)}
+                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                      >
+                        <div className="flex items-center gap-3 min-w-0">
+                          <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", TYPE_COLOR[q.type] ?? "bg-slate-100 text-slate-600")}>
+                            {q.type}
+                          </span>
+                          <span className="text-sm font-medium text-slate-800 truncate">{q.question}</span>
+                        </div>
+                        {openQuestion === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
+                      </button>
+                      {openQuestion === i && (
+                        <div className="px-4 pb-4 bg-amber-50 border-t border-slate-100">
+                          <p className="text-xs font-semibold text-amber-700 mt-3 mb-1.5">Suggested Answer</p>
+                          <p className="text-sm text-slate-700 leading-relaxed">{q.suggested_answer}</p>
+                        </div>
+                      )}
+                    </div>
+                  ))}
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Follow-up Email Modal */}
+      {emailJob && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+              <div>
+                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                  <Mail size={16} className="text-emerald-500" /> Follow-up Email
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">{emailJob.company} — {emailJob.role}</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setEmailJob(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              {emailLoading && (
+                <div className="flex items-center justify-center gap-2 text-slate-500 py-10">
+                  <Loader2 size={18} className="animate-spin" /> Drafting follow-up email…
+                </div>
+              )}
+              {emailError && (
+                <ErrorBanner message={emailError} onDismiss={() => setEmailError(null)} onRetry={() => handleFollowUpEmail(emailJob)} />
+              )}
+              {emailDraft && (
+                <div className="space-y-3">
+                  <div>
+                    <p className="label">Subject</p>
+                    <p className="text-sm font-medium text-slate-800 bg-slate-50 rounded-lg px-3 py-2">{emailDraft.subject}</p>
+                  </div>
+                  <div>
+                    <p className="label">Body</p>
+                    <p className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-3 whitespace-pre-wrap leading-relaxed">{emailDraft.body}</p>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button type="button" onClick={copyEmail}
+                      className={clsx("flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all", emailCopied ? "bg-green-100 text-green-700" : "btn-secondary")}>
+                      {emailCopied ? <><CheckCircle size={14} /> Copied!</> : <><Copy size={14} /> Copy</>}
+                    </button>
+                    <a href={mailtoHref()} className="btn-primary flex items-center gap-1.5 text-sm">
+                      <Mail size={14} /> Open in Email Client
+                    </a>
+                  </div>
+                </div>
+              )}
             </div>
           </div>
         </div>

@@ -10,7 +10,7 @@ export default function DashboardHero() {
       <div className="relative z-10 max-w-lg">
         <h2 className="text-xl sm:text-2xl font-bold mb-2">Your job search, accelerated by AI</h2>
         <p className="text-indigo-100/90 text-sm leading-relaxed">
-          Analyze your resume, match it against any job description, and generate tailored cover letters — all in one place.
+          JobLens helps job seekers analyze resumes, match jobs, track applications, and generate tailored cover letters — all in one place.
         </p>
       </div>
     </div>

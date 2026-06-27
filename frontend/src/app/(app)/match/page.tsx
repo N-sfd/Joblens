@@ -147,6 +147,7 @@ export default function MatchPage() {
         status: saveForm.status as never,
         notes: matchNote ?? null,
         job_url: null, salary_range: null, location: null,
+        work_type: null, recruiter_contact: null,
         follow_up_date: null, date_applied: null,
       });
       logActivity({

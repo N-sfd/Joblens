@@ -2,12 +2,21 @@ from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
 from database import get_db
 from models import ResumeAnalysis
-from services.claude_service import analyze_resume
+from services.claude_service import (
+    analyze_resume,
+    generate_resume_bullets_generic,
+    create_interview_questions_generic,
+)
+from pydantic import BaseModel
 import pypdf
 import io
 import json
 
 router = APIRouter()
+
+
+class ResumeTextRequest(BaseModel):
+    resume_text: str
 
 
 def extract_pdf_text(data: bytes) -> str:
@@ -94,3 +103,25 @@ async def analyze_resume_text(body: dict):
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
     return {"analysis": analysis}
+
+
+@router.post("/bullets")
+async def get_resume_bullets(request: ResumeTextRequest):
+    if len(request.resume_text.strip()) < 50:
+        raise HTTPException(status_code=422, detail="Resume text is too short.")
+    try:
+        bullets = await generate_resume_bullets_generic(request.resume_text)
+        return {"bullets": bullets}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+
+
+@router.post("/interview-questions")
+async def get_interview_questions(request: ResumeTextRequest):
+    if len(request.resume_text.strip()) < 50:
+        raise HTTPException(status_code=422, detail="Resume text is too short.")
+    try:
+        questions = await create_interview_questions_generic(request.resume_text)
+        return {"questions": questions}
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")

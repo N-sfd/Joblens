@@ -20,6 +20,8 @@ class JobApplication(Base):
     notes = Column(Text, nullable=True)
     salary_range = Column(String(100), nullable=True)
     location = Column(String(255), nullable=True)
+    work_type = Column(String(50), nullable=True)
+    recruiter_contact = Column(String(255), nullable=True)
     follow_up_date = Column(DateTime, nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
@@ -46,6 +48,8 @@ class JobApplicationCreate(BaseModel):
     notes: Optional[str] = None
     salary_range: Optional[str] = None
     location: Optional[str] = None
+    work_type: Optional[str] = None
+    recruiter_contact: Optional[str] = None
     follow_up_date: Optional[datetime] = None
     date_applied: Optional[datetime] = None
 
@@ -58,6 +62,8 @@ class JobApplicationUpdate(BaseModel):
     notes: Optional[str] = None
     salary_range: Optional[str] = None
     location: Optional[str] = None
+    work_type: Optional[str] = None
+    recruiter_contact: Optional[str] = None
     follow_up_date: Optional[datetime] = None
 
 
@@ -71,10 +77,17 @@ class JobApplicationResponse(BaseModel):
     notes: Optional[str]
     salary_range: Optional[str]
     location: Optional[str]
+    work_type: Optional[str]
+    recruiter_contact: Optional[str]
     follow_up_date: Optional[datetime]
     created_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class FollowUpEmailResponse(BaseModel):
+    subject: str
+    body: str
 
 
 class MatchRequest(BaseModel):

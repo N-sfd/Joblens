@@ -28,6 +28,7 @@ def create_tables():
     import models  # noqa: F401 — registers models with Base
     Base.metadata.create_all(bind=engine)
     _ensure_guest_id_column()
+    _ensure_job_columns()
 
 
 def _ensure_guest_id_column():
@@ -43,3 +44,18 @@ def _ensure_guest_id_column():
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE job_applications ADD COLUMN guest_id VARCHAR(36)"))
         conn.execute(text("CREATE INDEX IF NOT EXISTS ix_job_applications_guest_id ON job_applications (guest_id)"))
+
+
+def _ensure_job_columns():
+    """Add work_type / recruiter_contact to existing DBs without a full migration tool."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "job_applications" not in insp.get_table_names():
+        return
+    columns = {c["name"] for c in insp.get_columns("job_applications")}
+    with engine.begin() as conn:
+        if "work_type" not in columns:
+            conn.execute(text("ALTER TABLE job_applications ADD COLUMN work_type VARCHAR(50)"))
+        if "recruiter_contact" not in columns:
+            conn.execute(text("ALTER TABLE job_applications ADD COLUMN recruiter_contact VARCHAR(255)"))

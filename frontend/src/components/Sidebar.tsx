@@ -14,7 +14,7 @@ import clsx from "clsx";
 import LogoMark from "./Logo";
 
 export const nav = [
-  { href: "/",             label: "Dashboard",       icon: LayoutDashboard },
+  { href: "/dashboard",    label: "Dashboard",       icon: LayoutDashboard },
   { href: "/resume",       label: "Resume Analyzer", icon: FileText },
   { href: "/jobs",         label: "Job Tracker",     icon: Briefcase },
   { href: "/match",        label: "Job Matcher",     icon: Target },

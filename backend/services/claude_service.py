@@ -216,6 +216,69 @@ Return ONLY a JSON array — no markdown, no explanation:
 ]"""
 
 
+RESUME_ONLY_BULLETS_PROMPT = """\
+You are a professional resume writer. Based on the resume below, rewrite 6 of its weakest or vaguest bullet points into strong, ATS-optimized achievements — without reference to any specific job posting.
+
+Resume:
+{resume_text}
+
+Rules for each bullet:
+- Start with a strong action verb (Engineered, Led, Reduced, Implemented...)
+- Include specific metrics or numbers where possible (estimate plausibly if the original lacks them, framed generally)
+- Be concise (under 20 words each)
+- Focus on impact and outcomes, not just duties
+
+Return ONLY a JSON array — no markdown, no explanation:
+["<bullet 1>", "<bullet 2>", "<bullet 3>", "<bullet 4>", "<bullet 5>", "<bullet 6>"]"""
+
+RESUME_ONLY_INTERVIEW_PROMPT = """\
+You are a career coach preparing a candidate for interviews based solely on their resume (no specific job posting yet). Generate 8 likely interview questions a candidate with this background would face, with strong suggested answers.
+
+Resume:
+{resume_text}
+
+Return ONLY a JSON array — no markdown, no explanation:
+[
+  {{
+    "question": "<interview question>",
+    "type": "behavioral|technical|situational",
+    "suggested_answer": "<concise 2-4 sentence answer using STAR method or direct expertise>"
+  }}
+]"""
+
+
+async def generate_resume_bullets_generic(resume_text: str) -> list:
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=1024,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "user", "content": RESUME_ONLY_BULLETS_PROMPT.format(resume_text=resume_text)}
+        ],
+    )
+    data = json.loads(response.choices[0].message.content)
+    if isinstance(data, list):
+        return data
+    return list(data.values())[0] if data else []
+
+
+async def create_interview_questions_generic(resume_text: str) -> list:
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=2048,
+        response_format={"type": "json_object"},
+        messages=[
+            {"role": "user", "content": RESUME_ONLY_INTERVIEW_PROMPT.format(resume_text=resume_text)}
+        ],
+    )
+    data = json.loads(response.choices[0].message.content)
+    if isinstance(data, list):
+        return data
+    return list(data.values())[0] if data else []
+
+
 async def generate_resume_bullets(resume_text: str, job_description: str) -> list:
     client = get_client()
     response = client.chat.completions.create(
@@ -259,6 +322,49 @@ async def create_interview_questions(resume_text: str, job_description: str) -> 
     if isinstance(data, list):
         return data
     return list(data.values())[0] if data else []
+
+
+FOLLOW_UP_EMAIL_PROMPT = """\
+You are a job-search coach writing a brief, professional follow-up email about a job application. Return ONLY a JSON object — no markdown, no explanation.
+
+Company: {company}
+Role: {role}
+Recruiter/contact: {recruiter_contact}
+Notes about the application: {notes}
+
+Write a polite, concise follow-up email (under 150 words) checking on the status of the application. Reference the role and company naturally. Confident but not pushy. Sign off with "[Your Name]" as a placeholder.
+
+Return this exact JSON structure:
+{{
+  "subject": "<short email subject line>",
+  "body": "<email body with proper paragraph breaks, starting with a greeting>"
+}}"""
+
+
+async def generate_follow_up_email(
+    company: str,
+    role: str,
+    recruiter_contact: str = "",
+    notes: str = "",
+) -> dict:
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=512,
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "user",
+                "content": FOLLOW_UP_EMAIL_PROMPT.format(
+                    company=company,
+                    role=role,
+                    recruiter_contact=recruiter_contact or "Unknown",
+                    notes=notes or "None",
+                ),
+            }
+        ],
+    )
+    return json.loads(response.choices[0].message.content)
 
 
 async def generate_cover_letter(

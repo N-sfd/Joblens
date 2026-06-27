@@ -8,6 +8,8 @@ export interface JobApplication {
   notes: string | null;
   salary_range: string | null;
   location: string | null;
+  work_type: string | null;
+  recruiter_contact: string | null;
   follow_up_date: string | null;
   created_at: string;
 }

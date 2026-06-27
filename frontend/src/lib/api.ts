@@ -54,6 +54,18 @@ export const api = {
       "/api/resume/analyze", { method: "POST", body: form }
     );
   },
+  generateResumeOnlyBullets: (resume_text: string) =>
+    request<{ bullets: string[] }>("/api/resume/bullets", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ resume_text }),
+    }),
+  generateResumeOnlyInterviewQuestions: (resume_text: string) =>
+    request<{ questions: { question: string; type: string; suggested_answer: string }[] }>(
+      "/api/resume/interview-questions", {
+        method: "POST", headers: { "Content-Type": "application/json" },
+        body: JSON.stringify({ resume_text }),
+      }
+    ),
 
   // Jobs
   getStats: () => request<import("@/types").JobStats>("/api/jobs/stats/summary"),
@@ -70,6 +82,8 @@ export const api = {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
   deleteJob: (id: number) => request<{ message: string }>(`/api/jobs/${id}`, { method: "DELETE" }),
+  generateFollowUpEmail: (id: number) =>
+    request<{ subject: string; body: string }>(`/api/jobs/${id}/follow-up-email`, { method: "POST" }),
   loadDemoJobs: () => request<{ message: string; companies: string[] }>("/api/jobs/demo", { method: "POST" }),
   clearAllJobs: () => request<{ message: string }>("/api/jobs/all", { method: "DELETE" }),
   bulkDeleteJobs: (ids: number[]) =>
