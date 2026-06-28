@@ -1,12 +1,22 @@
 from sqlalchemy import Column, Integer, String, Text, DateTime, Float
 from sqlalchemy.sql import func
 from database import Base
-from pydantic import BaseModel
+from pydantic import BaseModel, EmailStr
 from typing import Optional
 from datetime import datetime
 
 
 # --- SQLAlchemy ORM models ---
+
+class User(Base):
+    __tablename__ = "users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    email = Column(String(255), unique=True, nullable=False, index=True)
+    password_hash = Column(String(255), nullable=False)
+    name = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
 
 class JobApplication(Base):
     __tablename__ = "job_applications"
@@ -23,7 +33,9 @@ class JobApplication(Base):
     work_type = Column(String(50), nullable=True)
     recruiter_contact = Column(String(255), nullable=True)
     follow_up_date = Column(DateTime, nullable=True)
+    reminder_type = Column(String(50), nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -33,9 +45,83 @@ class ResumeAnalysis(Base):
 
     id = Column(Integer, primary_key=True, index=True)
     filename = Column(String(255))
+    resume_text = Column(Text, nullable=True)
     ats_score = Column(Float)
     analysis_json = Column(Text)
+    guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
+
+
+class JobMatch(Base):
+    __tablename__ = "job_matches"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resume_text = Column(Text)
+    job_description = Column(Text)
+    company_name = Column(String(255), nullable=True)
+    match_json = Column(Text)
+    guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+class CoverLetter(Base):
+    __tablename__ = "cover_letters"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resume_text = Column(Text)
+    job_description = Column(Text)
+    company_name = Column(String(255), nullable=True)
+    tone = Column(String(50), nullable=True)
+    content = Column(Text)
+    guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+class AiActivity(Base):
+    __tablename__ = "ai_activities"
+
+    id = Column(Integer, primary_key=True, index=True)
+    activity_type = Column(String(50), nullable=False)
+    summary = Column(String(500), nullable=False)
+    detail = Column(String(500), nullable=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+# --- Auth schemas ---
+
+class SignupRequest(BaseModel):
+    email: EmailStr
+    password: str
+    name: Optional[str] = None
+
+
+class LoginRequest(BaseModel):
+    email: EmailStr
+    password: str
+
+
+class UserResponse(BaseModel):
+    id: int
+    email: str
+    name: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class AiActivityResponse(BaseModel):
+    id: int
+    activity_type: str
+    summary: str
+    detail: Optional[str]
+    created_at: datetime
+
+    model_config = {"from_attributes": True}
 
 
 # --- Pydantic schemas ---
@@ -51,6 +137,7 @@ class JobApplicationCreate(BaseModel):
     work_type: Optional[str] = None
     recruiter_contact: Optional[str] = None
     follow_up_date: Optional[datetime] = None
+    reminder_type: Optional[str] = None
     date_applied: Optional[datetime] = None
 
 
@@ -65,6 +152,7 @@ class JobApplicationUpdate(BaseModel):
     work_type: Optional[str] = None
     recruiter_contact: Optional[str] = None
     follow_up_date: Optional[datetime] = None
+    reminder_type: Optional[str] = None
 
 
 class JobApplicationResponse(BaseModel):
@@ -80,6 +168,7 @@ class JobApplicationResponse(BaseModel):
     work_type: Optional[str]
     recruiter_contact: Optional[str]
     follow_up_date: Optional[datetime]
+    reminder_type: Optional[str]
     created_at: datetime
 
     model_config = {"from_attributes": True}

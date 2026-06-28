@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter
+from routers import resume, jobs, match, cover_letter, auth, activity, account
 
 
 @asynccontextmanager
@@ -50,10 +50,13 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
+app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
+app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
+app.include_router(account.router, prefix="/api/account", tags=["Account"])
 
 
 @app.get("/", tags=["Health"])

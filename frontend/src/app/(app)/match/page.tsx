@@ -1,13 +1,14 @@
 "use client";
 
-import { useState } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { logActivity } from "@/lib/activityLog";
-import type { MatchResult } from "@/types";
+import type { MatchResult, MatchHistoryEntry } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
+import HistoryPanel from "@/components/HistoryPanel";
+import PrivacyNote from "@/components/PrivacyNote";
 import {
   Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
   Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
@@ -76,6 +77,27 @@ export default function MatchPage() {
   const [saving, setSaving] = useState(false);
   const [toast, setToast] = useState<string | null>(null);
 
+  const [history, setHistory] = useState<MatchHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  useEffect(() => {
+    api.getMatchHistory()
+      .then(setHistory)
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  const loadFromHistory = (entry: MatchHistoryEntry) => {
+    setResumeText(entry.resume_text);
+    setJobDescription(entry.job_description);
+    setResult(entry.match);
+    setDone(true);
+    setBullets(null);
+    setBulletsDone(false);
+    setQuestions(null);
+    setQuestionsDone(false);
+  };
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -94,11 +116,7 @@ export default function MatchPage() {
       setDone(true);
       setResult(data);
       localStorage.setItem(JD_KEY, jobDescription);
-      logActivity({
-        type: "job_matched",
-        summary: `Job match analyzed — Score: ${data.match_score}%`,
-        detail: `Likelihood: ${data.likelihood} · Missing skills: ${data.missing_skills.slice(0, 3).join(", ")}`,
-      });
+      api.getMatchHistory().then(setHistory).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Match failed.");
     } finally {
@@ -113,7 +131,6 @@ export default function MatchPage() {
       const data = await api.generateResumeBullets(resumeText, jobDescription);
       setBulletsDone(true);
       setBullets(data.bullets);
-      logActivity({ type: "bullets_generated", summary: `Generated ${data.bullets.length} improved resume bullets` });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate bullets.");
     } finally {
@@ -128,7 +145,6 @@ export default function MatchPage() {
       const data = await api.createInterviewQuestions(resumeText, jobDescription);
       setQuestionsDone(true);
       setQuestions(data.questions);
-      logActivity({ type: "questions_generated", summary: `Generated ${data.questions.length} interview questions` });
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to generate questions.");
     } finally {
@@ -148,12 +164,7 @@ export default function MatchPage() {
         notes: matchNote ?? null,
         job_url: null, salary_range: null, location: null,
         work_type: null, recruiter_contact: null,
-        follow_up_date: null, date_applied: null,
-      });
-      logActivity({
-        type: "job_saved",
-        summary: `Saved ${saveForm.company} — ${saveForm.role} to Job Tracker`,
-        detail: result ? `Match Score: ${result.match_score}% · Status: ${saveForm.status}` : undefined,
+        follow_up_date: null, date_applied: null, reminder_type: null,
       });
       setShowSave(false);
       showToast("Saved to Job Tracker!");
@@ -190,6 +201,19 @@ export default function MatchPage() {
         <p className="page-subtitle">Paste your resume and job description to get a fit score, tailored bullets, and interview prep.</p>
       </div>
 
+      <HistoryPanel
+        title="Past Matches"
+        items={history}
+        loading={historyLoading}
+        getKey={(h) => h.id}
+        renderItem={(h) => ({
+          primary: `Score: ${h.match.match_score}% · ${h.match.likelihood} likelihood`,
+          secondary: h.job_description.slice(0, 80),
+          date: h.created_at,
+        })}
+        onSelect={loadFromHistory}
+      />
+
       {/* Input Panel */}
       <div className="card p-5 mb-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
@@ -218,6 +242,10 @@ export default function MatchPage() {
             />
           </div>
         </div>
+
+        <PrivacyNote className="mb-4">
+          Your resume and this job description are used only to generate your match score and are never sold or shared. Read our
+        </PrivacyNote>
 
         {error && (
           <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={run} className="mb-4" />
@@ -504,9 +532,20 @@ export default function MatchPage() {
           {/* Interview Questions */}
           {questions && (
             <div className="card p-5 animate-slide-up">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <MessageSquare size={15} className="text-amber-500" /> Interview Questions & Answers
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                  <MessageSquare size={15} className="text-amber-500" /> Interview Questions & Answers
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(
+                    questions.map((q, i) => `${i + 1}. [${q.type}] ${q.question}\n${q.suggested_answer}`).join("\n\n")
+                  )}
+                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                >
+                  <Copy size={12} /> Copy all
+                </button>
+              </div>
               <div className="space-y-2">
                 {questions.map((q, i) => (
                   <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">

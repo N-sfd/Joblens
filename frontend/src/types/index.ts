@@ -1,3 +1,58 @@
+export interface User {
+  id: number;
+  email: string;
+  name: string | null;
+  created_at: string;
+}
+
+export type ActivityType =
+  | "resume_analyzed"
+  | "job_matched"
+  | "job_saved"
+  | "bullets_generated"
+  | "questions_generated"
+  | "cover_letter_generated"
+  | "job_added"
+  | "status_changed"
+  | "job_deleted";
+
+export interface ActivityEntry {
+  id: number;
+  activity_type: ActivityType;
+  summary: string;
+  detail: string | null;
+  created_at: string;
+}
+
+export interface ResumeHistoryEntry {
+  id: number;
+  filename: string;
+  resume_text: string;
+  ats_score: number;
+  analysis: ResumeAnalysis;
+  created_at: string;
+}
+
+export interface MatchHistoryEntry {
+  id: number;
+  resume_text: string;
+  job_description: string;
+  match: MatchResult;
+  created_at: string;
+}
+
+export interface CoverLetterHistoryEntry {
+  id: number;
+  resume_text: string;
+  job_description: string;
+  company_name: string | null;
+  tone: string | null;
+  content: string;
+  created_at: string;
+}
+
+export type ReminderType = "follow_up_email" | "interview" | "thank_you_email" | "application_deadline";
+
 export interface JobApplication {
   id: number;
   company: string;
@@ -11,6 +66,7 @@ export interface JobApplication {
   work_type: string | null;
   recruiter_contact: string | null;
   follow_up_date: string | null;
+  reminder_type: ReminderType | null;
   created_at: string;
 }
 

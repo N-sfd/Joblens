@@ -1,12 +1,14 @@
 from fastapi import APIRouter, UploadFile, File, HTTPException, Depends
 from sqlalchemy.orm import Session
+from typing import List
 from database import get_db
-from models import ResumeAnalysis
+from models import ResumeAnalysis, AiActivity, AiActivityResponse
 from services.claude_service import (
     analyze_resume,
     generate_resume_bullets_generic,
     create_interview_questions_generic,
 )
+from auth import Owner, get_owner, owned, log_activity
 from pydantic import BaseModel
 import pypdf
 import io
@@ -34,6 +36,7 @@ def extract_docx_text(data: bytes) -> str:
 @router.post("/analyze")
 async def analyze_resume_file(
     file: UploadFile = File(...),
+    owner: Owner = Depends(get_owner),
     db: Session = Depends(get_db),
 ):
     content = await file.read()
@@ -80,17 +83,49 @@ async def analyze_resume_file(
     db.add(
         ResumeAnalysis(
             filename=filename,
+            resume_text=text,
             ats_score=analysis.get("ats_score", 0),
             analysis_json=json.dumps(analysis),
+            guest_id=owner.guest_id,
+            user_id=owner.user_id,
         )
     )
     db.commit()
+    log_activity(
+        db, owner, "resume_analyzed",
+        f"Analyzed resume — ATS Score: {analysis.get('ats_score', 0)}%",
+        filename,
+    )
 
     return {
         "filename": filename,
         "resume_text": text,
         "analysis": analysis,
     }
+
+
+@router.get("/history", response_model=List[dict])
+async def resume_history(
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
+    rows = (
+        owned(db.query(ResumeAnalysis), ResumeAnalysis, owner)
+        .order_by(ResumeAnalysis.created_at.desc())
+        .limit(20)
+        .all()
+    )
+    return [
+        {
+            "id": r.id,
+            "filename": r.filename,
+            "resume_text": r.resume_text,
+            "ats_score": r.ats_score,
+            "analysis": json.loads(r.analysis_json) if r.analysis_json else None,
+            "created_at": r.created_at.isoformat() if r.created_at else None,
+        }
+        for r in rows
+    ]
 
 
 @router.post("/analyze-text")
@@ -106,22 +141,32 @@ async def analyze_resume_text(body: dict):
 
 
 @router.post("/bullets")
-async def get_resume_bullets(request: ResumeTextRequest):
+async def get_resume_bullets(
+    request: ResumeTextRequest,
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
     if len(request.resume_text.strip()) < 50:
         raise HTTPException(status_code=422, detail="Resume text is too short.")
     try:
         bullets = await generate_resume_bullets_generic(request.resume_text)
-        return {"bullets": bullets}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    log_activity(db, owner, "bullets_generated", f"Generated {len(bullets)} improved resume bullets")
+    return {"bullets": bullets}
 
 
 @router.post("/interview-questions")
-async def get_interview_questions(request: ResumeTextRequest):
+async def get_interview_questions(
+    request: ResumeTextRequest,
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
     if len(request.resume_text.strip()) < 50:
         raise HTTPException(status_code=422, detail="Resume text is too short.")
     try:
         questions = await create_interview_questions_generic(request.resume_text)
-        return {"questions": questions}
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    log_activity(db, owner, "questions_generated", f"Generated {len(questions)} interview questions")
+    return {"questions": questions}

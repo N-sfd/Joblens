@@ -8,10 +8,12 @@ import {
   Briefcase,
   Target,
   PenTool,
+  BellRing,
   X,
 } from "lucide-react";
 import clsx from "clsx";
 import LogoMark from "./Logo";
+import { LEGAL_LINKS } from "./legal/LegalPageShell";
 
 export const nav = [
   { href: "/dashboard",    label: "Dashboard",       icon: LayoutDashboard },
@@ -19,6 +21,7 @@ export const nav = [
   { href: "/jobs",         label: "Job Tracker",     icon: Briefcase },
   { href: "/match",        label: "Job Matcher",     icon: Target },
   { href: "/cover-letter", label: "Cover Letter",    icon: PenTool },
+  { href: "/reminders",    label: "Reminders",       icon: BellRing },
 ];
 
 interface Props {
@@ -79,6 +82,17 @@ export default function Sidebar({ onClose }: Props) {
           );
         })}
       </nav>
+
+      {/* Trust & legal links */}
+      <div className="px-5 py-4 border-t border-white/5">
+        <nav className="flex flex-wrap gap-x-3 gap-y-1 text-[11px] text-slate-500">
+          {LEGAL_LINKS.map((l) => (
+            <Link key={l.href} href={l.href} onClick={onClose} className="hover:text-slate-300 transition-colors">
+              {l.label}
+            </Link>
+          ))}
+        </nav>
+      </div>
     </aside>
   );
 }

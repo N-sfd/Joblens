@@ -3,10 +3,12 @@
 import { useState, useEffect, Suspense } from "react";
 import { useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import { logActivity } from "@/lib/activityLog";
 import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
-import type { JobApplication } from "@/types";
+import HistoryPanel from "@/components/HistoryPanel";
+import PrivacyNote from "@/components/PrivacyNote";
+import { downloadCoverLetterDocx } from "@/lib/export";
+import type { JobApplication, CoverLetterHistoryEntry } from "@/types";
 import {
   PenTool, Loader2, Copy, CheckCircle, ArrowRight,
   Briefcase, Download, RefreshCw, BookOpen, Save,
@@ -53,22 +55,46 @@ function CoverLetterContent() {
   const [copied, setCopied] = useState(false);
   const [savedToJob, setSavedToJob] = useState(false);
   const [saving, setSaving] = useState(false);
+  const [savedResume, setSavedResume] = useState<string | null>(null);
+  const [savedJD, setSavedJD] = useState<string | null>(null);
+  const [downloading, setDownloading] = useState(false);
 
   useEffect(() => {
-    const savedResume = localStorage.getItem(RESUME_KEY) ?? "";
-    const savedJD = localStorage.getItem(JD_KEY) ?? "";
+    const cachedResume = localStorage.getItem(RESUME_KEY) ?? "";
+    const cachedJD = localStorage.getItem(JD_KEY) ?? "";
     const paramCompany = searchParams.get("company") ?? "";
     const paramRole = searchParams.get("role") ?? "";
 
-    setResumeText(savedResume);
-    setJobDescription(savedJD);
+    setSavedResume(cachedResume);
+    setSavedJD(cachedJD);
+    setResumeText(cachedResume);
+    setJobDescription(cachedJD);
     if (paramCompany) setCompanyName(paramCompany);
-    if (paramRole && !savedJD) {
+    if (paramRole && !cachedJD) {
       setJobDescription(`Role: ${paramRole}\nCompany: ${paramCompany}\n\n(Paste the full job description here)`);
     }
 
     api.listJobs().then(setJobs).catch(() => {});
   }, [searchParams]);
+
+  const [history, setHistory] = useState<CoverLetterHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  useEffect(() => {
+    api.getCoverLetterHistory()
+      .then(setHistory)
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  const loadFromHistory = (entry: CoverLetterHistoryEntry) => {
+    setResumeText(entry.resume_text);
+    setJobDescription(entry.job_description);
+    setCompanyName(entry.company_name ?? "");
+    setTone(entry.tone ?? "professional");
+    setLetter(entry.content);
+    setDone(true);
+  };
 
   const handleJobSelect = (jobId: string) => {
     setSelectedJobId(jobId);
@@ -102,11 +128,7 @@ function CoverLetterContent() {
       const data = await api.generateCoverLetter(resumeText, jobDescription, companyName, activeTone);
       setDone(true);
       setLetter(data.cover_letter);
-      logActivity({
-        type: "cover_letter_generated",
-        summary: `Generated cover letter for ${companyName || "a role"}`,
-        detail: `Tone: ${activeTone}`,
-      });
+      api.getCoverLetterHistory().then(setHistory).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Generation failed.");
     } finally {
@@ -121,15 +143,14 @@ function CoverLetterContent() {
     setTimeout(() => setCopied(false), 2500);
   };
 
-  const download = () => {
+  const download = async () => {
     if (!letter) return;
-    const blob = new Blob([letter], { type: "text/plain" });
-    const url = URL.createObjectURL(blob);
-    const a = document.createElement("a");
-    a.href = url;
-    a.download = `cover_letter_${(companyName || "company").replace(/\s+/g, "_")}.txt`;
-    a.click();
-    URL.revokeObjectURL(url);
+    setDownloading(true);
+    try {
+      await downloadCoverLetterDocx(letter, companyName, tone);
+    } finally {
+      setDownloading(false);
+    }
   };
 
   const saveToApplication = async () => {
@@ -144,18 +165,11 @@ function CoverLetterContent() {
       });
       setSavedToJob(true);
       setTimeout(() => setSavedToJob(false), 3000);
-      logActivity({
-        type: "cover_letter_generated",
-        summary: `Saved cover letter to ${job.company} — ${job.role}`,
-        detail: `Tone: ${tone}`,
-      });
     } catch { /* ignore */ } finally {
       setSaving(false);
     }
   };
 
-  const savedResume = typeof window !== "undefined" ? localStorage.getItem(RESUME_KEY) : null;
-  const savedJD = typeof window !== "undefined" ? localStorage.getItem(JD_KEY) : null;
   const letterWords = letter ? wordCount(letter) : 0;
 
   return (
@@ -165,6 +179,19 @@ function CoverLetterContent() {
         <h1 className="page-title">Cover Letter Generator</h1>
         <p className="page-subtitle">AI-written, tailored to your resume and the job description.</p>
       </div>
+
+      <HistoryPanel
+        title="Past Cover Letters"
+        items={history}
+        loading={historyLoading}
+        getKey={(h) => h.id}
+        renderItem={(h) => ({
+          primary: h.company_name ? `For ${h.company_name}` : "Cover letter",
+          secondary: h.tone ? `Tone: ${h.tone}` : undefined,
+          date: h.created_at,
+        })}
+        onSelect={loadFromHistory}
+      />
 
       <div className="card p-5 mb-5">
         {/* Job Selector */}
@@ -277,6 +304,10 @@ function CoverLetterContent() {
           </div>
         </div>
 
+        <PrivacyNote className="mb-4">
+          Your resume and job description are used only to generate this cover letter and are never sold or shared. Read our
+        </PrivacyNote>
+
         {error && (
           <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => generate()} className="mb-4" />
         )}
@@ -315,9 +346,10 @@ function CoverLetterContent() {
               </span>
             </div>
             <div className="flex gap-2 shrink-0">
-              <button type="button" onClick={download}
-                className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3">
-                <Download size={14} /> Download
+              <button type="button" onClick={download} disabled={downloading}
+                className="flex items-center gap-1.5 btn-secondary text-sm py-2 px-3 disabled:opacity-60">
+                {downloading ? <Loader2 size={14} className="animate-spin" /> : <Download size={14} />}
+                Download .docx
               </button>
               <button type="button" onClick={copy}
                 className={clsx(

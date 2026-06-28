@@ -3,14 +3,20 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import { getLog, clearLog, seedSampleActivity, type ActivityEntry } from "@/lib/activityLog";
-import type { JobApplication, JobStats } from "@/types";
+import type { ActivityEntry, JobApplication, JobStats } from "@/types";
 import StatusBadge from "@/components/StatusBadge";
 import DashboardHero from "@/components/illustrations/DashboardHero";
 import { EmptyJobsIllustration, EmptyActivityIllustration } from "@/components/illustrations/EmptyState";
+import UpcomingReminders from "@/components/UpcomingReminders";
+import StatusBreakdownChart from "@/components/charts/StatusBreakdownChart";
+import WeeklyApplicationsChart from "@/components/charts/WeeklyApplicationsChart";
+import RateGaugeCard from "@/components/charts/RateGaugeCard";
+import AiActivityChart from "@/components/charts/AiActivityChart";
+import { getStatusBreakdown, getWeeklyApplications, getPipelineRates, getActivityBreakdown } from "@/lib/chartData";
 import {
   Briefcase, FileText, Target, PenTool, TrendingUp, ArrowRight,
   CheckCircle, Clock, Trophy, XCircle, Plus, Bot, Trash2,
+  MessagesSquare, Award, ThumbsDown,
 } from "lucide-react";
 
 const statCards = [
@@ -52,6 +58,7 @@ function timeAgo(iso: string) {
 
 export default function DashboardPage() {
   const [stats, setStats] = useState<JobStats | null>(null);
+  const [jobs, setJobs] = useState<JobApplication[]>([]);
   const [recent, setRecent] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
@@ -59,29 +66,39 @@ export default function DashboardPage() {
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, j] = await Promise.all([api.getStats(), api.listJobs()]);
+      const [s, j, a] = await Promise.all([api.getStats(), api.listJobs(), api.getActivity()]);
       setStats(s);
+      setJobs(j);
       setRecent(j.slice(0, 5));
+      setActivity(a);
     } catch (e) {
       console.error(e);
     } finally {
       setLoading(false);
     }
-    setActivity(getLog());
   }, []);
 
   useEffect(() => {
-    seedSampleActivity(); // fills the log with demo entries if empty
     loadData();
     const onFocus = () => loadData();
     window.addEventListener("focus", onFocus);
     return () => window.removeEventListener("focus", onFocus);
   }, [loadData]);
 
+  const clearActivity = async () => {
+    await api.clearActivity();
+    setActivity([]);
+  };
+
   const getCount = (key: string) => {
     if (!stats) return 0;
     return key === "total" ? stats.total : (stats.by_status[key] ?? 0);
   };
+
+  const statusBreakdown = getStatusBreakdown(stats);
+  const weeklyApplications = getWeeklyApplications(jobs);
+  const rates = getPipelineRates(stats);
+  const activityBreakdown = getActivityBreakdown(activity);
 
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
@@ -108,6 +125,32 @@ export default function DashboardPage() {
             <p className="text-xs text-slate-500 mt-0.5 font-medium">{label}</p>
           </div>
         ))}
+      </div>
+
+      {/* Analytics */}
+      <div className="mb-8">
+        <h2 className="font-semibold text-slate-800 px-1 mb-3">Analytics</h2>
+        <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
+          <RateGaugeCard
+            label="Interview Rate" rate={rates.interviewRate} icon={MessagesSquare} color="#a855f7"
+            sublabel={`${rates.totalApplied} application${rates.totalApplied === 1 ? "" : "s"} sent`} loading={loading}
+          />
+          <RateGaugeCard
+            label="Offer Rate" rate={rates.offerRate} icon={Award} color="#22c55e"
+            sublabel="% of applications resulting in an offer" loading={loading}
+          />
+          <RateGaugeCard
+            label="Rejection Rate" rate={rates.rejectionRate} icon={ThumbsDown} color="#ef4444"
+            sublabel="% of applications rejected" loading={loading}
+          />
+        </div>
+        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4">
+          <StatusBreakdownChart data={statusBreakdown} loading={loading} />
+          <WeeklyApplicationsChart data={weeklyApplications} loading={loading} />
+        </div>
+        <div className="mt-4">
+          <AiActivityChart data={activityBreakdown} loading={loading} />
+        </div>
       </div>
 
       <div className="grid grid-cols-1 lg:grid-cols-3 gap-6">
@@ -171,7 +214,7 @@ export default function DashboardPage() {
               {activity.length > 0 && (
                 <button
                   type="button"
-                  onClick={() => { clearLog(); setActivity([]); }}
+                  onClick={clearActivity}
                   className="text-xs text-slate-400 hover:text-red-500 flex items-center gap-1 transition-colors"
                 >
                   <Trash2 size={11} /> Clear
@@ -189,13 +232,13 @@ export default function DashboardPage() {
                 {activity.slice(0, 8).map((entry) => (
                   <div key={entry.id} className="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
                     <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
-                      {activityIcons[entry.type] ?? <Bot size={13} className="text-slate-400" />}
+                      {activityIcons[entry.activity_type] ?? <Bot size={13} className="text-slate-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-700">{entry.summary}</p>
                       {entry.detail && <p className="text-xs text-slate-400 mt-0.5 truncate">{entry.detail}</p>}
                     </div>
-                    <span className="text-xs text-slate-400 shrink-0">{timeAgo(entry.timestamp)}</span>
+                    <span className="text-xs text-slate-400 shrink-0">{timeAgo(entry.created_at)}</span>
                   </div>
                 ))}
               </div>
@@ -205,6 +248,8 @@ export default function DashboardPage() {
 
         {/* Quick Actions */}
         <div className="space-y-3">
+          <UpcomingReminders limit={4} />
+
           <h2 className="font-semibold text-slate-800 px-1">Quick Actions</h2>
           {quickActions.map(({ href, label, desc, icon: Icon, color }) => (
             <Link key={href} href={href}

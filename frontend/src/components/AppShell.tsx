@@ -5,6 +5,7 @@ import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
 import Sidebar, { nav } from "./Sidebar";
 import LogoMark from "./Logo";
+import UserMenu from "./UserMenu";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -55,10 +56,9 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-slate-800 font-semibold">{current?.label ?? "Dashboard"}</span>
           </div>
 
-          <span className="hidden sm:inline-flex items-center gap-1.5 ml-auto text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
-            <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
-            Guest Session
-          </span>
+          <div className="ml-auto">
+            <UserMenu />
+          </div>
         </header>
 
         <main className="flex-1 overflow-y-auto bg-slate-50">

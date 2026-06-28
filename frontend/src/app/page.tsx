@@ -2,6 +2,8 @@ import Link from "next/link";
 import LogoMark from "@/components/Logo";
 import ScoreCircle from "@/components/ScoreCircle";
 import StatusBadge from "@/components/StatusBadge";
+import UserMenu from "@/components/UserMenu";
+import { LEGAL_LINKS } from "@/components/legal/LegalPageShell";
 import {
   FileText, Target, PenTool, Briefcase, ShieldCheck, Lock, Sparkles,
   ArrowRight, CheckCircle2, Upload, ClipboardList, BarChart3, Eye,
@@ -93,9 +95,12 @@ export default function LandingPage() {
             <a href="#demo" className="hover:text-slate-900 transition-colors">Demo</a>
             <a href="#privacy" className="hover:text-slate-900 transition-colors">Privacy</a>
           </nav>
-          <Link href="/dashboard" className="btn-primary text-sm py-2 px-4">
-            Get Started
-          </Link>
+          <div className="flex items-center gap-4">
+            <UserMenu />
+            <Link href="/dashboard" className="btn-primary text-sm py-2 px-4">
+              Get Started
+            </Link>
+          </div>
         </div>
       </header>
 
@@ -300,7 +305,7 @@ export default function LandingPage() {
 
       {/* Footer */}
       <footer className="border-t border-slate-100 py-8">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-3">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-indigo-600 rounded-md flex items-center justify-center">
               <LogoMark size={13} className="text-white" />
@@ -308,6 +313,11 @@ export default function LandingPage() {
             <span className="font-bold text-slate-900 text-sm">JobLens</span>
           </div>
           <p className="text-xs text-slate-400">AI-powered resume analyzer, job matcher, and application tracker.</p>
+          <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400">
+            {LEGAL_LINKS.map((l) => (
+              <Link key={l.href} href={l.href} className="hover:text-slate-700 transition-colors">{l.label}</Link>
+            ))}
+          </nav>
         </div>
       </footer>
     </div>

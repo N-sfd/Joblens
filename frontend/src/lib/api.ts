@@ -17,15 +17,17 @@ function getApiBase(): string {
   return normalizeOrigin(serverBackend);
 }
 
+const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account"];
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
   const headers = new Headers(init?.headers);
-  if (path.startsWith("/api/jobs") && typeof window !== "undefined") {
+  if (typeof window !== "undefined" && OWNED_PREFIXES.some((p) => path.startsWith(p))) {
     headers.set("X-Guest-Id", getGuestId());
   }
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, { ...init, headers });
+    res = await fetch(`${base}${path}`, { ...init, headers, credentials: "include" });
   } catch (e) {
     const hint =
       typeof window !== "undefined" &&
@@ -46,6 +48,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
 }
 
 export const api = {
+  // Auth
+  signup: (email: string, password: string, name?: string) =>
+    request<import("@/types").User>("/api/auth/signup", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password, name }),
+    }),
+  login: (email: string, password: string) =>
+    request<import("@/types").User>("/api/auth/login", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ email, password }),
+    }),
+  logout: () => request<{ message: string }>("/api/auth/logout", { method: "POST" }),
+  me: () => request<import("@/types").User>("/api/auth/me"),
+  deleteAccount: () => request<{ message: string }>("/api/auth/me", { method: "DELETE" }),
+  deleteMyData: () => request<{ message: string }>("/api/account/data", { method: "DELETE" }),
+
+  // Activity
+  getActivity: () => request<import("@/types").ActivityEntry[]>("/api/activity/"),
+  clearActivity: () => request<{ message: string }>("/api/activity/", { method: "DELETE" }),
+
+  // Reminders
+  getReminders: () => request<import("@/types").JobApplication[]>("/api/jobs/reminders"),
+
+  // History
+  getResumeHistory: () => request<import("@/types").ResumeHistoryEntry[]>("/api/resume/history"),
+  getMatchHistory: () => request<import("@/types").MatchHistoryEntry[]>("/api/match/history"),
+  getCoverLetterHistory: () => request<import("@/types").CoverLetterHistoryEntry[]>("/api/cover-letter/history"),
+
   // Resume
   analyzeResumeFile: (file: File) => {
     const form = new FormData();

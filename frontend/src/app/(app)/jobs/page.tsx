@@ -3,16 +3,18 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import { logActivity } from "@/lib/activityLog";
-import type { JobApplication, JobApplicationStatus } from "@/types";
+import type { JobApplication, JobApplicationStatus, ReminderType } from "@/types";
 import {
   Plus, Pencil, Trash2, ExternalLink, Loader2,
   X, Sparkles, Target, PenTool, RefreshCw, MessageSquare, Mail,
-  Copy, CheckCircle, ChevronDown, ChevronUp,
+  Copy, CheckCircle, ChevronDown, ChevronUp, FileDown,
 } from "lucide-react";
 import clsx from "clsx";
 import { EmptyJobsIllustration } from "@/components/illustrations/EmptyState";
 import ErrorBanner from "@/components/ErrorBanner";
+import { REMINDER_TYPES } from "@/lib/reminderTypes";
+import UpcomingReminders from "@/components/UpcomingReminders";
+import { downloadJobsCsv } from "@/lib/export";
 
 const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
 const FILTERS = ["All", ...STATUSES] as const;
@@ -36,7 +38,7 @@ const TYPE_COLOR: Record<string, string> = {
 const emptyForm = {
   company: "", role: "", status: "Applied" as JobApplicationStatus, location: "",
   job_url: "", salary_range: "", work_type: "", recruiter_contact: "",
-  notes: "", date_applied: "", follow_up_date: "",
+  notes: "", date_applied: "", follow_up_date: "", reminder_type: "",
 };
 
 interface InterviewQuestion {
@@ -107,6 +109,7 @@ export default function JobsPage() {
       recruiter_contact: job.recruiter_contact ?? "", notes: job.notes ?? "",
       date_applied: job.date_applied ? job.date_applied.split("T")[0] : "",
       follow_up_date: job.follow_up_date ? job.follow_up_date.split("T")[0] : "",
+      reminder_type: job.reminder_type ?? "",
     });
     setShowModal(true);
   };
@@ -125,6 +128,7 @@ export default function JobsPage() {
         notes: form.notes || null,
         date_applied: form.date_applied || null,
         follow_up_date: form.follow_up_date || null,
+        reminder_type: (form.follow_up_date ? (form.reminder_type || null) : null) as ReminderType | null,
       };
       if (editing) await api.updateJob(editing.id, payload);
       else await api.createJob(payload as Parameters<typeof api.createJob>[0]);
@@ -177,6 +181,12 @@ export default function JobsPage() {
   };
 
   const visible = filter === "All" ? jobs : jobs.filter((j) => j.status === filter);
+
+  const handleExportCsv = () => {
+    const toExport = selected.size > 0 ? visible.filter((j) => selected.has(j.id)) : visible;
+    downloadJobsCsv(toExport);
+    showToast(`Exported ${toExport.length} application(s) to CSV.`);
+  };
 
   const toggleSelect = (id: number) => {
     setSelected((prev) => {
@@ -248,10 +258,6 @@ export default function JobsPage() {
       ].filter(Boolean).join("\n");
       const data = await api.createInterviewQuestions(resumeText, contextLines);
       setInterviewQuestions(data.questions);
-      logActivity({
-        type: "questions_generated",
-        summary: `Generated interview prep for ${job.company} — ${job.role}`,
-      });
     } catch (e) {
       setInterviewError(e instanceof Error ? e.message : "Failed to generate interview prep.");
     } finally {
@@ -268,10 +274,6 @@ export default function JobsPage() {
     try {
       const data = await api.generateFollowUpEmail(job.id);
       setEmailDraft(data);
-      logActivity({
-        type: "cover_letter_generated",
-        summary: `Drafted follow-up email for ${job.company} — ${job.role}`,
-      });
     } catch (e) {
       setEmailError(e instanceof Error ? e.message : "Failed to generate follow-up email.");
     } finally {
@@ -328,6 +330,16 @@ export default function JobsPage() {
               Clear All
             </button>
           )}
+          {jobs.length > 0 && (
+            <button
+              type="button"
+              onClick={handleExportCsv}
+              className="btn-secondary flex items-center gap-2 text-sm"
+              title={selected.size > 0 ? `Export ${selected.size} selected job(s)` : "Export all visible jobs"}
+            >
+              <FileDown size={14} /> Export CSV{selected.size > 0 ? ` (${selected.size})` : ""}
+            </button>
+          )}
           <button
             type="button"
             onClick={handleLoadDemo}
@@ -346,6 +358,10 @@ export default function JobsPage() {
       {error && (
         <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={load} className="mb-4" />
       )}
+
+      <div className="mb-6">
+        <UpcomingReminders limit={3} />
+      </div>
 
       {/* Filter Tabs */}
       <div className="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit flex-wrap">
@@ -418,11 +434,11 @@ export default function JobsPage() {
                       </select>
                     )}
                   </div>
-                  <div className="flex items-center gap-1 mt-2">
+                  <div className="mt-2 space-y-2">
                     {job.salary_range && (
-                      <span className="text-xs text-slate-400 mr-2">{job.salary_range}</span>
+                      <p className="text-xs text-slate-400">{job.salary_range}</p>
                     )}
-                    <div className="flex items-center gap-1 ml-auto flex-wrap justify-end">
+                    <div className="flex items-center gap-0.5 flex-wrap -ml-1.5">
                       <button type="button" onClick={() => handleAnalyzeMatch(job)} title="Analyze Match"
                         className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                         <Target size={14} />
@@ -454,8 +470,8 @@ export default function JobsPage() {
                         <Trash2 size={14} />
                       </button>
                     </div>
-                    </div>
                   </div>
+                </div>
                 </div>
               ))}
             </div>
@@ -643,11 +659,21 @@ export default function JobsPage() {
                     onChange={(e) => setForm({ ...form, date_applied: e.target.value })} />
                 </div>
                 <div>
-                  <label htmlFor="modal-followup" className="label">Follow-up Date</label>
+                  <label htmlFor="modal-followup" className="label">Reminder Date</label>
                   <input id="modal-followup" type="date" className="input" value={form.follow_up_date}
                     onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })} />
                 </div>
               </div>
+              {form.follow_up_date && (
+                <div>
+                  <label htmlFor="modal-reminder-type" className="label">Reminder Type</label>
+                  <select id="modal-reminder-type" className="input" value={form.reminder_type}
+                    onChange={(e) => setForm({ ...form, reminder_type: e.target.value })}>
+                    <option value="">— Select —</option>
+                    {REMINDER_TYPES.map((t) => <option key={t.value} value={t.value}>{t.label}</option>)}
+                  </select>
+                </div>
+              )}
               <div>
                 <label htmlFor="modal-notes" className="label">Notes</label>
                 <textarea id="modal-notes" className="textarea" rows={3} value={form.notes}

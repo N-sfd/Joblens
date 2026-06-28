@@ -1,15 +1,17 @@
 "use client";
 
-import { useState, useRef, DragEvent } from "react";
+import { useState, useRef, useEffect, DragEvent } from "react";
 import { api } from "@/lib/api";
-import { logActivity } from "@/lib/activityLog";
-import type { ResumeAnalysis } from "@/types";
+import type { ResumeAnalysis, ResumeHistoryEntry } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
+import HistoryPanel from "@/components/HistoryPanel";
+import PrivacyNote from "@/components/PrivacyNote";
+import { downloadResumeAnalysisPdf } from "@/lib/export";
 import {
   Upload, FileText, CheckCircle, XCircle, AlertCircle,
-  Lightbulb, Tag, Loader2, Zap, MessageSquare, Copy,
+  Lightbulb, Tag, Loader2, Zap, MessageSquare, Copy, FileDown,
   ChevronDown, ChevronUp,
 } from "lucide-react";
 import clsx from "clsx";
@@ -68,6 +70,27 @@ export default function ResumePage() {
 
   const inputRef = useRef<HTMLInputElement>(null);
 
+  const [history, setHistory] = useState<ResumeHistoryEntry[]>([]);
+  const [historyLoading, setHistoryLoading] = useState(true);
+
+  useEffect(() => {
+    api.getResumeHistory()
+      .then(setHistory)
+      .catch(() => {})
+      .finally(() => setHistoryLoading(false));
+  }, []);
+
+  const loadFromHistory = (entry: ResumeHistoryEntry) => {
+    setFile(null);
+    setResult({ filename: entry.filename, resumeText: entry.resume_text, analysis: entry.analysis });
+    setDone(true);
+    setBullets(null);
+    setBulletsDone(false);
+    setQuestions(null);
+    setQuestionsDone(false);
+    localStorage.setItem(STORAGE_KEY, entry.resume_text);
+  };
+
   const handleFile = (f: File) => {
     setFile(f);
     setError(null);
@@ -96,11 +119,7 @@ export default function ResumePage() {
       setDone(true);
       setResult({ filename: data.filename, resumeText: data.resume_text, analysis: data.analysis });
       localStorage.setItem(STORAGE_KEY, data.resume_text);
-      logActivity({
-        type: "resume_analyzed",
-        summary: `Analyzed resume — ATS Score: ${data.analysis.ats_score}%`,
-        detail: `${data.filename} · Formatting: ${data.analysis.formatting_score}% · Content: ${data.analysis.content_score}%`,
-      });
+      api.getResumeHistory().then(setHistory).catch(() => {});
     } catch (err) {
       setError(err instanceof Error ? err.message : "Analysis failed.");
       setDone(false);
@@ -118,7 +137,6 @@ export default function ResumePage() {
       const data = await api.generateResumeOnlyBullets(result.resumeText);
       setBulletsDone(true);
       setBullets(data.bullets);
-      logActivity({ type: "bullets_generated", summary: `Generated ${data.bullets.length} improved resume bullets` });
     } catch (e) {
       setBulletsError(e instanceof Error ? e.message : "Failed to generate bullets.");
     } finally {
@@ -135,7 +153,6 @@ export default function ResumePage() {
       const data = await api.generateResumeOnlyInterviewQuestions(result.resumeText);
       setQuestionsDone(true);
       setQuestions(data.questions);
-      logActivity({ type: "questions_generated", summary: `Generated ${data.questions.length} interview questions` });
     } catch (e) {
       setQuestionsError(e instanceof Error ? e.message : "Failed to generate questions.");
     } finally {
@@ -153,6 +170,11 @@ export default function ResumePage() {
     setQuestionsDone(false);
   };
 
+  const exportPdf = () => {
+    if (!result) return;
+    downloadResumeAnalysisPdf(result.analysis, result.filename);
+  };
+
   const priorityClass = { high: "badge-high", medium: "badge-medium", low: "badge-low" };
   const typeColor: Record<string, string> = {
     behavioral: "bg-blue-100 text-blue-700",
@@ -167,6 +189,19 @@ export default function ResumePage() {
         <h1 className="page-title">Resume Analyzer</h1>
         <p className="page-subtitle">Upload your resume to get an ATS score, skill analysis, and improvement tips.</p>
       </div>
+
+      <HistoryPanel
+        title="Past Analyses"
+        items={history}
+        loading={historyLoading}
+        getKey={(h) => h.id}
+        renderItem={(h) => ({
+          primary: h.filename || "Resume",
+          secondary: `ATS Score: ${h.ats_score}%`,
+          date: h.created_at,
+        })}
+        onSelect={loadFromHistory}
+      />
 
       {/* Upload Zone */}
       {!result && (
@@ -217,6 +252,10 @@ export default function ResumePage() {
               className="mt-4"
             />
           )}
+
+          <PrivacyNote className="mt-4">
+            Your resume is processed only to generate this analysis and is never sold or shared. Read our
+          </PrivacyNote>
         </div>
       )}
 
@@ -238,9 +277,15 @@ export default function ResumePage() {
                 <h2 className="font-semibold text-slate-800">Analysis Results</h2>
                 <p className="text-xs text-slate-400 mt-0.5">{result.filename}</p>
               </div>
-              <button type="button" onClick={reset} className="btn-secondary text-sm">
-                Analyze Another
-              </button>
+              <div className="flex items-center gap-2 shrink-0">
+                <button type="button" onClick={exportPdf}
+                  className="flex items-center gap-1.5 btn-secondary text-sm">
+                  <FileDown size={14} /> Export PDF
+                </button>
+                <button type="button" onClick={reset} className="btn-secondary text-sm">
+                  Analyze Another
+                </button>
+              </div>
             </div>
             <div className="flex flex-col sm:flex-row items-center gap-8">
               <ScoreCircle score={result.analysis.ats_score} label="ATS Score" size={140} />
@@ -424,9 +469,20 @@ export default function ResumePage() {
           {/* Interview Questions */}
           {questions && (
             <div className="card p-5 animate-slide-up">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
-                <MessageSquare size={15} className="text-amber-500" /> Interview Preparation
-              </h3>
+              <div className="flex items-center justify-between mb-3">
+                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                  <MessageSquare size={15} className="text-amber-500" /> Interview Preparation
+                </h3>
+                <button
+                  type="button"
+                  onClick={() => navigator.clipboard.writeText(
+                    questions.map((q, i) => `${i + 1}. [${q.type}] ${q.question}\n${q.suggested_answer}`).join("\n\n")
+                  )}
+                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                >
+                  <Copy size={12} /> Copy all
+                </button>
+              </div>
               <div className="space-y-2">
                 {questions.map((q, i) => (
                   <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
