@@ -16,9 +16,9 @@ import { REMINDER_TYPES } from "@/lib/reminderTypes";
 import UpcomingReminders from "@/components/UpcomingReminders";
 import { downloadJobsCsv } from "@/lib/export";
 
-const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
+const STATUSES = ["Saved", "Applied", "Interviewing", "Offer", "Rejected"] as const;
 const FILTERS = ["All", ...STATUSES] as const;
-const WORK_TYPES = ["Remote", "Hybrid", "On-site"] as const;
+const WORK_TYPES = ["Remote", "Hybrid", "Onsite"] as const;
 const RESUME_KEY = "aijob_resume_text";
 
 const STATUS_COLORS: Record<string, string> = {
@@ -29,6 +29,12 @@ const STATUS_COLORS: Record<string, string> = {
   Saved: "bg-slate-100 text-slate-600",
 };
 
+const WORK_TYPE_COLORS: Record<string, string> = {
+  Remote: "bg-blue-50 text-blue-600",
+  Hybrid: "bg-purple-50 text-purple-600",
+  Onsite: "bg-slate-100 text-slate-600",
+};
+
 const TYPE_COLOR: Record<string, string> = {
   behavioral: "bg-blue-100 text-blue-700",
   technical: "bg-purple-100 text-purple-700",
@@ -37,7 +43,7 @@ const TYPE_COLOR: Record<string, string> = {
 
 const emptyForm = {
   company: "", role: "", status: "Applied" as JobApplicationStatus, location: "",
-  job_url: "", salary_range: "", work_type: "", recruiter_contact: "",
+  job_url: "", salary_range: "", work_type: "", recruiter_name: "", recruiter_email: "",
   notes: "", date_applied: "", follow_up_date: "", reminder_type: "",
 };
 
@@ -45,6 +51,11 @@ interface InterviewQuestion {
   question: string;
   type: string;
   suggested_answer: string;
+}
+
+function fmtDate(iso: string | null) {
+  if (!iso) return null;
+  return new Date(iso).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" });
 }
 
 export default function JobsPage() {
@@ -106,7 +117,8 @@ export default function JobsPage() {
       company: job.company, role: job.role, status: job.status,
       location: job.location ?? "", job_url: job.job_url ?? "",
       salary_range: job.salary_range ?? "", work_type: job.work_type ?? "",
-      recruiter_contact: job.recruiter_contact ?? "", notes: job.notes ?? "",
+      recruiter_name: job.recruiter_name ?? "", recruiter_email: job.recruiter_email ?? "",
+      notes: job.notes ?? "",
       date_applied: job.date_applied ? job.date_applied.split("T")[0] : "",
       follow_up_date: job.follow_up_date ? job.follow_up_date.split("T")[0] : "",
       reminder_type: job.reminder_type ?? "",
@@ -124,7 +136,8 @@ export default function JobsPage() {
         location: form.location || null, job_url: form.job_url || null,
         salary_range: form.salary_range || null,
         work_type: form.work_type || null,
-        recruiter_contact: form.recruiter_contact || null,
+        recruiter_name: form.recruiter_name || null,
+        recruiter_email: form.recruiter_email || null,
         notes: form.notes || null,
         date_applied: form.date_applied || null,
         follow_up_date: form.follow_up_date || null,
@@ -290,7 +303,7 @@ export default function JobsPage() {
 
   const mailtoHref = () => {
     if (!emailDraft || !emailJob) return "#";
-    const to = emailJob.recruiter_contact?.includes("@") ? emailJob.recruiter_contact : "";
+    const to = emailJob.recruiter_email ?? "";
     return `mailto:${to}?subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
   };
 
@@ -412,11 +425,14 @@ export default function JobsPage() {
                     <div>
                       <p className="font-semibold text-slate-800 text-sm">{job.company}</p>
                       <p className="text-xs text-slate-500 mt-0.5">{job.role}</p>
-                      {(job.location || job.work_type) && (
-                        <p className="text-xs text-slate-400 mt-0.5">
-                          {[job.location, job.work_type].filter(Boolean).join(" · ")}
-                        </p>
-                      )}
+                      <div className="flex items-center gap-1.5 flex-wrap mt-1">
+                        {job.location && <span className="text-xs text-slate-400">{job.location}</span>}
+                        {job.work_type && (
+                          <span className={clsx("text-[11px] font-medium px-1.5 py-0.5 rounded-full", WORK_TYPE_COLORS[job.work_type] ?? "bg-slate-100 text-slate-600")}>
+                            {job.work_type}
+                          </span>
+                        )}
+                      </div>
                     </div>
                     {updatingStatus === job.id ? (
                       <Loader2 size={14} className="animate-spin text-indigo-500 shrink-0" />
@@ -434,9 +450,19 @@ export default function JobsPage() {
                       </select>
                     )}
                   </div>
-                  <div className="mt-2 space-y-2">
+                  <div className="mt-2 space-y-1.5">
+                    {(job.date_applied || job.follow_up_date) && (
+                      <p className="text-xs text-slate-400">
+                        {job.date_applied && <>Applied {fmtDate(job.date_applied)}</>}
+                        {job.date_applied && job.follow_up_date && " · "}
+                        {job.follow_up_date && <>Follow-up {fmtDate(job.follow_up_date)}</>}
+                      </p>
+                    )}
                     {job.salary_range && (
                       <p className="text-xs text-slate-400">{job.salary_range}</p>
+                    )}
+                    {job.notes && (
+                      <p className="text-xs text-slate-500 italic truncate">{job.notes}</p>
                     )}
                     <div className="flex items-center gap-0.5 flex-wrap -ml-1.5">
                       <button type="button" onClick={() => handleAnalyzeMatch(job)} title="Analyze Match"
@@ -490,7 +516,7 @@ export default function JobsPage() {
                         className="accent-indigo-600"
                       />
                     </th>
-                    {["Company", "Job Title", "Status", "Location", "Date Applied", "Salary", "Actions"].map((h) => (
+                    {["Company", "Job Title", "Status", "Location", "Work Type", "Applied", "Follow-up", "Salary", "Actions"].map((h) => (
                       <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
@@ -647,10 +673,17 @@ export default function JobsPage() {
                 <input id="modal-url" className="input" value={form.job_url}
                   onChange={(e) => setForm({ ...form, job_url: e.target.value })} placeholder="https://..." />
               </div>
-              <div>
-                <label htmlFor="modal-recruiter" className="label">Recruiter Contact</label>
-                <input id="modal-recruiter" className="input" value={form.recruiter_contact}
-                  onChange={(e) => setForm({ ...form, recruiter_contact: e.target.value })} placeholder="Name, email, or phone" />
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
+                <div>
+                  <label htmlFor="modal-recruiter-name" className="label">Recruiter Name</label>
+                  <input id="modal-recruiter-name" className="input" value={form.recruiter_name}
+                    onChange={(e) => setForm({ ...form, recruiter_name: e.target.value })} placeholder="Jane Smith" />
+                </div>
+                <div>
+                  <label htmlFor="modal-recruiter-email" className="label">Recruiter Email</label>
+                  <input id="modal-recruiter-email" type="email" className="input" value={form.recruiter_email}
+                    onChange={(e) => setForm({ ...form, recruiter_email: e.target.value })} placeholder="jane@company.com" />
+                </div>
               </div>
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
@@ -659,7 +692,7 @@ export default function JobsPage() {
                     onChange={(e) => setForm({ ...form, date_applied: e.target.value })} />
                 </div>
                 <div>
-                  <label htmlFor="modal-followup" className="label">Reminder Date</label>
+                  <label htmlFor="modal-followup" className="label">Follow-up Date</label>
                   <input id="modal-followup" type="date" className="input" value={form.follow_up_date}
                     onChange={(e) => setForm({ ...form, follow_up_date: e.target.value })} />
                 </div>

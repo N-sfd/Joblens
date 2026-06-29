@@ -12,7 +12,7 @@ import { downloadResumeAnalysisPdf } from "@/lib/export";
 import {
   Upload, FileText, CheckCircle, XCircle, AlertCircle,
   Lightbulb, Tag, Loader2, Zap, MessageSquare, Copy, FileDown,
-  ChevronDown, ChevronUp,
+  ChevronDown, ChevronUp, AlignLeft,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -386,6 +386,22 @@ export default function ResumePage() {
                   <span key={i} className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-200">{k}</span>
                 ))}
               </div>
+            </div>
+          )}
+
+          {/* Formatting Suggestions */}
+          {result.analysis.formatting_suggestions.length > 0 && (
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <AlignLeft size={15} className="text-indigo-500" /> Formatting Suggestions
+              </h3>
+              <ul className="space-y-2">
+                {result.analysis.formatting_suggestions.map((s, i) => (
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                    <AlignLeft size={13} className="text-indigo-400 mt-0.5 shrink-0" /> {s}
+                  </li>
+                ))}
+              </ul>
             </div>
           )}
 

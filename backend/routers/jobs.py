@@ -207,11 +207,12 @@ async def follow_up_email(
     db: Session = Depends(get_db),
 ):
     job = get_owned_job(db, owner, job_id)
+    recruiter_contact = " - ".join(p for p in (job.recruiter_name, job.recruiter_email) if p)
     try:
         email = await generate_follow_up_email(
             company=job.company,
             role=job.role,
-            recruiter_contact=job.recruiter_contact or "",
+            recruiter_contact=recruiter_contact,
             notes=job.notes or "",
         )
     except Exception as e:

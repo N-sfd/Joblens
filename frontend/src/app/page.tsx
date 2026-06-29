@@ -3,10 +3,11 @@ import LogoMark from "@/components/Logo";
 import ScoreCircle from "@/components/ScoreCircle";
 import StatusBadge from "@/components/StatusBadge";
 import UserMenu from "@/components/UserMenu";
+import CtaButtons from "@/components/CtaButtons";
 import { LEGAL_LINKS } from "@/components/legal/LegalPageShell";
 import {
   FileText, Target, PenTool, Briefcase, ShieldCheck, Lock, Sparkles,
-  ArrowRight, CheckCircle2, Upload, ClipboardList, BarChart3, Eye,
+  CheckCircle2, Upload, ClipboardList, BarChart3, Eye, BellRing, LayoutDashboard,
 } from "lucide-react";
 
 const FEATURES = [
@@ -33,6 +34,18 @@ const FEATURES = [
     color: "bg-emerald-50 text-emerald-600",
     title: "Cover Letter Generator",
     desc: "Generate a tailored, well-written cover letter in your tone of choice — ready to copy or download.",
+  },
+  {
+    icon: BellRing,
+    color: "bg-amber-50 text-amber-600",
+    title: "Application Reminders",
+    desc: "Never miss a follow-up, interview, or deadline — see every upcoming reminder in one place.",
+  },
+  {
+    icon: LayoutDashboard,
+    color: "bg-rose-50 text-rose-600",
+    title: "Dashboard Insights",
+    desc: "Track interview and offer rates, weekly application volume, and AI activity at a glance.",
   },
 ];
 
@@ -118,14 +131,7 @@ export default function LandingPage() {
             <p className="text-slate-500 text-base sm:text-lg leading-relaxed mb-8 max-w-lg">
               JobLens helps job seekers analyze resumes, match jobs, track applications, and generate tailored cover letters — all in one place.
             </p>
-            <div className="flex flex-wrap gap-3 mb-8">
-              <Link href="/dashboard" className="btn-primary flex items-center gap-2 text-base py-3 px-6">
-                Get Started <ArrowRight size={16} />
-              </Link>
-              <Link href="/dashboard" className="btn-secondary flex items-center gap-2 text-base py-3 px-6">
-                Try Demo
-              </Link>
-            </div>
+            <CtaButtons className="mb-8" />
             <div className="flex flex-wrap items-center gap-5 text-sm text-slate-500">
               <span className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-green-500" /> No sign-up</span>
               <span className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-green-500" /> Free to use</span>
@@ -177,7 +183,7 @@ export default function LandingPage() {
           <h2 className="text-2xl sm:text-3xl font-bold mb-3">One toolkit for the entire job search</h2>
           <p className="text-slate-500">From your first resume upload to the offer letter — JobLens covers every step.</p>
         </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-5">
+        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-3 gap-5">
           {FEATURES.map(({ icon: Icon, color, title, desc }) => (
             <div key={title} className="card p-5">
               <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-4`}>
@@ -293,14 +299,7 @@ export default function LandingPage() {
       <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
         <h2 className="text-2xl sm:text-3xl font-bold mb-3">Ready to put your job search on autopilot?</h2>
         <p className="text-slate-500 mb-8 max-w-md mx-auto">Jump straight into the dashboard — no account needed.</p>
-        <div className="flex flex-wrap justify-center gap-3">
-          <Link href="/dashboard" className="btn-primary flex items-center gap-2 text-base py-3 px-6">
-            Get Started <ArrowRight size={16} />
-          </Link>
-          <Link href="/dashboard" className="btn-secondary flex items-center gap-2 text-base py-3 px-6">
-            Try Demo
-          </Link>
-        </div>
+        <CtaButtons className="justify-center" />
       </section>
 
       {/* Footer */}

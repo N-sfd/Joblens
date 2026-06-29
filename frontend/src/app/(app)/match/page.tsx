@@ -48,6 +48,13 @@ const likelihoodStyle = {
   high: "bg-green-100 text-green-700",
 };
 
+const recommendationStyle: Record<string, string> = {
+  "Strong Match": "bg-green-100 text-green-700",
+  "Good Match": "bg-blue-100 text-blue-700",
+  "Weak Match": "bg-amber-100 text-amber-700",
+  "Not Recommended": "bg-red-100 text-red-700",
+};
+
 const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
 
 export default function MatchPage() {
@@ -163,7 +170,7 @@ export default function MatchPage() {
         status: saveForm.status as never,
         notes: matchNote ?? null,
         job_url: null, salary_range: null, location: null,
-        work_type: null, recruiter_contact: null,
+        work_type: null, recruiter_name: null, recruiter_email: null,
         follow_up_date: null, date_applied: null, reminder_type: null,
       });
       setShowSave(false);
@@ -179,6 +186,15 @@ export default function MatchPage() {
     localStorage.setItem(JD_KEY, jobDescription);
     router.push("/cover-letter");
   };
+
+  const importantKeywords = result
+    ? [
+        ...result.keyword_report.matched.map((k) => ({ keyword: k.keyword, count: k.jd_count, found: true })),
+        ...result.keyword_report.missing.map((k) => ({ keyword: k.keyword, count: k.jd_count, found: false })),
+      ]
+        .sort((a, b) => b.count - a.count)
+        .slice(0, 14)
+    : [];
 
   const typeColor: Record<string, string> = {
     behavioral: "bg-blue-100 text-blue-700",
@@ -274,6 +290,14 @@ export default function MatchPage() {
             <div className="flex flex-col sm:flex-row items-center gap-6">
               <ScoreCircle score={result.match_score} label="ATS Match Score" size={140} />
               <div className="flex-1 text-center sm:text-left">
+                <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start mb-2">
+                  <span className={clsx(
+                    "px-3 py-1 rounded-full text-sm font-bold",
+                    recommendationStyle[result.recommendation] ?? "bg-slate-100 text-slate-600"
+                  )}>
+                    {result.recommendation}
+                  </span>
+                </div>
                 <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
                   <span className={clsx("px-3 py-1 rounded-full text-sm font-semibold", likelihoodStyle[result.likelihood])}>
                     {result.likelihood.charAt(0).toUpperCase() + result.likelihood.slice(1)} likelihood
@@ -354,6 +378,29 @@ export default function MatchPage() {
               ))}
             </div>
           </div>
+
+          {/* Important Job Keywords */}
+          {importantKeywords.length > 0 && (
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+                <Tag size={15} className="text-indigo-500" /> Important Job Keywords
+              </h3>
+              <div className="flex flex-wrap gap-2">
+                {importantKeywords.map((k, i) => (
+                  <span
+                    key={i}
+                    className={clsx(
+                      "px-2.5 py-1 rounded-full text-xs font-medium",
+                      k.found ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
+                    )}
+                  >
+                    {k.keyword} <span className={k.found ? "text-green-400" : "text-red-400"}>×{k.count} in JD</span>
+                  </span>
+                ))}
+              </div>
+              <p className="text-xs text-slate-400 mt-3">Top keywords from the job description, ranked by frequency — green means found in your resume, red means missing.</p>
+            </div>
+          )}
 
           {/* Keyword Scan */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">

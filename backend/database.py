@@ -31,6 +31,7 @@ def create_tables():
     _ensure_job_columns()
     _ensure_owner_columns()
     _ensure_reminder_type_column()
+    _ensure_recruiter_name_email_columns()
 
 
 def _ensure_guest_id_column():
@@ -102,3 +103,18 @@ def _ensure_reminder_type_column():
         return
     with engine.begin() as conn:
         conn.execute(text("ALTER TABLE job_applications ADD COLUMN reminder_type VARCHAR(50)"))
+
+
+def _ensure_recruiter_name_email_columns():
+    """Add recruiter_name / recruiter_email to existing DBs (split from the old recruiter_contact field)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if "job_applications" not in insp.get_table_names():
+        return
+    columns = {c["name"] for c in insp.get_columns("job_applications")}
+    with engine.begin() as conn:
+        if "recruiter_name" not in columns:
+            conn.execute(text("ALTER TABLE job_applications ADD COLUMN recruiter_name VARCHAR(255)"))
+        if "recruiter_email" not in columns:
+            conn.execute(text("ALTER TABLE job_applications ADD COLUMN recruiter_email VARCHAR(255)"))

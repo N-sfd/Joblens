@@ -32,6 +32,8 @@ class JobApplication(Base):
     location = Column(String(255), nullable=True)
     work_type = Column(String(50), nullable=True)
     recruiter_contact = Column(String(255), nullable=True)
+    recruiter_name = Column(String(255), nullable=True)
+    recruiter_email = Column(String(255), nullable=True)
     follow_up_date = Column(DateTime, nullable=True)
     reminder_type = Column(String(50), nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
@@ -135,7 +137,8 @@ class JobApplicationCreate(BaseModel):
     salary_range: Optional[str] = None
     location: Optional[str] = None
     work_type: Optional[str] = None
-    recruiter_contact: Optional[str] = None
+    recruiter_name: Optional[str] = None
+    recruiter_email: Optional[str] = None
     follow_up_date: Optional[datetime] = None
     reminder_type: Optional[str] = None
     date_applied: Optional[datetime] = None
@@ -150,7 +153,8 @@ class JobApplicationUpdate(BaseModel):
     salary_range: Optional[str] = None
     location: Optional[str] = None
     work_type: Optional[str] = None
-    recruiter_contact: Optional[str] = None
+    recruiter_name: Optional[str] = None
+    recruiter_email: Optional[str] = None
     follow_up_date: Optional[datetime] = None
     reminder_type: Optional[str] = None
 
@@ -166,7 +170,8 @@ class JobApplicationResponse(BaseModel):
     salary_range: Optional[str]
     location: Optional[str]
     work_type: Optional[str]
-    recruiter_contact: Optional[str]
+    recruiter_name: Optional[str]
+    recruiter_email: Optional[str]
     follow_up_date: Optional[datetime]
     reminder_type: Optional[str]
     created_at: datetime

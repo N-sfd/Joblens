@@ -143,6 +143,12 @@ export function downloadResumeAnalysisPdf(analysis: ResumeAnalysis, filename?: s
     y += 6;
   }
 
+  if (analysis.formatting_suggestions.length) {
+    writeHeading("Formatting Suggestions");
+    analysis.formatting_suggestions.forEach((s) => writeParagraph(s, { bullet: true }));
+    y += 6;
+  }
+
   writeHeading("Recommendations");
   analysis.recommendations.forEach((r) => writeParagraph(`[${r.priority.toUpperCase()}] ${r.suggestion}`, { bullet: true }));
 
@@ -168,7 +174,8 @@ export function downloadJobsCsv(jobs: JobApplication[]) {
     { key: "work_type", label: "Work Type" },
     { key: "salary_range", label: "Salary Range" },
     { key: "job_url", label: "Job URL" },
-    { key: "recruiter_contact", label: "Recruiter Contact" },
+    { key: "recruiter_name", label: "Recruiter Name" },
+    { key: "recruiter_email", label: "Recruiter Email" },
     { key: "follow_up_date", label: "Follow-up Date" },
     { key: "reminder_type", label: "Reminder Type" },
     { key: "notes", label: "Notes" },

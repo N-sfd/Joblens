@@ -64,7 +64,8 @@ export interface JobApplication {
   salary_range: string | null;
   location: string | null;
   work_type: string | null;
-  recruiter_contact: string | null;
+  recruiter_name: string | null;
+  recruiter_email: string | null;
   follow_up_date: string | null;
   reminder_type: ReminderType | null;
   created_at: string;
@@ -89,12 +90,16 @@ export interface ResumeAnalysis {
   education_summary: string;
   recommendations: { priority: "high" | "medium" | "low"; suggestion: string }[];
   keywords_missing: string[];
+  formatting_suggestions: string[];
 }
+
+export type MatchRecommendation = "Strong Match" | "Good Match" | "Weak Match" | "Not Recommended";
 
 export interface MatchResult {
   match_score: number;
   likelihood: "low" | "medium" | "high";
   ats_verdict: string;
+  recommendation: MatchRecommendation;
   skills_match_score: number;
   experience_match_score: number;
   education_match_score: number;

@@ -44,7 +44,8 @@ Return this exact JSON structure:
     {{"priority": "medium", "suggestion": "<specific actionable suggestion>"}},
     {{"priority": "low", "suggestion": "<specific actionable suggestion>"}}
   ],
-  "keywords_missing": ["<keyword>", "<keyword>", "<keyword>"]
+  "keywords_missing": ["<keyword>", "<keyword>", "<keyword>"],
+  "formatting_suggestions": ["<specific formatting/layout fix, e.g. 'Use bullet points instead of dense paragraphs in Experience'>", "<formatting fix>", "<formatting fix>"]
 }}"""
 
 JOB_MATCH_PROMPT = """\
@@ -116,7 +117,9 @@ async def analyze_resume(resume_text: str) -> dict:
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": RESUME_ANALYSIS_PROMPT.format(resume_text=resume_text)}],
     )
-    return json.loads(response.choices[0].message.content)
+    data = json.loads(response.choices[0].message.content)
+    data.setdefault("formatting_suggestions", [])
+    return data
 
 
 async def match_job(resume_text: str, job_description: str) -> dict:
@@ -157,10 +160,20 @@ async def match_job(resume_text: str, job_description: str) -> dict:
     else:
         likelihood, verdict = "low", "Likely Filtered Out by ATS"
 
+    if overall >= 80:
+        recommendation = "Strong Match"
+    elif overall >= 60:
+        recommendation = "Good Match"
+    elif overall >= 40:
+        recommendation = "Weak Match"
+    else:
+        recommendation = "Not Recommended"
+
     return {
         "match_score": overall,
         "likelihood": likelihood,
         "ats_verdict": verdict,
+        "recommendation": recommendation,
         "skills_match_score": skills_score,
         "experience_match_score": experience_score,
         "education_match_score": education_score,

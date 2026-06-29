@@ -46,6 +46,7 @@ function CoverLetterContent() {
   const [selectedJobId, setSelectedJobId] = useState<string>("");
   const [resumeText, setResumeText] = useState("");
   const [jobDescription, setJobDescription] = useState("");
+  const [jobTitle, setJobTitle] = useState("");
   const [companyName, setCompanyName] = useState("");
   const [tone, setTone] = useState("professional");
   const [loading, setLoading] = useState(false);
@@ -70,6 +71,7 @@ function CoverLetterContent() {
     setResumeText(cachedResume);
     setJobDescription(cachedJD);
     if (paramCompany) setCompanyName(paramCompany);
+    if (paramRole) setJobTitle(paramRole);
     if (paramRole && !cachedJD) {
       setJobDescription(`Role: ${paramRole}\nCompany: ${paramCompany}\n\n(Paste the full job description here)`);
     }
@@ -90,6 +92,7 @@ function CoverLetterContent() {
   const loadFromHistory = (entry: CoverLetterHistoryEntry) => {
     setResumeText(entry.resume_text);
     setJobDescription(entry.job_description);
+    setJobTitle("");
     setCompanyName(entry.company_name ?? "");
     setTone(entry.tone ?? "professional");
     setLetter(entry.content);
@@ -103,6 +106,7 @@ function CoverLetterContent() {
     if (!job) return;
 
     setCompanyName(job.company);
+    setJobTitle(job.role);
 
     const matchNote = job.notes?.includes("AI Match Score")
       ? `\n\n--- From Job Matcher ---\n${job.notes}`
@@ -125,7 +129,10 @@ function CoverLetterContent() {
     setLetter(null);
     setSavedToJob(false);
     try {
-      const data = await api.generateCoverLetter(resumeText, jobDescription, companyName, activeTone);
+      const effectiveJD = jobTitle.trim() && !jobDescription.trimStart().startsWith("Position:")
+        ? `Job Title: ${jobTitle.trim()}\n${jobDescription}`
+        : jobDescription;
+      const data = await api.generateCoverLetter(resumeText, effectiveJD, companyName, activeTone);
       setDone(true);
       setLetter(data.cover_letter);
       api.getCoverLetterHistory().then(setHistory).catch(() => {});
@@ -267,6 +274,16 @@ function CoverLetterContent() {
 
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-4">
           <div>
+            <label htmlFor="cl-jobtitle" className="label">Job Title</label>
+            <input
+              id="cl-jobtitle"
+              className="input"
+              placeholder="e.g. Senior Software Engineer"
+              value={jobTitle}
+              onChange={(e) => setJobTitle(e.target.value)}
+            />
+          </div>
+          <div>
             <label htmlFor="cl-company" className="label">Company Name</label>
             <input
               id="cl-company"
@@ -276,6 +293,9 @@ function CoverLetterContent() {
               onChange={(e) => setCompanyName(e.target.value)}
             />
           </div>
+        </div>
+
+        <div className="mb-4">
           <div>
             <label className="label">Tone</label>
             <div className="grid grid-cols-2 sm:grid-cols-3 lg:flex gap-2">
@@ -340,7 +360,11 @@ function CoverLetterContent() {
             <div className="flex items-center gap-2 min-w-0">
               <PenTool size={16} className="text-indigo-500 shrink-0" />
               <h2 className="font-semibold text-slate-800">Cover Letter</h2>
-              {companyName && <span className="text-xs text-slate-400 truncate">— {companyName}</span>}
+              {(jobTitle || companyName) && (
+                <span className="text-xs text-slate-400 truncate">
+                  — {[jobTitle, companyName].filter(Boolean).join(" at ")}
+                </span>
+              )}
               <span className="text-xs bg-indigo-50 text-indigo-600 px-2 py-0.5 rounded-full font-medium shrink-0 capitalize">
                 {tone}
               </span>
