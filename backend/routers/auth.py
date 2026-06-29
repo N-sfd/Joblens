@@ -5,7 +5,7 @@ from sqlalchemy.orm import Session
 from typing import Optional
 
 from database import get_db
-from models import User, SignupRequest, LoginRequest, UserResponse
+from models import User, SignupRequest, LoginRequest, UserResponse, Profile
 from auth import (
     hash_password,
     verify_password,
@@ -31,7 +31,6 @@ def _set_auth_cookie(response: Response, user_id: int) -> None:
         max_age=60 * 60 * 24 * 7,
         path="/",
     )
-
 
 @router.post("/signup", response_model=UserResponse, status_code=201)
 async def signup(
@@ -93,7 +92,7 @@ async def delete_account(
     analyses, matches, cover letters, activity log) — used by the Data Deletion page."""
     from models import JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity
 
-    for model in (JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity):
+    for model in (JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity, Profile):
         db.query(model).filter(model.user_id == current_user.id).delete(synchronize_session=False)
     db.delete(current_user)
     db.commit()

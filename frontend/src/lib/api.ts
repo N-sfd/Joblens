@@ -17,7 +17,7 @@ function getApiBase(): string {
   return normalizeOrigin(serverBackend);
 }
 
-const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account"];
+const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
@@ -147,5 +147,50 @@ export const api = {
     request<{ cover_letter: string }>("/api/cover-letter/", {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resume_text, job_description, company_name, tone }),
+    }),
+
+  // Employees (ATS — private, behind Clerk-protected /employees routes)
+  getEmployees: () => request<import("@/types").Employee[]>("/api/employees/"),
+  getEmployee: (id: number) => request<import("@/types").Employee>(`/api/employees/${id}`),
+  createEmployee: (data: import("@/types").EmployeeCreate) =>
+    request<import("@/types").Employee>("/api/employees/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateEmployee: (id: number, data: import("@/types").EmployeeUpdate) =>
+    request<import("@/types").Employee>(`/api/employees/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  deleteEmployee: (id: number) => request<{ message: string }>(`/api/employees/${id}`, { method: "DELETE" }),
+
+  // Employee Resumes (ATS — private)
+  uploadEmployeeResume: (employeeId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<import("@/types").EmployeeResume>(`/api/employees/${employeeId}/resume`, {
+      method: "POST", body: form,
+    });
+  },
+  getEmployeeResumes: (employeeId: number) =>
+    request<import("@/types").EmployeeResume[]>(`/api/employees/${employeeId}/resumes`),
+  getLatestEmployeeResume: (employeeId: number) =>
+    request<import("@/types").EmployeeResume>(`/api/employees/${employeeId}/resume/latest`),
+  deleteEmployeeResume: (employeeId: number, resumeId: number) =>
+    request<{ message: string }>(`/api/employees/${employeeId}/resumes/${resumeId}`, { method: "DELETE" }),
+
+  // Job Requirements (ATS — private)
+  getJobRequirements: () => request<import("@/types").JobRequirement[]>("/api/job-requirements/"),
+  getJobRequirement: (id: number) => request<import("@/types").JobRequirement>(`/api/job-requirements/${id}`),
+  createJobRequirement: (data: import("@/types").JobRequirementCreate) =>
+    request<import("@/types").JobRequirement>("/api/job-requirements/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateJobRequirement: (id: number, data: import("@/types").JobRequirementUpdate) =>
+    request<import("@/types").JobRequirement>(`/api/job-requirements/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  deleteJobRequirement: (id: number) => request<{ message: string }>(`/api/job-requirements/${id}`, { method: "DELETE" }),
+  parseJobRequirement: (rawText: string) =>
+    request<import("@/types").JobRequirementParseResult>("/api/job-requirements/parse", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),
     }),
 };

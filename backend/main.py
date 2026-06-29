@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements
 
 
 @asynccontextmanager
@@ -51,12 +51,18 @@ app.add_middleware(
 )
 
 app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
 app.include_router(account.router, prefix="/api/account", tags=["Account"])
+# Private ATS data — not part of the public job-seeker tools above.
+# See backend/ats_auth.py: Clerk JWT verification is a TODO, not yet enforced.
+app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
+app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
+app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
 
 
 @app.get("/", tags=["Health"])

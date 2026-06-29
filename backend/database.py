@@ -25,7 +25,7 @@ def get_db():
 
 
 def create_tables():
-    import models  # noqa: F401 — registers models with Base
+    import models
     Base.metadata.create_all(bind=engine)
     _ensure_guest_id_column()
     _ensure_job_columns()

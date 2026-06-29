@@ -3,6 +3,7 @@
 import { useState } from "react";
 import { usePathname } from "next/navigation";
 import { Menu } from "lucide-react";
+import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import Sidebar, { nav } from "./Sidebar";
 import LogoMark from "./Logo";
 import UserMenu from "./UserMenu";
@@ -56,7 +57,30 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <span className="text-slate-800 font-semibold">{current?.label ?? "Dashboard"}</span>
           </div>
 
-          <div className="ml-auto">
+          <div className="ml-auto flex items-center gap-3">
+            {/* Clerk auth — unrelated to the public UserMenu below. Only gates
+                the ATS/admin routes (/employees, /job-requirements, /matches,
+                /submissions, /settings); the rest of this app stays public. */}
+            <SignedIn>
+              <a
+                href="/employees"
+                className="hidden sm:inline text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
+              >
+                ATS Dashboard
+              </a>
+              <UserButton afterSignOutUrl="/" />
+            </SignedIn>
+            <SignedOut>
+              <SignInButton mode="modal">
+                <button
+                  type="button"
+                  className="hidden sm:inline text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors"
+                >
+                  ATS Sign in
+                </button>
+              </SignInButton>
+            </SignedOut>
+
             <UserMenu />
           </div>
         </header>

@@ -380,6 +380,97 @@ async def generate_follow_up_email(
     return json.loads(response.choices[0].message.content)
 
 
+EMPLOYEE_RESUME_PARSE_PROMPT = """\
+You are an ATS/staffing resume parser. Extract structured details from the resume below for an internal staffing database. Return ONLY a JSON object — no markdown, no explanation.
+
+Resume:
+{resume_text}
+
+Return this exact JSON structure (use "" or [] when a field can't be determined — never omit a key):
+{{
+  "name": "<candidate full name>",
+  "email": "<candidate email>",
+  "phone": "<candidate phone number>",
+  "primary_skill": "<single strongest/most prominent technical skill>",
+  "skills": ["<skill>", "<skill>", "..."],
+  "total_experience": "<e.g. '5 years'>",
+  "job_titles": ["<most recent or notable job titles>"],
+  "clients": ["<client or employer names mentioned, e.g. for consultants/contractors>"],
+  "certifications": ["<certification>", "..."],
+  "education": ["<degree, school>", "..."],
+  "summary": "<2-3 sentence staffing-focused summary: seniority, core expertise, and the kind of role they're best suited for — useful for matching to job openings>"
+}}"""
+
+
+async def parse_employee_resume(resume_text: str) -> dict:
+    """Parses a resume into structured staffing fields (see EmployeeResumeParseResponse)."""
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=1536,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": EMPLOYEE_RESUME_PARSE_PROMPT.format(resume_text=resume_text)}],
+    )
+    data = json.loads(response.choices[0].message.content)
+    defaults = {
+        "name": "", "email": "", "phone": "", "primary_skill": "",
+        "skills": [], "total_experience": "", "job_titles": [],
+        "clients": [], "certifications": [], "education": [], "summary": "",
+    }
+    defaults.update(data)
+    return defaults
+
+
+JOB_REQUIREMENT_PARSE_PROMPT = """\
+You are an ATS/staffing assistant parsing a recruiter email or job posting into structured fields. Return ONLY a JSON object — no markdown, no explanation.
+
+Raw text:
+{raw_text}
+
+Return this exact JSON structure (use "" or [] when a field can't be determined — never omit a key):
+{{
+  "job_title": "<job title/role>",
+  "vendor": "<staffing vendor/agency name that sent this, if any>",
+  "recruiter_name": "<recruiter's name>",
+  "recruiter_email": "<recruiter's email>",
+  "recruiter_phone": "<recruiter's phone number>",
+  "client": "<the client company name, ONLY if clearly and explicitly stated — do not guess>",
+  "end_client": "<the end client name, ONLY if clearly and explicitly stated and different from client — do not guess>",
+  "location": "<job location, e.g. city/state or 'Remote'>",
+  "work_type": "<one of: Remote, Hybrid, Onsite — best guess from context, or '' if unclear>",
+  "rate": "<pay rate as stated, e.g. '$75/hr' or '$140k/yr'>",
+  "duration": "<contract duration, e.g. '6 months', 'Long term'>",
+  "visa_requirement": "<visa/work authorization requirement as stated, e.g. 'USC/GC only', 'H1B OK'>",
+  "required_skills": ["<must-have skill>", "..."],
+  "preferred_skills": ["<nice-to-have skill>", "..."],
+  "submission_deadline": "<submission deadline as stated, e.g. a date or 'ASAP'>",
+  "summary": "<2-3 sentence summary of the role, useful for matching against employee profiles>"
+}}
+
+Important: do NOT invent a client or end_client name if the text doesn't clearly state one — leave it as "" rather than guessing."""
+
+
+async def parse_job_requirement(raw_text: str) -> dict:
+    """Parses a pasted recruiter email/job description into structured fields
+    (see JobRequirementParseResponse)."""
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=1536,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": JOB_REQUIREMENT_PARSE_PROMPT.format(raw_text=raw_text)}],
+    )
+    data = json.loads(response.choices[0].message.content)
+    defaults = {
+        "job_title": "", "vendor": "", "recruiter_name": "", "recruiter_email": "",
+        "recruiter_phone": "", "client": "", "end_client": "", "location": "",
+        "work_type": "", "rate": "", "duration": "", "visa_requirement": "",
+        "required_skills": [], "preferred_skills": [], "submission_deadline": "", "summary": "",
+    }
+    defaults.update(data)
+    return defaults
+
+
 async def generate_cover_letter(
     resume_text: str,
     job_description: str,
