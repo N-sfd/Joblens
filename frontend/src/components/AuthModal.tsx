@@ -1,6 +1,7 @@
 "use client";
 
 import { useEffect, useState } from "react";
+import { createPortal } from "react-dom";
 import { X, Loader2, LogIn, UserPlus } from "lucide-react";
 import { useAuth } from "@/lib/AuthContext";
 
@@ -17,6 +18,14 @@ export default function AuthModal({ onClose }: Props) {
   const [fieldErrors, setFieldErrors] = useState<{ email?: string; password?: string }>({});
   const [error, setError] = useState<string | null>(null);
   const [loading, setLoading] = useState(false);
+  const [mounted, setMounted] = useState(false);
+
+  // Render via a portal to document.body so the modal isn't trapped inside an
+  // ancestor with backdrop-filter/transform/overflow-hidden (e.g. the app header's
+  // backdrop-blur, which creates a containing block for position: fixed).
+  useEffect(() => {
+    setMounted(true);
+  }, []);
 
   // Lock background scroll while the modal is open.
   useEffect(() => {
@@ -54,13 +63,15 @@ export default function AuthModal({ onClose }: Props) {
     }
   };
 
-  return (
+  if (!mounted) return null;
+
+  return createPortal(
     <div
-      className="fixed inset-0 z-50 flex items-center justify-center overflow-y-auto bg-slate-900/45 backdrop-blur-sm px-4 py-8"
+      className="fixed inset-0 z-[9999] flex items-center justify-center overflow-y-auto bg-slate-900/50 backdrop-blur-sm p-4"
       onClick={onClose}
     >
       <div
-        className="relative w-[90%] max-w-[420px] max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl animate-slide-up my-auto p-6 sm:p-8"
+        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl animate-slide-up my-auto p-6 sm:p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <button
@@ -128,6 +139,7 @@ export default function AuthModal({ onClose }: Props) {
           </button>
         </p>
       </div>
-    </div>
+    </div>,
+    document.body
   );
 }
