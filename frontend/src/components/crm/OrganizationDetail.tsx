@@ -156,7 +156,7 @@ export default function OrganizationDetail({ id, backPath }: { id: number; backP
                 {contacts.map((c) => (
                   <li key={c.id} className="py-2 flex items-center justify-between">
                     <div>
-                      <Link href={`/crm/contacts/${c.id}`} className="font-medium text-indigo-600 hover:text-indigo-800 text-sm">
+                      <Link href={`/ats/contacts/${c.id}`} className="font-medium text-indigo-600 hover:text-indigo-800 text-sm">
                         {[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}
                       </Link>
                       <span className="text-xs text-slate-400 ml-2">{c.contact_type}</span>

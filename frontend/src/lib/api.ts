@@ -1,4 +1,5 @@
 import { getGuestId } from "./guestId";
+import { getClerkToken } from "./clerkToken";
 
 /** Origin only (no /api). Avoids https://host/api + /api/jobs → /api/api/jobs (404). */
 function normalizeOrigin(url: string): string {
@@ -30,11 +31,19 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
   return s ? `?${s}` : "";
 }
 
+// Private ATS/CRM endpoints — these carry the Clerk session JWT for backend
+// verification (see ats_auth.py). Public job-seeker endpoints do not.
+const ATS_PREFIXES = ["/api/employees", "/api/job-requirements", "/api/crm", "/api/ats", "/api/zoho"];
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
   const headers = new Headers(init?.headers);
   if (typeof window !== "undefined" && OWNED_PREFIXES.some((p) => path.startsWith(p))) {
     headers.set("X-Guest-Id", getGuestId());
+  }
+  if (typeof window !== "undefined" && ATS_PREFIXES.some((p) => path.startsWith(p))) {
+    const token = await getClerkToken();
+    if (token) headers.set("Authorization", `Bearer ${token}`);
   }
   let res: Response;
   try {

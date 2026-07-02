@@ -4,23 +4,23 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import {
-  LayoutDashboard, Users, FileText, Briefcase, Inbox, Building2,
-  Building, UserRound, Contact, Activity, Send, CalendarClock, Settings,
+  LayoutDashboard, Users, FileText, Briefcase, Inbox, UserRound,
+  Building2, Building, Send, CalendarCheck, BadgeCheck, Settings,
 } from "lucide-react";
 
 const NAV: { href: string; label: string; icon: React.ElementType }[] = [
   { href: "/ats", label: "ATS Dashboard", icon: LayoutDashboard },
-  { href: "/employees", label: "Employees", icon: Users },
-  { href: "/job-requirements", label: "Job Requirements", icon: Briefcase },
-  { href: "/email-inbox", label: "Email Inbox", icon: Inbox },
-  { href: "/crm/recruiters", label: "Recruiters", icon: UserRound },
-  { href: "/crm/vendors", label: "Vendors", icon: Building2 },
-  { href: "/crm/clients", label: "Clients", icon: Building },
-  { href: "/crm/contacts", label: "Contacts", icon: Contact },
-  { href: "/crm/activities", label: "Activities", icon: Activity },
-  { href: "/submissions", label: "Submissions", icon: Send },
-  { href: "/matches", label: "Interviews", icon: CalendarClock },
-  { href: "/settings", label: "Settings", icon: Settings },
+  { href: "/ats/employees", label: "Employees", icon: Users },
+  { href: "/ats/employee-resumes", label: "Employee Resumes", icon: FileText },
+  { href: "/ats/jobs", label: "Job Requirements", icon: Briefcase },
+  { href: "/ats/email-inbox", label: "Zoho Email Inbox", icon: Inbox },
+  { href: "/ats/recruiters", label: "Recruiters", icon: UserRound },
+  { href: "/ats/vendors", label: "Vendors", icon: Building2 },
+  { href: "/ats/clients", label: "Clients", icon: Building },
+  { href: "/ats/submissions", label: "Submissions", icon: Send },
+  { href: "/ats/interviews", label: "Interviews", icon: CalendarCheck },
+  { href: "/ats/offers", label: "Offers", icon: BadgeCheck },
+  { href: "/ats/settings", label: "Settings", icon: Settings },
 ];
 
 export default function AtsNav() {
@@ -28,7 +28,7 @@ export default function AtsNav() {
   return (
     <nav className="flex flex-col gap-0.5 p-3">
       {NAV.map(({ href, label, icon: Icon }) => {
-        const active = pathname === href || pathname.startsWith(href + "/");
+        const active = href === "/ats" ? pathname === "/ats" : (pathname === href || pathname.startsWith(href + "/"));
         return (
           <Link
             key={href}

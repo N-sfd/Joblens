@@ -1,33 +1,29 @@
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
+import { NextResponse } from "next/server";
 
 // PROTECTED (requires Clerk sign-in): ATS/admin routes only.
 // Everything else — /, /resume, /match, /cover-letter, /jobs, /dashboard,
 // /reminders, /sign-in, /sign-up, legal pages, etc. — stays public.
+// All private Consult America CRM/ATS pages live under /ats/*. Everything else
+// (/, /dashboard, /resume, /match, /jobs, /cover-letter, /reminders, legal, auth)
+// stays public.
 const isProtectedAtsRoute = createRouteMatcher([
   "/ats",
   "/ats/(.*)",
-  "/employees",
-  "/employees/(.*)",
-  "/job-requirements",
-  "/job-requirements/(.*)",
-  "/crm",
-  "/crm/(.*)",
-  "/email-inbox",
-  "/email-inbox/(.*)",
-  "/matches",
-  "/matches/(.*)",
-  "/submissions",
-  "/submissions/(.*)",
-  "/settings",
-  "/settings/(.*)",
 ]);
 
 export default clerkMiddleware(async (auth, req) => {
   if (isProtectedAtsRoute(req)) {
-    // Redirects unauthenticated visitors to /sign-in and, after sign-in,
-    // sends them back to the exact ATS page they originally requested.
-    await auth.protect();
+    const { userId } = await auth();
+    if (!userId) {
+      // Redirect unauthenticated visitors to /sign-in and, after sign-in,
+      // send them back to the exact ATS page they originally requested.
+      const signInUrl = new URL("/sign-in", req.url);
+      signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
+      return NextResponse.redirect(signInUrl);
+    }
   }
+  return NextResponse.next();
 });
 
 export const config = {
