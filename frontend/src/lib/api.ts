@@ -19,6 +19,17 @@ function getApiBase(): string {
 
 const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile"];
 
+/** Build a query string (with leading `?`) from defined params; empty → "". */
+function qs(params?: Record<string, string | number | boolean | undefined | null>): string {
+  if (!params) return "";
+  const sp = new URLSearchParams();
+  for (const [k, v] of Object.entries(params)) {
+    if (v !== undefined && v !== null && v !== "") sp.set(k, String(v));
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
+
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
   const headers = new Headers(init?.headers);
@@ -193,4 +204,47 @@ export const api = {
     request<import("@/types").JobRequirementParseResult>("/api/job-requirements/parse", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),
     }),
+
+  // CRM Organizations (ATS — private)
+  getOrganizations: (params?: { type?: string; status?: string; q?: string; needs_review?: boolean }) =>
+    request<import("@/types").CRMOrganization[]>(`/api/crm/organizations/${qs(params)}`),
+  getOrganization: (id: number) =>
+    request<import("@/types").CRMOrganization>(`/api/crm/organizations/${id}`),
+  createOrganization: (data: import("@/types").CRMOrganizationCreate) =>
+    request<import("@/types").CRMOrganization>("/api/crm/organizations/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateOrganization: (id: number, data: import("@/types").CRMOrganizationUpdate) =>
+    request<import("@/types").CRMOrganization>(`/api/crm/organizations/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  deleteOrganization: (id: number) =>
+    request<{ message: string }>(`/api/crm/organizations/${id}`, { method: "DELETE" }),
+
+  // CRM Contacts (ATS — private)
+  getContacts: (params?: { organization_id?: number; contact_type?: string; status?: string; q?: string; needs_review?: boolean }) =>
+    request<import("@/types").CRMContact[]>(`/api/crm/contacts/${qs(params)}`),
+  getContact: (id: number) => request<import("@/types").CRMContact>(`/api/crm/contacts/${id}`),
+  createContact: (data: import("@/types").CRMContactCreate) =>
+    request<import("@/types").CRMContact>("/api/crm/contacts/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateContact: (id: number, data: import("@/types").CRMContactUpdate) =>
+    request<import("@/types").CRMContact>(`/api/crm/contacts/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  deleteContact: (id: number) => request<{ message: string }>(`/api/crm/contacts/${id}`, { method: "DELETE" }),
+
+  // CRM Activities (ATS — private)
+  getActivities: (params?: { organization_id?: number | null; contact_id?: number | null; employee_id?: number | null; job_requirement_id?: number | null; activity_type?: string }) =>
+    request<import("@/types").CRMActivity[]>(`/api/crm/activities/${qs(params)}`),
+  createActivity: (data: import("@/types").CRMActivityCreate) =>
+    request<import("@/types").CRMActivity>("/api/crm/activities/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateActivity: (id: number, data: Partial<import("@/types").CRMActivityCreate>) =>
+    request<import("@/types").CRMActivity>(`/api/crm/activities/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  deleteActivity: (id: number) => request<{ message: string }>(`/api/crm/activities/${id}`, { method: "DELETE" }),
 };

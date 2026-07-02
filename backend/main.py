@@ -7,7 +7,7 @@ import os
 load_dotenv()
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, crm_organizations, crm_contacts, crm_activities
 
 
 @asynccontextmanager
@@ -63,6 +63,9 @@ app.include_router(account.router, prefix="/api/account", tags=["Account"])
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
 app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
+app.include_router(crm_organizations.router, prefix="/api/crm/organizations", tags=["CRM Organizations (ATS)"])
+app.include_router(crm_contacts.router, prefix="/api/crm/contacts", tags=["CRM Contacts (ATS)"])
+app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
 
 
 @app.get("/", tags=["Health"])

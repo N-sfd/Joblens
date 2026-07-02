@@ -4,10 +4,16 @@ import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 // Everything else — /, /resume, /match, /cover-letter, /jobs, /dashboard,
 // /reminders, /sign-in, /sign-up, legal pages, etc. — stays public.
 const isProtectedAtsRoute = createRouteMatcher([
+  "/ats",
+  "/ats/(.*)",
   "/employees",
   "/employees/(.*)",
   "/job-requirements",
   "/job-requirements/(.*)",
+  "/crm",
+  "/crm/(.*)",
+  "/email-inbox",
+  "/email-inbox/(.*)",
   "/matches",
   "/matches/(.*)",
   "/submissions",

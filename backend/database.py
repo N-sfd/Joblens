@@ -2,11 +2,23 @@ from sqlalchemy import create_engine
 from sqlalchemy.orm import DeclarativeBase, sessionmaker
 import os
 
-DATABASE_URL = os.getenv("DATABASE_URL", "sqlite:///./aijob.db")
+
+def _normalize_database_url(raw: str) -> str:
+    """Managed Postgres providers (Render, Heroku, Supabase) often hand out
+    'postgres://' URLs, but SQLAlchemy 2.x needs the 'postgresql://' driver
+    prefix. Normalize so the same DATABASE_URL works everywhere."""
+    url = (raw or "").strip()
+    if url.startswith("postgres://"):
+        url = "postgresql://" + url[len("postgres://"):]
+    return url or "sqlite:///./aijob.db"
+
+
+DATABASE_URL = _normalize_database_url(os.getenv("DATABASE_URL", "sqlite:///./aijob.db"))
 
 engine = create_engine(
     DATABASE_URL,
-    connect_args={"check_same_thread": False} if "sqlite" in DATABASE_URL else {},
+    connect_args={"check_same_thread": False} if DATABASE_URL.startswith("sqlite") else {},
+    pool_pre_ping=not DATABASE_URL.startswith("sqlite"),
 )
 
 SessionLocal = sessionmaker(autocommit=False, autoflush=False, bind=engine)
@@ -32,6 +44,74 @@ def create_tables():
     _ensure_owner_columns()
     _ensure_reminder_type_column()
     _ensure_recruiter_name_email_columns()
+    _ensure_ats_columns()
+
+
+def _ensure_columns(table: str, columns: dict[str, str]) -> None:
+    """Additively add any missing columns to an existing table.
+
+    This mirrors the project's lightweight, no-Alembic migration approach so
+    that enhancing existing tables (employees, employee_resumes, job_requirements)
+    never drops or resets existing production data. `columns` maps column name to
+    its SQL type fragment (portable across SQLite and PostgreSQL)."""
+    from sqlalchemy import inspect, text
+
+    insp = inspect(engine)
+    if table not in insp.get_table_names():
+        return
+    existing = {c["name"] for c in insp.get_columns(table)}
+    missing = {name: ddl for name, ddl in columns.items() if name not in existing}
+    if not missing:
+        return
+    with engine.begin() as conn:
+        for name, ddl in missing.items():
+            conn.execute(text(f"ALTER TABLE {table} ADD COLUMN {name} {ddl}"))
+
+
+def _ensure_ats_columns() -> None:
+    """Add the expanded staffing CRM/ATS columns to pre-existing ATS tables."""
+    _ensure_columns("employees", {
+        "employee_code": "VARCHAR(50)",
+        "first_name": "VARCHAR(255)",
+        "middle_name": "VARCHAR(255)",
+        "last_name": "VARCHAR(255)",
+        "preferred_name": "VARCHAR(255)",
+        "personal_email": "VARCHAR(255)",
+        "company_email": "VARCHAR(255)",
+        "alternate_phone": "VARCHAR(50)",
+        "address_line_1": "VARCHAR(255)",
+        "address_line_2": "VARCHAR(255)",
+        "city": "VARCHAR(120)",
+        "state": "VARCHAR(120)",
+        "postal_code": "VARCHAR(30)",
+        "country": "VARCHAR(120)",
+        "current_location": "VARCHAR(255)",
+        "willing_to_relocate": "BOOLEAN",
+        "preferred_locations": "TEXT",
+        "work_authorization": "VARCHAR(120)",
+        "visa_expiration_date": "VARCHAR(30)",
+        "sponsorship_required": "BOOLEAN",
+        "employment_type": "VARCHAR(60)",
+        "current_employer": "VARCHAR(255)",
+        "current_job_title": "VARCHAR(255)",
+        "relevant_experience_years": "VARCHAR(50)",
+        "available_from": "VARCHAR(30)",
+        "current_rate": "VARCHAR(100)",
+        "rate_type": "VARCHAR(50)",
+        "remote_preference": "VARCHAR(60)",
+        "source": "VARCHAR(120)",
+        "linkedin_url": "VARCHAR(500)",
+        "portfolio_url": "VARCHAR(500)",
+        "created_by": "VARCHAR(255)",
+    })
+    _ensure_columns("employee_resumes", {
+        "original_filename": "VARCHAR(255)",
+        "storage_provider": "VARCHAR(50)",
+        "storage_path": "VARCHAR(500)",
+        "parsed_industries": "TEXT",
+        "version_number": "INTEGER",
+        "uploaded_by": "VARCHAR(255)",
+    })
 
 
 def _ensure_guest_id_column():
