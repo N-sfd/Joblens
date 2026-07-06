@@ -197,6 +197,33 @@ export type EmployeeCreate = Partial<Omit<Employee, "id" | "created_at" | "updat
 };
 export type EmployeeUpdate = Partial<EmployeeCreate>;
 
+export interface EmployeeListItem extends Employee {
+  resume_count: number;
+  resume_status: "None" | "Parsed" | "Failed";
+  has_primary_resume: boolean;
+}
+
+export interface EmployeeListResponse {
+  items: EmployeeListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface EmployeeListParams {
+  q?: string;
+  status?: string;
+  availability?: string;
+  work_authorization?: string;
+  primary_skill?: string;
+  location?: string;
+  employment_type?: string;
+  archived?: boolean;
+  page?: number;
+  page_size?: number;
+}
+
 export const EMPLOYEE_STATUSES = [
   "Active", "Bench", "On Project", "Available Soon", "Inactive", "Do Not Contact", "Former Employee",
 ] as const;
@@ -320,55 +347,159 @@ export interface EmployeeResume {
   parsed_total_experience: string | null;
   parsed_job_titles: string[];
   parsed_clients: string[];
+  parsed_industries: string[];
   parsed_certifications: string[];
   parsed_education: string[];
   parsed_summary: string | null;
+  parsed_data: Record<string, unknown> | null;
+  parsing_status: "parsed" | "failed" | "pending";
   is_primary: boolean;
+  version_number: number | null;
   uploaded_at: string;
   updated_at: string;
 }
 
+export interface ResumeFieldSuggestion {
+  field: string;
+  label: string;
+  current_value: string;
+  resume_value: string;
+}
+
+export interface ResumeUploadResult {
+  resume: EmployeeResume;
+  employee: Employee;
+  parsed: Record<string, unknown>;
+  parsing_status: "parsed" | "failed" | "pending";
+  applied_fields: Record<string, string>;
+  suggestions: ResumeFieldSuggestion[];
+}
+
+// Human-readable labels for employee fields auto-filled from resumes.
+export const EMPLOYEE_FIELD_LABELS: Record<string, string> = {
+  first_name: "First Name",
+  middle_name: "Middle Name",
+  last_name: "Last Name",
+  personal_email: "Personal Email",
+  phone: "Phone",
+  current_location: "Current Location",
+  current_job_title: "Current Job Title",
+  primary_skill: "Primary Skill",
+  secondary_skills: "Secondary Skills",
+  total_experience: "Total Experience (years)",
+  relevant_experience_years: "Relevant Experience (years)",
+  linkedin_url: "LinkedIn URL",
+  notes: "Professional Summary",
+};
+
+// Employee fields that may be auto-filled from a parsed resume (used for the
+// "Filled from resume" badges on the edit form).
+export const RESUME_AUTOFILL_FIELDS = Object.keys(EMPLOYEE_FIELD_LABELS);
+
 // ATS-only (private) — manually created job requirements, never exposed to
 // the public job-seeker tools above.
 export type JobRequirementWorkType = "Remote" | "Hybrid" | "Onsite";
-export type JobRequirementStatus =
-  | "New" | "Parsed" | "Ready for Match" | "Matched" | "Sent to Employee"
-  | "Interested" | "Submitted" | "Interview" | "Selected" | "Rejected" | "Closed";
-export type JobRequirementPriority = "Low" | "Medium" | "High" | "Urgent";
-export type JobRequirementSource = "Manual" | "Email Copy/Paste" | "Zoho Mail Later" | "Chrome Extension Later";
+export const JOB_REQUIREMENT_STATUSES = [
+  "New", "Needs Review", "Parsed", "Ready for Match", "Matched", "Sent to Employee",
+  "Employee Interested", "Submitted", "Interview", "Selected", "Rejected",
+  "On Hold", "Closed", "Duplicate", "Spam",
+] as const;
+export type JobRequirementStatus = typeof JOB_REQUIREMENT_STATUSES[number];
+export const JOB_REQUIREMENT_PRIORITIES = ["Low", "Medium", "High", "Urgent"] as const;
+export type JobRequirementPriority = typeof JOB_REQUIREMENT_PRIORITIES[number];
+export const JOB_REQUIREMENT_SOURCES = [
+  "Manual", "Email Copy/Paste", "Zoho Mail", "Chrome Extension", "Referral", "Other",
+] as const;
+export type JobRequirementSource = typeof JOB_REQUIREMENT_SOURCES[number];
 
 export interface JobRequirement {
   id: number;
   job_title: string;
+  external_job_id: string | null;
+  job_reference_number: string | null;
   vendor: string | null;
+  vendor_id: number | null;
   recruiter_name: string | null;
   recruiter_email: string | null;
   recruiter_phone: string | null;
+  recruiter_contact_id: number | null;
   client: string | null;
+  client_id: number | null;
   end_client: string | null;
+  end_client_id: number | null;
   location: string | null;
+  city: string | null;
+  state: string | null;
+  country: string | null;
   work_type: string | null;
+  employment_type: string | null;
+  contract_type: string | null;
   rate: string | null;
+  rate_min: string | null;
+  rate_max: string | null;
+  rate_currency: string | null;
+  rate_type: string | null;
   duration: string | null;
   visa_requirement: string | null;
+  clearance_requirement: string | null;
   required_skills: string[];
   preferred_skills: string[];
+  minimum_experience: string | null;
+  education_requirement: string | null;
+  certification_requirement: string | null;
   job_description: string | null;
   raw_email_text: string | null;
+  submission_instructions: string | null;
   submission_deadline: string | null;
+  number_of_openings: number | null;
   status: string;
   priority: string;
   source: string;
   notes: string | null;
+  vendor_name: string | null;
+  client_name: string | null;
+  end_client_name: string | null;
+  recruiter_contact_name: string | null;
+  created_by: string | null;
+  received_at: string | null;
   created_at: string;
   updated_at: string;
 }
 
-export type JobRequirementCreate = Omit<JobRequirement, "id" | "created_at" | "updated_at">;
+export type JobRequirementCreate = Omit<
+  JobRequirement,
+  "id" | "created_at" | "updated_at" | "created_by" | "vendor_name" | "client_name" | "end_client_name" | "recruiter_contact_name"
+>;
 export type JobRequirementUpdate = Partial<JobRequirementCreate>;
+
+export interface JobRequirementListParams {
+  q?: string;
+  status?: string;
+  work_type?: string;
+  priority?: string;
+  source?: string;
+  vendor?: string;
+  client?: string;
+  vendor_id?: number;
+  client_id?: number;
+  end_client_id?: number;
+  recruiter_contact_id?: number;
+  organization_id?: number;
+  page?: number;
+  page_size?: number;
+}
+
+export interface JobRequirementListResponse {
+  items: JobRequirement[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
 
 export interface JobRequirementParseResult {
   job_title: string;
+  job_reference_number: string;
   vendor: string;
   recruiter_name: string;
   recruiter_email: string;
@@ -377,11 +508,37 @@ export interface JobRequirementParseResult {
   end_client: string;
   location: string;
   work_type: string;
-  rate: string;
+  employment_type: string;
+  contract_type: string;
+  rate_min: string | null;
+  rate_max: string | null;
+  rate_currency: string;
+  rate_type: string;
   duration: string;
   visa_requirement: string;
+  clearance_requirement: string;
   required_skills: string[];
   preferred_skills: string[];
+  minimum_experience: string;
+  education_requirement: string;
+  certification_requirement: string;
   submission_deadline: string;
+  number_of_openings: number | null;
+  submission_instructions: string;
   summary: string;
+}
+
+export interface JobEmployeeMatch {
+  employee_id: number;
+  employee_name: string;
+  primary_skill: string | null;
+  match_score: number;
+  matching_skills: string[];
+  missing_skills: string[];
+  compatibility_warnings: string[];
+  match_reason: string;
+  work_authorization: string | null;
+  availability: string | null;
+  expected_rate: string | null;
+  total_experience: string | null;
 }

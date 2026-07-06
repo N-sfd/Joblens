@@ -9,6 +9,7 @@ import type { CRMOrganization, CRMContact } from "@/types";
 import { ORGANIZATION_TYPES, ORGANIZATION_STATUSES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import ActivityTimeline from "@/components/crm/ActivityTimeline";
+import RelatedJobs from "@/components/crm/RelatedJobs";
 
 export default function OrganizationDetail({ id, backPath }: { id: number; backPath: string }) {
   const router = useRouter();
@@ -156,7 +157,7 @@ export default function OrganizationDetail({ id, backPath }: { id: number; backP
                 {contacts.map((c) => (
                   <li key={c.id} className="py-2 flex items-center justify-between">
                     <div>
-                      <Link href={`/ats/contacts/${c.id}`} className="font-medium text-indigo-600 hover:text-indigo-800 text-sm">
+                      <Link href={`/ats/recruiters/${c.id}`} className="font-medium text-indigo-600 hover:text-indigo-800 text-sm">
                         {[c.first_name, c.last_name].filter(Boolean).join(" ") || "(no name)"}
                       </Link>
                       <span className="text-xs text-slate-400 ml-2">{c.contact_type}</span>
@@ -168,24 +169,12 @@ export default function OrganizationDetail({ id, backPath }: { id: number; backP
             )}
           </div>
 
-          <PlaceholderSections />
+          <RelatedJobs organizationId={id} />
         </div>
 
         <div className="space-y-5">
           <ActivityTimeline scope={{ organization_id: id }} />
         </div>
-      </div>
-    </div>
-  );
-}
-
-function PlaceholderSections() {
-  return (
-    <div className="card p-5">
-      <h3 className="font-semibold text-slate-900 mb-3">Related (coming soon)</h3>
-      <div className="grid grid-cols-2 gap-2 text-sm text-slate-400">
-        <div className="rounded-lg border border-dashed border-slate-200 p-3">Related Jobs</div>
-        <div className="rounded-lg border border-dashed border-slate-200 p-3">Submissions</div>
       </div>
     </div>
   );

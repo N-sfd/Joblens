@@ -44,12 +44,15 @@ export default function AtsDashboardPage() {
     setLoading(true);
     try {
       const [e, j, o, c] = await Promise.all([
-        api.getEmployees(),
-        api.getJobRequirements(),
+        api.getEmployees({ page_size: 100 }),
+        api.getJobRequirements({ page_size: 100 }),
         api.getOrganizations(),
         api.getContacts(),
       ]);
-      setEmployees(e); setJobs(j); setOrgs(o); setContacts(c);
+      setEmployees(e.items ?? []);
+      setJobs(j.items ?? []);
+      setOrgs(o ?? []);
+      setContacts(c ?? []);
       setError(null);
     } catch (err) {
       setError(err instanceof Error ? err.message : "Failed to load dashboard.");

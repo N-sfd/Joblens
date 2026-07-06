@@ -12,7 +12,21 @@ const isProtectedAtsRoute = createRouteMatcher([
   "/ats/(.*)",
 ]);
 
+const LEGACY_ATS_REDIRECTS: Record<string, string> = {
+  "/job-requirements": "/ats/jobs",
+  "/employees": "/ats/employees",
+};
+
 export default clerkMiddleware(async (auth, req) => {
+  const { pathname } = req.nextUrl;
+
+  for (const [legacyPrefix, targetPrefix] of Object.entries(LEGACY_ATS_REDIRECTS)) {
+    if (pathname === legacyPrefix || pathname.startsWith(`${legacyPrefix}/`)) {
+      const target = pathname.replace(legacyPrefix, targetPrefix);
+      return NextResponse.redirect(new URL(target, req.url));
+    }
+  }
+
   if (isProtectedAtsRoute(req)) {
     const { userId } = await auth();
     if (!userId) {

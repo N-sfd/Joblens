@@ -5,7 +5,7 @@ import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import {
   LayoutDashboard, Users, FileText, Briefcase, Inbox, UserRound,
-  Building2, Building, Send, CalendarCheck, BadgeCheck, Settings,
+  Building2, Building, Send, CalendarCheck, BadgeCheck, Settings, Activity,
 } from "lucide-react";
 
 const NAV: { href: string; label: string; icon: React.ElementType }[] = [
@@ -17,6 +17,7 @@ const NAV: { href: string; label: string; icon: React.ElementType }[] = [
   { href: "/ats/recruiters", label: "Recruiters", icon: UserRound },
   { href: "/ats/vendors", label: "Vendors", icon: Building2 },
   { href: "/ats/clients", label: "Clients", icon: Building },
+  { href: "/ats/activities", label: "Activities", icon: Activity },
   { href: "/ats/submissions", label: "Submissions", icon: Send },
   { href: "/ats/interviews", label: "Interviews", icon: CalendarCheck },
   { href: "/ats/offers", label: "Offers", icon: BadgeCheck },

@@ -9,6 +9,7 @@ import type { CRMContact, CRMOrganization } from "@/types";
 import { CONTACT_TYPES, CONTACT_STATUSES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import ActivityTimeline from "@/components/crm/ActivityTimeline";
+import RelatedJobs from "@/components/crm/RelatedJobs";
 
 export default function ContactDetail({ id, backPath }: { id: number; backPath: string }) {
   const router = useRouter();
@@ -148,13 +149,7 @@ export default function ContactDetail({ id, backPath }: { id: number; backPath: 
             <div><label className="label">Notes</label><textarea className="textarea" rows={3} value={contact.notes ?? ""} onChange={update("notes")} /></div>
           </div>
 
-          <div className="card p-5">
-            <h3 className="font-semibold text-slate-900 mb-3">Related (coming soon)</h3>
-            <div className="grid grid-cols-2 gap-2 text-sm text-slate-400">
-              <div className="rounded-lg border border-dashed border-slate-200 p-3">Related Jobs</div>
-              <div className="rounded-lg border border-dashed border-slate-200 p-3">Submissions</div>
-            </div>
-          </div>
+          <RelatedJobs recruiterContactId={id} />
         </div>
 
         <div className="space-y-5">

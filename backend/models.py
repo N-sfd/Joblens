@@ -201,6 +201,12 @@ class EmployeeResume(Base):
     parsed_certifications = Column(Text, nullable=True)       # JSON-encoded list[str]
     parsed_education = Column(Text, nullable=True)            # JSON-encoded list[str]
     parsed_summary = Column(Text, nullable=True)
+    # Full structured parse (spec section 5) kept as JSON for fields without a
+    # dedicated column (first/last name, current job title, linkedin, etc.).
+    parsed_data = Column(Text, nullable=True)
+    # "parsed" | "failed" | "pending" — lets the UI offer Retry Parsing without
+    # losing the uploaded file when the AI parser errors out.
+    parsing_status = Column(String(20), nullable=True, default="parsed")
     is_primary = Column(Boolean, default=True)
     version_number = Column(Integer, nullable=True, default=1)
     uploaded_by = Column(String(255), nullable=True)
@@ -218,29 +224,61 @@ class JobRequirement(Base):
     __tablename__ = "job_requirements"
 
     id = Column(Integer, primary_key=True, index=True)
+    external_job_id = Column(String(100), nullable=True, index=True)
+    job_reference_number = Column(String(100), nullable=True)
     job_title = Column(String(255), nullable=False)
+    # String names retained for quick entry; FK ids link to CRM when resolved.
     vendor = Column(String(255), nullable=True)
+    vendor_id = Column(Integer, ForeignKey("crm_organizations.id"), nullable=True, index=True)
     recruiter_name = Column(String(255), nullable=True)
     recruiter_email = Column(String(255), nullable=True)
     recruiter_phone = Column(String(50), nullable=True)
+    recruiter_contact_id = Column(Integer, ForeignKey("crm_contacts.id"), nullable=True, index=True)
     client = Column(String(255), nullable=True)
+    client_id = Column(Integer, ForeignKey("crm_organizations.id"), nullable=True, index=True)
     end_client = Column(String(255), nullable=True)
+    end_client_id = Column(Integer, ForeignKey("crm_organizations.id"), nullable=True, index=True)
     location = Column(String(255), nullable=True)
+    city = Column(String(120), nullable=True)
+    state = Column(String(120), nullable=True)
+    country = Column(String(120), nullable=True)
     work_type = Column(String(50), nullable=True)
-    rate = Column(String(100), nullable=True)
+    employment_type = Column(String(60), nullable=True)
+    contract_type = Column(String(60), nullable=True)
+    rate = Column(String(100), nullable=True)  # legacy display string, e.g. "$75/hr"
+    rate_min = Column(String(50), nullable=True)
+    rate_max = Column(String(50), nullable=True)
+    rate_currency = Column(String(10), nullable=True, default="USD")
+    rate_type = Column(String(50), nullable=True)
     duration = Column(String(100), nullable=True)
     visa_requirement = Column(String(255), nullable=True)
+    clearance_requirement = Column(String(255), nullable=True)
     required_skills = Column(Text, nullable=True)    # JSON-encoded list[str]
     preferred_skills = Column(Text, nullable=True)   # JSON-encoded list[str]
+    minimum_experience = Column(String(50), nullable=True)
+    education_requirement = Column(Text, nullable=True)
+    certification_requirement = Column(Text, nullable=True)
     job_description = Column(Text, nullable=True)
     raw_email_text = Column(Text, nullable=True)
+    submission_instructions = Column(Text, nullable=True)
     submission_deadline = Column(String(50), nullable=True)
+    number_of_openings = Column(Integer, nullable=True)
     status = Column(String(50), default="New")
     priority = Column(String(20), default="Medium")
     source = Column(String(50), default="Manual")
     notes = Column(Text, nullable=True)
+    created_by = Column(String(255), nullable=True)
+    received_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    # Explicit foreign_keys are required because three columns point at the same
+    # crm_organizations table. These resolve the linked CRM records for display.
+    vendor_org = relationship("CRMOrganization", foreign_keys=[vendor_id], viewonly=True)
+    client_org = relationship("CRMOrganization", foreign_keys=[client_id], viewonly=True)
+    end_client_org = relationship("CRMOrganization", foreign_keys=[end_client_id], viewonly=True)
+    recruiter_contact = relationship("CRMContact", foreign_keys=[recruiter_contact_id], viewonly=True)
+
 
 class CRMOrganization(Base):
     """A vendor, client, end client, or partner in the staffing CRM."""
@@ -581,6 +619,26 @@ class EmployeeResponse(EmployeeBase):
     model_config = {"from_attributes": True}
 
 
+class EmployeeListItem(EmployeeResponse):
+    """Employee row for the ATS list view — includes resume summary metadata."""
+
+    resume_count: int = 0
+    resume_status: str = "None"  # None | Parsed | Failed
+    has_primary_resume: bool = False
+
+
+class EmployeeListResponse(BaseModel):
+    items: list[EmployeeListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class EmployeeStatusUpdate(BaseModel):
+    status: str
+
+
 # --- Employee Resume (ATS) schemas ---
 
 class EmployeeResumeParseResponse(BaseModel):
@@ -615,93 +673,124 @@ class EmployeeResumeResponse(BaseModel):
     parsed_total_experience: Optional[str]
     parsed_job_titles: list[str]
     parsed_clients: list[str]
+    parsed_industries: list[str] = []
     parsed_certifications: list[str]
     parsed_education: list[str]
     parsed_summary: Optional[str]
+    parsed_data: Optional[dict] = None
+    parsing_status: str = "parsed"
     is_primary: bool
+    version_number: Optional[int] = None
     uploaded_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
 
 
+class ResumeFieldSuggestion(BaseModel):
+    """A parsed value that conflicts with an existing non-empty employee field."""
+
+    field: str
+    label: str
+    current_value: str
+    resume_value: str
+
+
+class ResumeUploadResult(BaseModel):
+    """Returned by the resume upload/reparse endpoints so the UI can show what
+    was auto-filled, what was left unchanged, and what needs manual review."""
+
+    resume: EmployeeResumeResponse
+    employee: EmployeeResponse
+    parsed: dict
+    parsing_status: str
+    applied_fields: dict[str, str] = {}
+    suggestions: list[ResumeFieldSuggestion] = []
+
+
+class ApplyResumeSuggestionsRequest(BaseModel):
+    # field name -> value the user chose to apply (only approved fields honored)
+    fields: dict[str, str] = {}
+
+
 # --- Job Requirement (ATS) schemas ---
 
-class JobRequirementCreate(BaseModel):
-    job_title: str
+class JobRequirementBase(BaseModel):
+    external_job_id: Optional[str] = None
+    job_reference_number: Optional[str] = None
     vendor: Optional[str] = None
+    vendor_id: Optional[int] = None
     recruiter_name: Optional[str] = None
     recruiter_email: Optional[str] = None
     recruiter_phone: Optional[str] = None
+    recruiter_contact_id: Optional[int] = None
     client: Optional[str] = None
+    client_id: Optional[int] = None
     end_client: Optional[str] = None
+    end_client_id: Optional[int] = None
     location: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    country: Optional[str] = None
     work_type: Optional[str] = None
+    employment_type: Optional[str] = None
+    contract_type: Optional[str] = None
     rate: Optional[str] = None
+    rate_min: Optional[str] = None
+    rate_max: Optional[str] = None
+    rate_currency: Optional[str] = None
+    rate_type: Optional[str] = None
     duration: Optional[str] = None
     visa_requirement: Optional[str] = None
+    clearance_requirement: Optional[str] = None
     required_skills: list[str] = []
     preferred_skills: list[str] = []
+    minimum_experience: Optional[str] = None
+    education_requirement: Optional[str] = None
+    certification_requirement: Optional[str] = None
     job_description: Optional[str] = None
     raw_email_text: Optional[str] = None
+    submission_instructions: Optional[str] = None
     submission_deadline: Optional[str] = None
-    status: str = "New"
+    number_of_openings: Optional[int] = None
     priority: str = "Medium"
     source: str = "Manual"
     notes: Optional[str] = None
+    received_at: Optional[datetime] = None
 
 
-class JobRequirementUpdate(BaseModel):
+class JobRequirementCreate(JobRequirementBase):
+    job_title: str
+    status: str = "New"
+
+
+class JobRequirementUpdate(JobRequirementBase):
     job_title: Optional[str] = None
-    vendor: Optional[str] = None
-    recruiter_name: Optional[str] = None
-    recruiter_email: Optional[str] = None
-    recruiter_phone: Optional[str] = None
-    client: Optional[str] = None
-    end_client: Optional[str] = None
-    location: Optional[str] = None
-    work_type: Optional[str] = None
-    rate: Optional[str] = None
-    duration: Optional[str] = None
-    visa_requirement: Optional[str] = None
-    required_skills: Optional[list[str]] = None
-    preferred_skills: Optional[list[str]] = None
-    job_description: Optional[str] = None
-    raw_email_text: Optional[str] = None
-    submission_deadline: Optional[str] = None
     status: Optional[str] = None
-    priority: Optional[str] = None
-    source: Optional[str] = None
-    notes: Optional[str] = None
 
 
-class JobRequirementResponse(BaseModel):
+class JobRequirementResponse(JobRequirementBase):
     id: int
     job_title: str
-    vendor: Optional[str]
-    recruiter_name: Optional[str]
-    recruiter_email: Optional[str]
-    recruiter_phone: Optional[str]
-    client: Optional[str]
-    end_client: Optional[str]
-    location: Optional[str]
-    work_type: Optional[str]
-    rate: Optional[str]
-    duration: Optional[str]
-    visa_requirement: Optional[str]
-    required_skills: list[str]
-    preferred_skills: list[str]
-    job_description: Optional[str]
-    raw_email_text: Optional[str]
-    submission_deadline: Optional[str]
     status: str
-    priority: str
-    source: str
-    notes: Optional[str]
+    # Resolved names for linked CRM records (populated when *_id is set).
+    vendor_name: Optional[str] = None
+    client_name: Optional[str] = None
+    end_client_name: Optional[str] = None
+    recruiter_contact_name: Optional[str] = None
+    created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class JobRequirementListResponse(BaseModel):
+    items: list[JobRequirementResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
 
 
 class JobRequirementParseRequest(BaseModel):
@@ -710,6 +799,7 @@ class JobRequirementParseRequest(BaseModel):
 
 class JobRequirementParseResponse(BaseModel):
     job_title: str = ""
+    job_reference_number: str = ""
     vendor: str = ""
     recruiter_name: str = ""
     recruiter_email: str = ""
@@ -718,15 +808,41 @@ class JobRequirementParseResponse(BaseModel):
     end_client: str = ""
     location: str = ""
     work_type: str = ""
-    rate: str = ""
+    employment_type: str = ""
+    contract_type: str = ""
+    rate_min: Optional[str] = None
+    rate_max: Optional[str] = None
+    rate_currency: str = "USD"
+    rate_type: str = ""
     duration: str = ""
     visa_requirement: str = ""
+    clearance_requirement: str = ""
     required_skills: list[str] = []
     preferred_skills: list[str] = []
+    minimum_experience: str = ""
+    education_requirement: str = ""
+    certification_requirement: str = ""
     submission_deadline: str = ""
+    number_of_openings: Optional[int] = None
+    submission_instructions: str = ""
     summary: str = ""
 
     model_config = {"from_attributes": True}
+
+
+class JobEmployeeMatchResult(BaseModel):
+    employee_id: int
+    employee_name: str
+    primary_skill: Optional[str] = None
+    match_score: int
+    matching_skills: list[str] = []
+    missing_skills: list[str] = []
+    compatibility_warnings: list[str] = []
+    match_reason: str = ""
+    work_authorization: Optional[str] = None
+    availability: Optional[str] = None
+    expected_rate: Optional[str] = None
+    total_experience: Optional[str] = None
 
 
 # --- CRM Organization schemas ---

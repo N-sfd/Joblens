@@ -21,6 +21,24 @@ function getApiBase(): string {
 const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile"];
 
 /** Build a query string (with leading `?`) from defined params; empty → "". */
+function formatApiErrorDetail(detail: unknown, fallback: string): string {
+  if (typeof detail === "string" && detail.trim()) return detail;
+  if (Array.isArray(detail)) {
+    const msgs = detail
+      .map((item) => {
+        if (typeof item === "string") return item;
+        if (item && typeof item === "object" && "msg" in item) return String((item as { msg: unknown }).msg);
+        return null;
+      })
+      .filter(Boolean);
+    if (msgs.length) return msgs.join("; ");
+  }
+  if (detail && typeof detail === "object" && "msg" in detail) {
+    return String((detail as { msg: unknown }).msg);
+  }
+  return fallback;
+}
+
 function qs(params?: Record<string, string | number | boolean | undefined | null>): string {
   if (!params) return "";
   const sp = new URLSearchParams();
@@ -60,9 +78,9 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
   }
   if (!res.ok) {
     const body = await res.text();
-    let detail = body;
+    let detail: unknown = body;
     try { detail = JSON.parse(body)?.detail ?? body; } catch {}
-    throw new Error(detail || `Request failed: ${res.status}`);
+    throw new Error(formatApiErrorDetail(detail, body || `Request failed: ${res.status}`));
   }
   return res.json();
 }
@@ -169,8 +187,11 @@ export const api = {
       body: JSON.stringify({ resume_text, job_description, company_name, tone }),
     }),
 
-  // Employees (ATS — private, behind Clerk-protected /employees routes)
-  getEmployees: () => request<import("@/types").Employee[]>("/api/employees/"),
+  // Employees (ATS — private, behind Clerk-protected /ats routes)
+  getEmployees: (params?: import("@/types").EmployeeListParams) =>
+    request<import("@/types").EmployeeListResponse>(
+      `/api/employees/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
   getEmployee: (id: number) => request<import("@/types").Employee>(`/api/employees/${id}`),
   createEmployee: (data: import("@/types").EmployeeCreate) =>
     request<import("@/types").Employee>("/api/employees/", {
@@ -180,13 +201,17 @@ export const api = {
     request<import("@/types").Employee>(`/api/employees/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
+  updateEmployeeStatus: (id: number, status: string) =>
+    request<import("@/types").Employee>(`/api/employees/${id}/status`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    }),
   deleteEmployee: (id: number) => request<{ message: string }>(`/api/employees/${id}`, { method: "DELETE" }),
 
   // Employee Resumes (ATS — private)
   uploadEmployeeResume: (employeeId: number, file: File) => {
     const form = new FormData();
     form.append("file", file);
-    return request<import("@/types").EmployeeResume>(`/api/employees/${employeeId}/resume`, {
+    return request<import("@/types").ResumeUploadResult>(`/api/employees/${employeeId}/resumes`, {
       method: "POST", body: form,
     });
   },
@@ -196,10 +221,47 @@ export const api = {
     request<import("@/types").EmployeeResume>(`/api/employees/${employeeId}/resume/latest`),
   deleteEmployeeResume: (employeeId: number, resumeId: number) =>
     request<{ message: string }>(`/api/employees/${employeeId}/resumes/${resumeId}`, { method: "DELETE" }),
+  setPrimaryEmployeeResume: (employeeId: number, resumeId: number) =>
+    request<import("@/types").EmployeeResume>(`/api/employees/${employeeId}/resumes/${resumeId}/primary`, { method: "POST" }),
+  reparseEmployeeResume: (employeeId: number, resumeId: number) =>
+    request<import("@/types").ResumeUploadResult>(`/api/employees/${employeeId}/resumes/${resumeId}/reparse`, { method: "POST" }),
+  applyResumeSuggestions: (employeeId: number, resumeId: number, fields: Record<string, string>) =>
+    request<import("@/types").Employee>(`/api/employees/${employeeId}/resumes/${resumeId}/apply-suggestions`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ fields }),
+    }),
+  // Authenticated download: fetch as blob (Authorization header required), then
+  // trigger a browser download so resume files are never publicly linkable.
+  downloadEmployeeResume: async (employeeId: number, resumeId: number, filename: string) => {
+    const base =
+      process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "").replace(/\/api\/?$/i, "") ||
+      (typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:8000" : "");
+    const token = await getClerkToken();
+    const res = await fetch(`${base}/api/employees/${employeeId}/resumes/${resumeId}/download`, {
+      headers: token ? { Authorization: `Bearer ${token}` } : {},
+      credentials: "include",
+    });
+    if (!res.ok) throw new Error("Failed to download resume.");
+    const blob = await res.blob();
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 
   // Job Requirements (ATS — private)
-  getJobRequirements: () => request<import("@/types").JobRequirement[]>("/api/job-requirements/"),
+  getJobRequirements: (params?: import("@/types").JobRequirementListParams) =>
+    request<import("@/types").JobRequirementListResponse>(
+      `/api/job-requirements/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
   getJobRequirement: (id: number) => request<import("@/types").JobRequirement>(`/api/job-requirements/${id}`),
+  getJobEmployeeMatches: (jobId: number, minScore?: number) =>
+    request<import("@/types").JobEmployeeMatch[]>(
+      `/api/job-requirements/${jobId}/matches${minScore != null ? `?min_score=${minScore}` : ""}`
+    ),
   createJobRequirement: (data: import("@/types").JobRequirementCreate) =>
     request<import("@/types").JobRequirement>("/api/job-requirements/", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),

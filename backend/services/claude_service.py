@@ -386,24 +386,48 @@ You are an ATS/staffing resume parser. Extract structured details from the resum
 Resume:
 {resume_text}
 
-Return this exact JSON structure (use "" or [] when a field can't be determined — never omit a key):
+Rules:
+- Do NOT invent or guess missing information.
+- Return empty strings, empty arrays, or null when a value is not present in the resume.
+- Preserve exact technology names, Oracle modules, software versions, certifications, and client names as written.
+- Extract only information actually found in the resume.
+
+Return this exact JSON structure (never omit a key):
 {{
-  "name": "<candidate full name>",
-  "email": "<candidate email>",
-  "phone": "<candidate phone number>",
-  "primary_skill": "<single strongest/most prominent technical skill>",
-  "skills": ["<skill>", "<skill>", "..."],
-  "total_experience": "<e.g. '5 years'>",
-  "job_titles": ["<most recent or notable job titles>"],
-  "clients": ["<client or employer names mentioned, e.g. for consultants/contractors>"],
+  "first_name": "<given name, or ''>",
+  "middle_name": "<middle name/initial, or ''>",
+  "last_name": "<family name, or ''>",
+  "full_name": "<full name as written, or ''>",
+  "email": "<candidate email, or ''>",
+  "phone": "<candidate phone number, or ''>",
+  "current_location": "<current city/state or location, or ''>",
+  "current_job_title": "<most recent/current job title, or ''>",
+  "primary_skill": "<single strongest/most prominent technical skill, or ''>",
+  "secondary_skills": ["<skill>", "<skill>", "..."],
+  "total_experience_years": <number of total years of experience as a number, or null>,
+  "relevant_experience_years": <number of relevant years for the primary skill as a number, or null>,
+  "job_titles": ["<notable job titles held>"],
+  "clients": ["<client or employer names mentioned>"],
+  "industries": ["<industries worked in, e.g. Healthcare, Banking>"],
   "certifications": ["<certification>", "..."],
   "education": ["<degree, school>", "..."],
-  "summary": "<2-3 sentence staffing-focused summary: seniority, core expertise, and the kind of role they're best suited for — useful for matching to job openings>"
+  "linkedin_url": "<LinkedIn profile URL if present, or ''>",
+  "professional_summary": "<2-3 sentence staffing-focused summary: seniority, core expertise, and the kind of role they're best suited for>"
 }}"""
 
 
+def _coerce_years(value) -> Optional[str]:
+    """Normalize an experience-years value to a display string, or None."""
+    if value is None or value == "":
+        return None
+    return str(value)
+
+
 async def parse_employee_resume(resume_text: str) -> dict:
-    """Parses a resume into structured staffing fields (see EmployeeResumeParseResponse)."""
+    """Parses a resume into structured staffing fields (see spec section 5).
+
+    Returns the full structured shape plus legacy aliases (name/skills/
+    total_experience/summary) so older callers keep working."""
     client = get_client()
     response = client.chat.completions.create(
         model=MODEL,
@@ -413,11 +437,26 @@ async def parse_employee_resume(resume_text: str) -> dict:
     )
     data = json.loads(response.choices[0].message.content)
     defaults = {
-        "name": "", "email": "", "phone": "", "primary_skill": "",
-        "skills": [], "total_experience": "", "job_titles": [],
-        "clients": [], "certifications": [], "education": [], "summary": "",
+        "first_name": "", "middle_name": "", "last_name": "", "full_name": "",
+        "email": "", "phone": "", "current_location": "", "current_job_title": "",
+        "primary_skill": "", "secondary_skills": [], "total_experience_years": None,
+        "relevant_experience_years": None, "job_titles": [], "clients": [],
+        "industries": [], "certifications": [], "education": [], "linkedin_url": "",
+        "professional_summary": "",
     }
     defaults.update(data)
+
+    # Normalize experience numbers to strings for the (string) employee columns.
+    defaults["total_experience_years"] = _coerce_years(defaults.get("total_experience_years"))
+    defaults["relevant_experience_years"] = _coerce_years(defaults.get("relevant_experience_years"))
+
+    # Legacy aliases used by existing resume-record columns.
+    defaults["name"] = defaults.get("full_name") or " ".join(
+        p for p in [defaults.get("first_name"), defaults.get("last_name")] if p
+    ).strip()
+    defaults["skills"] = defaults.get("secondary_skills") or []
+    defaults["total_experience"] = defaults.get("total_experience_years") or ""
+    defaults["summary"] = defaults.get("professional_summary") or ""
     return defaults
 
 
@@ -427,32 +466,64 @@ You are an ATS/staffing assistant parsing a recruiter email or job posting into 
 Raw text:
 {raw_text}
 
-Return this exact JSON structure (use "" or [] when a field can't be determined — never omit a key):
+Rules:
+- Do NOT invent missing information.
+- Return empty strings, empty arrays, or null when a value is not present.
+- Do NOT guess client or end_client names unless clearly stated in the text.
+
+Return this exact JSON structure (never omit a key):
 {{
   "job_title": "<job title/role>",
+  "job_reference_number": "<reference or requisition number if stated>",
   "vendor": "<staffing vendor/agency name that sent this, if any>",
   "recruiter_name": "<recruiter's name>",
   "recruiter_email": "<recruiter's email>",
   "recruiter_phone": "<recruiter's phone number>",
-  "client": "<the client company name, ONLY if clearly and explicitly stated — do not guess>",
-  "end_client": "<the end client name, ONLY if clearly and explicitly stated and different from client — do not guess>",
+  "client": "<client company name ONLY if explicitly stated>",
+  "end_client": "<end client name ONLY if explicitly stated and different from client>",
   "location": "<job location, e.g. city/state or 'Remote'>",
-  "work_type": "<one of: Remote, Hybrid, Onsite — best guess from context, or '' if unclear>",
-  "rate": "<pay rate as stated, e.g. '$75/hr' or '$140k/yr'>",
-  "duration": "<contract duration, e.g. '6 months', 'Long term'>",
-  "visa_requirement": "<visa/work authorization requirement as stated, e.g. 'USC/GC only', 'H1B OK'>",
+  "work_type": "<Remote | Hybrid | Onsite, or ''>",
+  "employment_type": "<W2 | C2C | 1099 | Contract, or ''>",
+  "contract_type": "<contract type if stated, or ''>",
+  "rate_min": "<minimum rate as number string, or null>",
+  "rate_max": "<maximum rate as number string, or null>",
+  "rate_currency": "USD",
+  "rate_type": "<hourly | annual | daily, or ''>",
+  "duration": "<contract duration, e.g. '6 months'>",
+  "visa_requirement": "<visa/work authorization requirement as stated>",
+  "clearance_requirement": "<security clearance if stated>",
   "required_skills": ["<must-have skill>", "..."],
   "preferred_skills": ["<nice-to-have skill>", "..."],
-  "submission_deadline": "<submission deadline as stated, e.g. a date or 'ASAP'>",
-  "summary": "<2-3 sentence summary of the role, useful for matching against employee profiles>"
-}}
+  "minimum_experience": "<minimum years or experience level>",
+  "education_requirement": "<degree or education requirement>",
+  "certification_requirement": "<certifications required>",
+  "submission_deadline": "<deadline as stated>",
+  "number_of_openings": <integer count or null>,
+  "submission_instructions": "<how to submit candidates>",
+  "summary": "<2-3 sentence summary useful for matching against employee profiles>"
+}}"""
 
-Important: do NOT invent a client or end_client name if the text doesn't clearly state one — leave it as "" rather than guessing."""
+
+def _format_rate(parsed: dict) -> str:
+    """Build a display rate string from parsed rate fields."""
+    if parsed.get("rate"):
+        return str(parsed["rate"])
+    lo, hi = parsed.get("rate_min"), parsed.get("rate_max")
+    currency = parsed.get("rate_currency") or "USD"
+    rtype = parsed.get("rate_type") or ""
+    suffix = {"hourly": "/hr", "annual": "/yr", "daily": "/day"}.get(rtype.lower(), "")
+    sym = "$" if currency == "USD" else f"{currency} "
+    if lo and hi and lo != hi:
+        return f"{sym}{lo}{suffix} – {sym}{hi}{suffix}"
+    if lo:
+        return f"{sym}{lo}{suffix}"
+    if hi:
+        return f"{sym}{hi}{suffix}"
+    return ""
 
 
 async def parse_job_requirement(raw_text: str) -> dict:
-    """Parses a pasted recruiter email/job description into structured fields
-    (see JobRequirementParseResponse)."""
+    """Parses a pasted recruiter email/job description into structured fields."""
     client = get_client()
     response = client.chat.completions.create(
         model=MODEL,
@@ -462,12 +533,24 @@ async def parse_job_requirement(raw_text: str) -> dict:
     )
     data = json.loads(response.choices[0].message.content)
     defaults = {
-        "job_title": "", "vendor": "", "recruiter_name": "", "recruiter_email": "",
-        "recruiter_phone": "", "client": "", "end_client": "", "location": "",
-        "work_type": "", "rate": "", "duration": "", "visa_requirement": "",
-        "required_skills": [], "preferred_skills": [], "submission_deadline": "", "summary": "",
+        "job_title": "", "job_reference_number": "", "vendor": "",
+        "recruiter_name": "", "recruiter_email": "", "recruiter_phone": "",
+        "client": "", "end_client": "", "location": "", "work_type": "",
+        "employment_type": "", "contract_type": "",
+        "rate_min": None, "rate_max": None, "rate_currency": "USD", "rate_type": "",
+        "duration": "", "visa_requirement": "", "clearance_requirement": "",
+        "required_skills": [], "preferred_skills": [],
+        "minimum_experience": "", "education_requirement": "",
+        "certification_requirement": "", "submission_deadline": "",
+        "number_of_openings": None, "submission_instructions": "", "summary": "",
     }
     defaults.update(data)
+    # Legacy alias for callers expecting a single rate string.
+    defaults["rate"] = _format_rate(defaults)
+    if defaults.get("rate_min") is not None:
+        defaults["rate_min"] = str(defaults["rate_min"])
+    if defaults.get("rate_max") is not None:
+        defaults["rate_max"] = str(defaults["rate_max"])
     return defaults
 
 

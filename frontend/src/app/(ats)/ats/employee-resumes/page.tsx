@@ -18,7 +18,7 @@ export default function EmployeeResumesPage() {
   const load = async () => {
     setLoading(true);
     try {
-      setEmployees(await api.getEmployees());
+      setEmployees((await api.getEmployees({ page_size: 100 })).items ?? []);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load employees.");
