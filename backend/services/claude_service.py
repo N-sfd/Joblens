@@ -12,8 +12,13 @@ GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 def get_client() -> OpenAI:
     global _client
     if _client is None:
+        api_key = (os.getenv("GROQ_API_KEY") or "").strip()
+        if not api_key:
+            raise ValueError(
+                "GROQ_API_KEY is not configured. Add it to backend/.env for resume and job parsing."
+            )
         _client = OpenAI(
-            api_key=os.getenv("GROQ_API_KEY"),
+            api_key=api_key,
             base_url=GROQ_BASE_URL,
         )
     return _client

@@ -542,3 +542,30 @@ export interface JobEmployeeMatch {
   expected_rate: string | null;
   total_experience: string | null;
 }
+
+export interface AtsDashboardRecentJob {
+  id: number;
+  job_title: string;
+  vendor: string | null;
+}
+
+export interface AtsDashboardRecentEmployee {
+  id: number;
+  name: string;
+  primary_skill: string | null;
+}
+
+export interface AtsDashboardStats {
+  active_employees: number;
+  bench_employees: number;
+  open_jobs: number;
+  new_email_jobs: number;
+  pending_matches: number;
+  submissions: number;
+  interviews: number;
+  offers: number;
+  organizations: number;
+  contacts: number;
+  recent_jobs: AtsDashboardRecentJob[];
+  recent_employees: AtsDashboardRecentEmployee[];
+}

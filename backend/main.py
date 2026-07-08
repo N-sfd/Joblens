@@ -7,11 +7,28 @@ import os
 load_dotenv()
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, crm_organizations, crm_contacts, crm_activities
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, crm_organizations, crm_contacts, crm_activities, ats_dashboard
+from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    if ENFORCE:
+        missing = []
+        if not CLERK_JWKS_URL:
+            missing.append("CLERK_JWKS_URL")
+        if not CLERK_ISSUER:
+            missing.append("CLERK_ISSUER")
+        if missing:
+            raise RuntimeError(
+                f"ATS_AUTH_ENFORCE=true but missing: {', '.join(missing)}. "
+                "Set Clerk env vars on Render before enabling enforcement."
+            )
+    if not os.getenv("GROQ_API_KEY", "").strip():
+        logger.warning("GROQ_API_KEY is not set — resume/job AI parsing will fail.")
     create_tables()
     yield
 
@@ -58,14 +75,14 @@ app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
 app.include_router(account.router, prefix="/api/account", tags=["Account"])
-# Private ATS data — not part of the public job-seeker tools above.
-# See backend/ats_auth.py: Clerk JWT verification is a TODO, not yet enforced.
+# Private ATS data — Clerk JWT verification via ats_auth.py (set ATS_AUTH_ENFORCE=true in production).
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
 app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
 app.include_router(crm_organizations.router, prefix="/api/crm/organizations", tags=["CRM Organizations (ATS)"])
 app.include_router(crm_contacts.router, prefix="/api/crm/contacts", tags=["CRM Contacts (ATS)"])
 app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
+app.include_router(ats_dashboard.router, prefix="/api/ats", tags=["ATS Dashboard"])
 
 
 @app.get("/", tags=["Health"])

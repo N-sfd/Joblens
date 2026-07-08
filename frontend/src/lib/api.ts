@@ -276,6 +276,9 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),
     }),
 
+  getAtsDashboardStats: () =>
+    request<import("@/types").AtsDashboardStats>("/api/ats/dashboard"),
+
   // CRM Organizations (ATS — private)
   getOrganizations: (params?: { type?: string; status?: string; q?: string; needs_review?: boolean }) =>
     request<import("@/types").CRMOrganization[]>(`/api/crm/organizations/${qs(params)}`),

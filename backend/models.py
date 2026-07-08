@@ -998,3 +998,32 @@ class CRMActivityResponse(CRMActivityBase):
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+# --- ATS Dashboard ---
+
+class AtsDashboardRecentJob(BaseModel):
+    id: int
+    job_title: str
+    vendor: Optional[str] = None
+
+
+class AtsDashboardRecentEmployee(BaseModel):
+    id: int
+    name: str
+    primary_skill: Optional[str] = None
+
+
+class AtsDashboardStats(BaseModel):
+    active_employees: int
+    bench_employees: int
+    open_jobs: int
+    new_email_jobs: int
+    pending_matches: int
+    submissions: int
+    interviews: int
+    offers: int
+    organizations: int
+    contacts: int
+    recent_jobs: list[AtsDashboardRecentJob]
+    recent_employees: list[AtsDashboardRecentEmployee]
