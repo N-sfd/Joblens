@@ -2,12 +2,13 @@ from fastapi import FastAPI
 from fastapi.middleware.cors import CORSMiddleware
 from contextlib import asynccontextmanager
 from dotenv import load_dotenv
+from pathlib import Path
 import os
 
-load_dotenv()
+load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, crm_organizations, crm_contacts, crm_activities, ats_dashboard
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 import logging
 
@@ -79,10 +80,15 @@ app.include_router(account.router, prefix="/api/account", tags=["Account"])
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
 app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
+app.include_router(job_sends.router, prefix="/api/job-sends", tags=["Job Sends (ATS)"])
+app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions (ATS)"])
+app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews (ATS)"])
+app.include_router(offers.router, prefix="/api/offers", tags=["Offers (ATS)"])
 app.include_router(crm_organizations.router, prefix="/api/crm/organizations", tags=["CRM Organizations (ATS)"])
 app.include_router(crm_contacts.router, prefix="/api/crm/contacts", tags=["CRM Contacts (ATS)"])
 app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
 app.include_router(ats_dashboard.router, prefix="/api/ats", tags=["ATS Dashboard"])
+app.include_router(zoho.router, prefix="/api/zoho", tags=["Zoho Mail (ATS)"])
 
 
 @app.get("/", tags=["Health"])

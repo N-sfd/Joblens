@@ -1,6 +1,6 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Fragment, useEffect, useState } from "react";
 import { useParams } from "next/navigation";
 import Link from "next/link";
 import { ArrowLeft, Loader2, AlertTriangle, Send } from "lucide-react";
@@ -8,6 +8,7 @@ import clsx from "clsx";
 import { api } from "@/lib/api";
 import type { JobRequirement, JobEmployeeMatch } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import SendJobModal from "@/components/SendJobModal";
 
 function scoreColor(score: number) {
   if (score >= 75) return "text-green-700 bg-green-50";
@@ -24,6 +25,8 @@ export default function JobMatchesPage() {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [minScore, setMinScore] = useState(0);
+  const [sendMatch, setSendMatch] = useState<JobEmployeeMatch | null>(null);
+  const [expandedId, setExpandedId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -70,7 +73,7 @@ export default function JobMatchesPage() {
           </select>
         </label>
         <p className="text-xs text-slate-400 ml-auto">
-          Scoring: required skills 35% · title 15% · experience 15% · industry 10% · work auth 10% · location 5% · availability 5% · rate 5%
+          Required skills 30% · Preferred 5% · Title 15% · Experience 15% · Industry 10% · Work auth 10% · Location 5% · Availability 5% · Rate 5%
         </p>
       </div>
 
@@ -91,53 +94,88 @@ export default function JobMatchesPage() {
               </thead>
               <tbody className="divide-y divide-slate-100">
                 {matches.map((m) => (
-                  <tr key={m.employee_id} className="hover:bg-slate-50 align-top">
-                    <td className="px-3 py-3">
-                      <Link href={`/ats/employees/${m.employee_id}`} className="font-semibold text-indigo-600 hover:text-indigo-800">{m.employee_name}</Link>
-                      <p className="text-xs text-slate-400 mt-0.5">{m.total_experience ?? "—"} yrs</p>
-                    </td>
-                    <td className="px-3 py-3">
-                      <span className={clsx("inline-flex px-2 py-1 rounded-lg text-sm font-bold", scoreColor(m.match_score))}>{m.match_score}%</span>
-                    </td>
-                    <td className="px-3 py-3 text-slate-600">{m.primary_skill ?? "—"}</td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-[180px]">
-                        {m.matching_skills.slice(0, 4).map((s) => (
-                          <span key={s} className="text-[11px] px-1.5 py-0.5 rounded bg-green-50 text-green-700">{s}</span>
-                        ))}
-                        {m.matching_skills.length > 4 && <span className="text-[11px] text-slate-400">+{m.matching_skills.length - 4}</span>}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3">
-                      <div className="flex flex-wrap gap-1 max-w-[160px]">
-                        {m.missing_skills.slice(0, 3).map((s) => (
-                          <span key={s} className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">{s}</span>
-                        ))}
-                      </div>
-                    </td>
-                    <td className="px-3 py-3 text-slate-500 text-xs">{m.work_authorization ?? "—"}</td>
-                    <td className="px-3 py-3 text-slate-500 text-xs">{m.availability ?? "—"}</td>
-                    <td className="px-3 py-3 text-slate-500 text-xs whitespace-nowrap">{m.expected_rate ?? "—"}</td>
-                    <td className="px-3 py-3">
-                      {m.compatibility_warnings.length > 0 ? (
-                        <span className="text-xs text-amber-700 flex items-start gap-1 max-w-[160px]" title={m.compatibility_warnings.join("; ")}>
-                          <AlertTriangle size={13} className="shrink-0 mt-0.5" />
-                          {m.compatibility_warnings[0]}
-                        </span>
-                      ) : <span className="text-xs text-slate-400">—</span>}
-                    </td>
-                    <td className="px-3 py-3">
-                      <button type="button" disabled title="Send job workflow coming in Phase 7" className="btn-secondary text-xs py-1 px-2 flex items-center gap-1 opacity-50 cursor-not-allowed">
-                        <Send size={12} /> Send Job
-                      </button>
-                    </td>
-                  </tr>
+                  <Fragment key={m.employee_id}>
+                    <tr className="hover:bg-slate-50 align-top">
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          className="font-semibold text-indigo-600 hover:text-indigo-800 text-left"
+                          onClick={() => setExpandedId(expandedId === m.employee_id ? null : m.employee_id)}
+                        >
+                          {m.employee_name}
+                        </button>
+                        <p className="text-xs text-slate-400 mt-0.5">{m.total_experience ?? "—"} yrs</p>
+                      </td>
+                      <td className="px-3 py-3">
+                        <span className={clsx("inline-flex px-2 py-1 rounded-lg text-sm font-bold", scoreColor(m.match_score))}>{m.match_score}%</span>
+                      </td>
+                      <td className="px-3 py-3 text-slate-600">{m.primary_skill ?? "—"}</td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1 max-w-[180px]">
+                          {m.matching_skills.slice(0, 4).map((s) => (
+                            <span key={s} className="text-[11px] px-1.5 py-0.5 rounded bg-green-50 text-green-700">{s}</span>
+                          ))}
+                          {(m.preferred_matching_skills ?? []).slice(0, 2).map((s) => (
+                            <span key={`p-${s}`} className="text-[11px] px-1.5 py-0.5 rounded bg-blue-50 text-blue-700">{s}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3">
+                        <div className="flex flex-wrap gap-1 max-w-[160px]">
+                          {m.missing_skills.slice(0, 3).map((s) => (
+                            <span key={s} className="text-[11px] px-1.5 py-0.5 rounded bg-red-50 text-red-700">{s}</span>
+                          ))}
+                        </div>
+                      </td>
+                      <td className="px-3 py-3 text-slate-500 text-xs">{m.work_authorization ?? "—"}</td>
+                      <td className="px-3 py-3 text-slate-500 text-xs">{m.availability ?? "—"}</td>
+                      <td className="px-3 py-3 text-slate-500 text-xs whitespace-nowrap">{m.expected_rate ?? "—"}</td>
+                      <td className="px-3 py-3">
+                        {m.compatibility_warnings.length > 0 ? (
+                          <span className="text-xs text-amber-700 flex items-start gap-1 max-w-[160px]" title={m.compatibility_warnings.join("; ")}>
+                            <AlertTriangle size={13} className="shrink-0 mt-0.5" />
+                            {m.compatibility_warnings[0]}
+                          </span>
+                        ) : <span className="text-xs text-slate-400">—</span>}
+                      </td>
+                      <td className="px-3 py-3">
+                        <button
+                          type="button"
+                          className="btn-secondary text-xs py-1 px-2 flex items-center gap-1"
+                          onClick={() => setSendMatch(m)}
+                        >
+                          <Send size={12} /> Send Job
+                        </button>
+                      </td>
+                    </tr>
+                    {expandedId === m.employee_id && m.score_breakdown && (
+                      <tr key={`${m.employee_id}-breakdown`} className="bg-slate-50/80">
+                        <td colSpan={10} className="px-4 py-3 text-xs text-slate-600">
+                          <span className="font-semibold text-slate-500 mr-2">Score breakdown:</span>
+                          {Object.entries(m.score_breakdown).map(([k, v]) => (
+                            <span key={k} className="inline-block mr-3">{k.replace(/_/g, " ")}: {v}%</span>
+                          ))}
+                          <span className="block mt-1 text-slate-500">{m.match_reason}</span>
+                        </td>
+                      </tr>
+                    )}
+                  </Fragment>
                 ))}
               </tbody>
             </table>
           </div>
         )}
       </div>
+
+      {sendMatch && job && (
+        <SendJobModal
+          jobId={jobId}
+          jobTitle={job.job_title}
+          match={sendMatch}
+          onClose={() => setSendMatch(null)}
+          onSent={load}
+        />
+      )}
     </div>
   );
 }

@@ -4,7 +4,7 @@ import os
 import re
 import uuid
 
-from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
+from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
 from fastapi.responses import FileResponse
 from sqlalchemy.orm import Session
 
@@ -18,8 +18,10 @@ from models import (
     ResumeFieldSuggestion,
     ApplyResumeSuggestionsRequest,
 )
-from ats_auth import get_current_ats_user
+from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
+from services.audit import log_audit
 from services.claude_service import parse_employee_resume
+from services.rate_limit import rate_limit_ai
 
 router = APIRouter()
 
@@ -246,10 +248,12 @@ async def _read_and_validate(file: UploadFile) -> tuple[str, bytes]:
 @router.post("/{employee_id}/resumes", response_model=ResumeUploadResult, status_code=201)
 async def upload_employee_resume(
     employee_id: int,
+    request: Request,
     file: UploadFile = File(...),
-    _: object = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
+    rate_limit_ai(request, principal.user_id)
     employee = _get_employee_or_404(db, employee_id)
     filename, content = await _read_and_validate(file)
     ext = os.path.splitext(filename)[1].lower()
@@ -296,6 +300,8 @@ async def upload_employee_resume(
         parsed = {}
     resume.parsing_status = parsing_status
 
+    if principal.user_id:
+        resume.uploaded_by = principal.user_id
     db.add(resume)
     db.flush()
 
@@ -305,6 +311,7 @@ async def upload_employee_resume(
         applied, suggestions = apply_resume_data_to_empty_employee_fields(employee, parsed)
 
     db.commit()
+    log_audit(db, "resume.uploaded", "employee_resume", resume.id, f"Uploaded resume for employee {employee_id}", principal.user_id)
     return _result(db, employee, resume, parsed, parsing_status, applied, suggestions)
 
 
@@ -312,18 +319,19 @@ async def upload_employee_resume(
 @router.post("/{employee_id}/resume", response_model=EmployeeResumeResponse, status_code=201)
 async def upload_employee_resume_legacy(
     employee_id: int,
+    request: Request,
     file: UploadFile = File(...),
-    principal: object = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
-    result = await upload_employee_resume(employee_id, file, principal, db)
+    result = await upload_employee_resume(employee_id, request, file, principal, db)
     return result.resume
 
 
 @router.get("/{employee_id}/resumes", response_model=list[EmployeeResumeResponse])
 async def list_employee_resumes(
     employee_id: int,
-    _: object = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     _get_employee_or_404(db, employee_id)
@@ -339,7 +347,7 @@ async def list_employee_resumes(
 @router.get("/{employee_id}/resume/latest", response_model=EmployeeResumeResponse)
 async def get_latest_employee_resume(
     employee_id: int,
-    _: object = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     _get_employee_or_404(db, employee_id)
@@ -358,7 +366,7 @@ async def get_latest_employee_resume(
 async def set_primary_resume(
     employee_id: int,
     resume_id: int,
-    _: object = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     resume = _get_resume_or_404(db, employee_id, resume_id)
@@ -366,6 +374,7 @@ async def set_primary_resume(
     resume.is_primary = True
     db.commit()
     db.refresh(resume)
+    log_audit(db, "resume.primary", "employee_resume", resume.id, f"Set primary resume for employee {employee_id}", principal.user_id)
     return _to_response(resume)
 
 
@@ -373,7 +382,7 @@ async def set_primary_resume(
 async def download_employee_resume(
     employee_id: int,
     resume_id: int,
-    _: object = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     resume = _get_resume_or_404(db, employee_id, resume_id)
@@ -389,9 +398,11 @@ async def download_employee_resume(
 async def reparse_employee_resume(
     employee_id: int,
     resume_id: int,
-    _: object = Depends(get_current_ats_user),
+    request: Request,
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
+    rate_limit_ai(request, principal.user_id)
     employee = _get_employee_or_404(db, employee_id)
     resume = _get_resume_or_404(db, employee_id, resume_id)
     if not resume.resume_text or len(resume.resume_text.strip()) < 50:
@@ -413,6 +424,7 @@ async def reparse_employee_resume(
         applied, suggestions = apply_resume_data_to_empty_employee_fields(employee, parsed)
 
     db.commit()
+    log_audit(db, "resume.reparsed", "employee_resume", resume.id, f"Reparsed resume for employee {employee_id}", principal.user_id)
     return _result(db, employee, resume, parsed, parsing_status, applied, suggestions)
 
 
@@ -421,7 +433,7 @@ async def apply_resume_suggestions(
     employee_id: int,
     resume_id: int,
     body: ApplyResumeSuggestionsRequest,
-    _: object = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     employee = _get_employee_or_404(db, employee_id)
@@ -434,6 +446,7 @@ async def apply_resume_suggestions(
 
     db.commit()
     db.refresh(employee)
+    log_audit(db, "resume.suggestions_applied", "employee", employee_id, "Applied resume field suggestions", principal.user_id)
     return EmployeeResponse.model_validate(employee)
 
 
@@ -441,7 +454,7 @@ async def apply_resume_suggestions(
 async def delete_employee_resume(
     employee_id: int,
     resume_id: int,
-    _: object = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     resume = _get_resume_or_404(db, employee_id, resume_id)
@@ -468,4 +481,5 @@ async def delete_employee_resume(
             latest.is_primary = True
 
     db.commit()
+    log_audit(db, "resume.deleted", "employee_resume", resume_id, f"Deleted resume for employee {employee_id}", principal.user_id)
     return {"message": "Resume deleted."}

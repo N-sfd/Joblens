@@ -341,6 +341,166 @@ class CRMContact(Base):
     organization = relationship("CRMOrganization", back_populates="contacts")
 
 
+class ZohoOAuthState(Base):
+    """Short-lived OAuth state for CSRF protection during Zoho connect."""
+
+    __tablename__ = "zoho_oauth_states"
+
+    state = Column(String(64), primary_key=True)
+    user_id = Column(String(255), nullable=False, index=True)
+    expires_at = Column(DateTime, nullable=False)
+
+
+class ZohoConnection(Base):
+    """Encrypted Zoho Mail OAuth connection for one ATS user."""
+
+    __tablename__ = "zoho_connections"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(String(255), nullable=False, unique=True, index=True)
+    zoho_account_id = Column(String(64), nullable=True)
+    mailbox_email = Column(String(255), nullable=True)
+    encrypted_refresh_token = Column(Text, nullable=True)
+    access_token = Column(Text, nullable=True)
+    token_expires_at = Column(DateTime, nullable=True)
+    api_domain = Column(String(255), nullable=True)
+    inbox_folder_id = Column(String(64), nullable=True)
+    scopes = Column(Text, nullable=True)
+    status = Column(String(50), default="Active")
+    last_sync_at = Column(DateTime, nullable=True)
+    last_error = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    imported_emails = relationship("ImportedEmail", back_populates="connection", cascade="all, delete-orphan")
+
+
+class ImportedEmail(Base):
+    """Recruiter email imported from Zoho Mail."""
+
+    __tablename__ = "imported_emails"
+
+    id = Column(Integer, primary_key=True, index=True)
+    zoho_connection_id = Column(Integer, ForeignKey("zoho_connections.id"), nullable=False, index=True)
+    zoho_message_id = Column(String(64), nullable=False, index=True)
+    folder_id = Column(String(64), nullable=True)
+    from_address = Column(String(255), nullable=True)
+    from_name = Column(String(255), nullable=True)
+    subject = Column(String(500), nullable=True)
+    body_text = Column(Text, nullable=True)
+    body_html = Column(Text, nullable=True)
+    received_at = Column(DateTime, nullable=True)
+    classification = Column(String(50), default="unclassified")
+    job_requirement_id = Column(Integer, ForeignKey("job_requirements.id"), nullable=True, index=True)
+    needs_review = Column(Boolean, default=False)
+    imported_at = Column(DateTime, default=func.now())
+
+    connection = relationship("ZohoConnection", back_populates="imported_emails")
+
+
+class JobEmployeeSend(Base):
+    """A job opportunity sent to an employee for review (Phase 7)."""
+
+    __tablename__ = "job_employee_sends"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_requirement_id = Column(Integer, ForeignKey("job_requirements.id"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    sent_by = Column(String(255), nullable=True)
+    sent_at = Column(DateTime, nullable=True)
+    message_subject = Column(String(500), nullable=True)
+    message_body = Column(Text, nullable=True)
+    delivery_status = Column(String(50), default="Draft")  # Draft, Sent, Failed
+    employee_response = Column(String(50), default="Pending")
+    response_at = Column(DateTime, nullable=True)
+    match_score_at_send = Column(Integer, nullable=True)
+    notes = Column(Text, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    job = relationship("JobRequirement", foreign_keys=[job_requirement_id], viewonly=True)
+    employee = relationship("Employee", foreign_keys=[employee_id], viewonly=True)
+
+
+SUBMISSION_STATUSES = (
+    "Draft", "Employee Contacted", "Employee Interested", "Submitted",
+    "Client Review", "Interview", "Offer", "Selected", "Rejected", "Withdrawn", "Closed",
+)
+INTERVIEW_STATUSES = ("Scheduled", "Completed", "Cancelled", "No Show")
+INTERVIEW_OUTCOMES = ("Pending", "Passed", "Failed")
+OFFER_STATUSES = ("Draft", "Extended", "Accepted", "Declined", "Withdrawn")
+ONBOARDING_STATUSES = ("Not Started", "In Progress", "Completed")
+
+
+class Submission(Base):
+    """Candidate submitted to a client/vendor for a job requirement (Phase 8)."""
+
+    __tablename__ = "submissions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    job_requirement_id = Column(Integer, ForeignKey("job_requirements.id"), nullable=False, index=True)
+    employee_id = Column(Integer, ForeignKey("employees.id"), nullable=False, index=True)
+    recruiter_contact_id = Column(Integer, ForeignKey("crm_contacts.id"), nullable=True, index=True)
+    vendor_id = Column(Integer, ForeignKey("crm_organizations.id"), nullable=True, index=True)
+    job_employee_send_id = Column(Integer, ForeignKey("job_employee_sends.id"), nullable=True, index=True)
+    submitted_rate = Column(String(100), nullable=True)
+    rate_type = Column(String(50), nullable=True)
+    submission_date = Column(DateTime, nullable=True)
+    status = Column(String(50), default="Draft", index=True)
+    vendor_reference = Column(String(255), nullable=True)
+    notes = Column(Text, nullable=True)
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    job = relationship("JobRequirement", foreign_keys=[job_requirement_id], viewonly=True)
+    employee = relationship("Employee", foreign_keys=[employee_id], viewonly=True)
+    recruiter_contact = relationship("CRMContact", foreign_keys=[recruiter_contact_id], viewonly=True)
+    vendor_org = relationship("CRMOrganization", foreign_keys=[vendor_id], viewonly=True)
+    interviews = relationship("Interview", back_populates="submission", cascade="all, delete-orphan")
+    offers = relationship("Offer", back_populates="submission", cascade="all, delete-orphan")
+
+
+class Interview(Base):
+    __tablename__ = "interviews"
+
+    id = Column(Integer, primary_key=True, index=True)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False, index=True)
+    scheduled_at = Column(DateTime, nullable=True)
+    interview_type = Column(String(60), nullable=True)
+    status = Column(String(50), default="Scheduled", index=True)
+    interviewer_name = Column(String(255), nullable=True)
+    location_or_link = Column(String(500), nullable=True)
+    notes = Column(Text, nullable=True)
+    feedback = Column(Text, nullable=True)
+    outcome = Column(String(50), default="Pending")
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    submission = relationship("Submission", back_populates="interviews")
+
+
+class Offer(Base):
+    __tablename__ = "offers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=False, index=True)
+    offered_rate = Column(String(100), nullable=True)
+    rate_type = Column(String(50), nullable=True)
+    start_date = Column(String(30), nullable=True)
+    offer_date = Column(DateTime, nullable=True)
+    expiry_date = Column(String(30), nullable=True)
+    status = Column(String(50), default="Draft", index=True)
+    onboarding_status = Column(String(50), default="Not Started")
+    notes = Column(Text, nullable=True)
+    created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+    submission = relationship("Submission", back_populates="offers")
+
+
 class CRMActivity(Base):
     """Interaction/timeline entry linked to CRM/ATS records."""
 
@@ -354,7 +514,7 @@ class CRMActivity(Base):
     contact_id = Column(Integer, ForeignKey("crm_contacts.id"), nullable=True, index=True)
     employee_id = Column(Integer, ForeignKey("employees.id"), nullable=True, index=True)
     job_requirement_id = Column(Integer, ForeignKey("job_requirements.id"), nullable=True, index=True)
-    submission_id = Column(Integer, nullable=True, index=True)
+    submission_id = Column(Integer, ForeignKey("submissions.id"), nullable=True, index=True)
     activity_date = Column(DateTime, default=func.now())
     due_date = Column(DateTime, nullable=True)
     status = Column(String(50), default="Open")
@@ -836,13 +996,66 @@ class JobEmployeeMatchResult(BaseModel):
     primary_skill: Optional[str] = None
     match_score: int
     matching_skills: list[str] = []
+    preferred_matching_skills: list[str] = []
     missing_skills: list[str] = []
     compatibility_warnings: list[str] = []
     match_reason: str = ""
+    score_breakdown: dict[str, int] = {}
     work_authorization: Optional[str] = None
     availability: Optional[str] = None
     expected_rate: Optional[str] = None
     total_experience: Optional[str] = None
+
+
+EMPLOYEE_RESPONSE_VALUES = (
+    "Pending", "Interested", "Not Interested", "Need More Information", "Not Available",
+)
+DELIVERY_STATUS_VALUES = ("Draft", "Sent", "Failed")
+
+
+class JobSendCreate(BaseModel):
+    employee_id: int
+    message_subject: Optional[str] = None
+    message_body: Optional[str] = None
+    mark_sent: bool = False
+    notes: Optional[str] = None
+
+
+class JobSendUpdate(BaseModel):
+    message_subject: Optional[str] = None
+    message_body: Optional[str] = None
+    delivery_status: Optional[str] = None
+    employee_response: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class JobSendResponse(BaseModel):
+    id: int
+    job_requirement_id: int
+    employee_id: int
+    job_title: Optional[str] = None
+    employee_name: Optional[str] = None
+    employee_email: Optional[str] = None
+    sent_by: Optional[str] = None
+    sent_at: Optional[datetime] = None
+    message_subject: Optional[str] = None
+    message_body: Optional[str] = None
+    delivery_status: str
+    employee_response: str
+    response_at: Optional[datetime] = None
+    match_score_at_send: Optional[int] = None
+    notes: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class JobSendDraftResponse(BaseModel):
+    subject: str
+    body: str
+    employee_email: Optional[str] = None
+    employee_name: Optional[str] = None
 
 
 # --- CRM Organization schemas ---
@@ -1000,6 +1213,128 @@ class CRMActivityResponse(CRMActivityBase):
     model_config = {"from_attributes": True}
 
 
+# --- Phase 8: Submissions, Interviews, Offers ---
+
+class SubmissionBase(BaseModel):
+    job_requirement_id: int
+    employee_id: int
+    recruiter_contact_id: Optional[int] = None
+    vendor_id: Optional[int] = None
+    job_employee_send_id: Optional[int] = None
+    submitted_rate: Optional[str] = None
+    rate_type: Optional[str] = None
+    submission_date: Optional[datetime] = None
+    status: str = "Draft"
+    vendor_reference: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SubmissionCreate(SubmissionBase):
+    pass
+
+
+class SubmissionUpdate(BaseModel):
+    recruiter_contact_id: Optional[int] = None
+    vendor_id: Optional[int] = None
+    submitted_rate: Optional[str] = None
+    rate_type: Optional[str] = None
+    submission_date: Optional[datetime] = None
+    status: Optional[str] = None
+    vendor_reference: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class SubmissionResponse(SubmissionBase):
+    id: int
+    job_title: Optional[str] = None
+    employee_name: Optional[str] = None
+    vendor_name: Optional[str] = None
+    recruiter_name: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class InterviewBase(BaseModel):
+    submission_id: int
+    scheduled_at: Optional[datetime] = None
+    interview_type: Optional[str] = None
+    status: str = "Scheduled"
+    interviewer_name: Optional[str] = None
+    location_or_link: Optional[str] = None
+    notes: Optional[str] = None
+    feedback: Optional[str] = None
+    outcome: str = "Pending"
+
+
+class InterviewCreate(InterviewBase):
+    pass
+
+
+class InterviewUpdate(BaseModel):
+    scheduled_at: Optional[datetime] = None
+    interview_type: Optional[str] = None
+    status: Optional[str] = None
+    interviewer_name: Optional[str] = None
+    location_or_link: Optional[str] = None
+    notes: Optional[str] = None
+    feedback: Optional[str] = None
+    outcome: Optional[str] = None
+
+
+class InterviewResponse(InterviewBase):
+    id: int
+    job_title: Optional[str] = None
+    employee_name: Optional[str] = None
+    submission_status: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class OfferBase(BaseModel):
+    submission_id: int
+    offered_rate: Optional[str] = None
+    rate_type: Optional[str] = None
+    start_date: Optional[str] = None
+    offer_date: Optional[datetime] = None
+    expiry_date: Optional[str] = None
+    status: str = "Draft"
+    onboarding_status: str = "Not Started"
+    notes: Optional[str] = None
+
+
+class OfferCreate(OfferBase):
+    pass
+
+
+class OfferUpdate(BaseModel):
+    offered_rate: Optional[str] = None
+    rate_type: Optional[str] = None
+    start_date: Optional[str] = None
+    offer_date: Optional[datetime] = None
+    expiry_date: Optional[str] = None
+    status: Optional[str] = None
+    onboarding_status: Optional[str] = None
+    notes: Optional[str] = None
+
+
+class OfferResponse(OfferBase):
+    id: int
+    job_title: Optional[str] = None
+    employee_name: Optional[str] = None
+    submission_status: Optional[str] = None
+    created_by: Optional[str] = None
+    created_at: datetime
+    updated_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
 # --- ATS Dashboard ---
 
 class AtsDashboardRecentJob(BaseModel):
@@ -1014,16 +1349,132 @@ class AtsDashboardRecentEmployee(BaseModel):
     primary_skill: Optional[str] = None
 
 
+class AtsDashboardDeadline(BaseModel):
+    id: int
+    job_title: str
+    submission_deadline: Optional[str] = None
+    vendor: Optional[str] = None
+
+
+class AtsDashboardEmailItem(BaseModel):
+    id: int
+    subject: Optional[str] = None
+    from_name: Optional[str] = None
+    classification: str
+    imported_at: datetime
+
+
+class AtsDashboardJobItem(BaseModel):
+    id: int
+    job_title: str
+    vendor: Optional[str] = None
+    status: str
+
+
+class AtsDashboardMatchItem(BaseModel):
+    job_requirement_id: int
+    employee_id: int
+    job_title: Optional[str] = None
+    employee_name: Optional[str] = None
+    match_score: Optional[int] = None
+
+
+class AtsDashboardActivityItem(BaseModel):
+    id: int
+    activity_type: str
+    subject: Optional[str] = None
+    activity_date: datetime
+    status: str
+
+
 class AtsDashboardStats(BaseModel):
+    total_employees: int = 0
     active_employees: int
     bench_employees: int
+    available_now: int = 0
     open_jobs: int
+    new_jobs_today: int = 0
     new_email_jobs: int
     pending_matches: int
     submissions: int
+    pending_employee_responses: int = 0
+    zoho_emails_awaiting_review: int = 0
     interviews: int
     offers: int
     organizations: int
     contacts: int
     recent_jobs: list[AtsDashboardRecentJob]
     recent_employees: list[AtsDashboardRecentEmployee]
+    upcoming_deadlines: list[AtsDashboardDeadline] = []
+    recent_zoho_emails: list[AtsDashboardEmailItem] = []
+    jobs_needing_review: list[AtsDashboardJobItem] = []
+    top_matches: list[AtsDashboardMatchItem] = []
+    recent_activities: list[AtsDashboardActivityItem] = []
+
+
+# --- Zoho Mail integration ---
+
+class ZohoAuthorizeResponse(BaseModel):
+    authorize_url: str
+
+
+class ZohoOAuthCallbackRequest(BaseModel):
+    code: str
+    state: str
+
+
+class ZohoConnectionStatus(BaseModel):
+    connected: bool
+    status: str = "Disconnected"
+    mailbox_email: Optional[str] = None
+    zoho_account_id: Optional[str] = None
+    last_sync_at: Optional[datetime] = None
+    last_error: Optional[str] = None
+
+
+class ZohoSyncResponse(BaseModel):
+    imported: int
+    skipped: int
+    total_fetched: int
+
+
+class ImportedEmailResponse(BaseModel):
+    id: int
+    zoho_message_id: str
+    from_address: Optional[str] = None
+    from_name: Optional[str] = None
+    subject: Optional[str] = None
+    received_at: Optional[datetime] = None
+    classification: str
+    needs_review: bool
+    job_requirement_id: Optional[int] = None
+    imported_at: datetime
+
+    model_config = {"from_attributes": True}
+
+
+class ImportedEmailDetailResponse(ImportedEmailResponse):
+    body_text: Optional[str] = None
+    body_html: Optional[str] = None
+
+
+class EmailClassificationResponse(BaseModel):
+    id: int
+    classification: str
+    reason: str
+    needs_review: bool
+
+
+class EmailClassifyBatchResponse(BaseModel):
+    classified: int
+    results: list[EmailClassificationResponse]
+
+
+class CreateJobFromEmailResponse(BaseModel):
+    email: ImportedEmailResponse
+    job: "JobRequirementResponse"
+
+
+class ImportedEmailUpdate(BaseModel):
+    classification: Optional[str] = None
+    needs_review: Optional[bool] = None

@@ -1,7 +1,8 @@
 """Transparent weighted job-to-employee matching for the ATS.
 
 Scoring weights (spec Phase 6):
-  Required skills          35%
+  Required skills          30%
+  Preferred skills          5%
   Job title similarity     15%
   Relevant experience      15%
   Industry/client exp      10%
@@ -25,7 +26,8 @@ from models import Employee, EmployeeResume, JobRequirement
 ELIGIBLE_STATUSES = {"Active", "Bench", "On Project", "Available Soon"}
 
 WEIGHTS = {
-    "required_skills": 0.35,
+    "required_skills": 0.30,
+    "preferred_skills": 0.05,
     "job_title": 0.15,
     "experience": 0.15,
     "industry_client": 0.10,
@@ -229,7 +231,6 @@ def match_employees_to_job(
     employees: list[Employee],
     primary_resumes: dict[int, EmployeeResume],
 ) -> list[dict]:
-    required = _loads(job.required_skills)
     results: list[dict] = []
 
     for emp in employees:
@@ -240,7 +241,10 @@ def match_employees_to_job(
         emp_skills = _skill_set(emp, resume)
         warnings: list[str] = []
 
-        skill_pct, matched, missing = _skill_match_score(required, emp_skills)
+        required = _loads(job.required_skills)
+        preferred = _loads(job.preferred_skills)
+        req_pct, matched, missing = _skill_match_score(required, emp_skills)
+        pref_pct, pref_matched, _ = _skill_match_score(preferred, emp_skills) if preferred else (100.0, [], [])
         title_pct = _title_score(job.job_title, emp, resume)
         exp_pct = _experience_score(job.minimum_experience, emp, resume)
         ind_pct = _industry_client_score(job, resume)
@@ -250,8 +254,21 @@ def match_employees_to_job(
         rate_pct, rate_warn = _rate_score(job, emp)
         warnings.extend(auth_warn + loc_warn + avail_warn + rate_warn)
 
+        breakdown = {
+            "required_skills": round(req_pct),
+            "preferred_skills": round(pref_pct),
+            "job_title": round(title_pct),
+            "experience": round(exp_pct),
+            "industry_client": round(ind_pct),
+            "work_auth": round(auth_pct),
+            "location": round(loc_pct),
+            "availability": round(avail_pct),
+            "rate": round(rate_pct),
+        }
+
         score = round(
-            skill_pct * WEIGHTS["required_skills"]
+            req_pct * WEIGHTS["required_skills"]
+            + pref_pct * WEIGHTS["preferred_skills"]
             + title_pct * WEIGHTS["job_title"]
             + exp_pct * WEIGHTS["experience"]
             + ind_pct * WEIGHTS["industry_client"]
@@ -272,6 +289,8 @@ def match_employees_to_job(
         reason_parts = []
         if matched:
             reason_parts.append(f"Matches {len(matched)}/{len(required) or len(matched)} required skills")
+        if pref_matched:
+            reason_parts.append(f"Matches {len(pref_matched)}/{len(preferred)} preferred skills")
         if title_pct >= 60:
             reason_parts.append("Relevant job title experience")
         if exp_pct >= 80:
@@ -285,9 +304,11 @@ def match_employees_to_job(
             "primary_skill": emp.primary_skill,
             "match_score": score,
             "matching_skills": matched,
+            "preferred_matching_skills": pref_matched,
             "missing_skills": missing,
             "compatibility_warnings": warnings,
             "match_reason": "; ".join(reason_parts),
+            "score_breakdown": breakdown,
             "work_authorization": emp.visa_status or emp.work_authorization,
             "availability": emp.availability,
             "expected_rate": emp.expected_rate,

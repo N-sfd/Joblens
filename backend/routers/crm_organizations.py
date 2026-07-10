@@ -10,7 +10,7 @@ from models import (
     CRMOrganizationUpdate,
     CRMOrganizationResponse,
 )
-from ats_auth import get_current_ats_user
+from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
 from services.audit import log_audit
 
 router = APIRouter()
@@ -37,7 +37,7 @@ def _get_or_404(db: Session, org_id: int) -> CRMOrganization:
 @router.post("/", response_model=CRMOrganizationResponse, status_code=201)
 async def create_organization(
     body: CRMOrganizationCreate,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     data = body.model_dump()
@@ -47,7 +47,7 @@ async def create_organization(
     db.add(org)
     db.commit()
     db.refresh(org)
-    log_audit(db, "organization.created", "organization", org.id, f"Created organization {org.organization_name}")
+    log_audit(db, "organization.created", "organization", org.id, f"Created organization {org.organization_name}", principal.user_id)
     return org
 
 
@@ -57,7 +57,7 @@ async def list_organizations(
     status: Optional[str] = Query(None),
     q: Optional[str] = Query(None, description="Search organization name"),
     needs_review: Optional[bool] = Query(None),
-    _: None = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(CRMOrganization)
@@ -76,7 +76,7 @@ async def list_organizations(
 @router.get("/{org_id}", response_model=CRMOrganizationResponse)
 async def get_organization(
     org_id: int,
-    _: None = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     return _get_or_404(db, org_id)
@@ -86,7 +86,7 @@ async def get_organization(
 async def update_organization(
     org_id: int,
     body: CRMOrganizationUpdate,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     org = _get_or_404(db, org_id)
@@ -94,19 +94,19 @@ async def update_organization(
         setattr(org, key, value)
     db.commit()
     db.refresh(org)
-    log_audit(db, "organization.updated", "organization", org.id, f"Updated organization {org.organization_name}")
+    log_audit(db, "organization.updated", "organization", org.id, f"Updated organization {org.organization_name}", principal.user_id)
     return org
 
 
 @router.delete("/{org_id}")
 async def delete_organization(
     org_id: int,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     org = _get_or_404(db, org_id)
     name = org.organization_name
     db.delete(org)
     db.commit()
-    log_audit(db, "organization.deleted", "organization", org_id, f"Deleted organization {name}")
+    log_audit(db, "organization.deleted", "organization", org_id, f"Deleted organization {name}", principal.user_id)
     return {"message": "Organization deleted."}

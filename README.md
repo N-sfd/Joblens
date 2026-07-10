@@ -78,19 +78,15 @@ App: http://localhost:3000
 
 ## Deploy for Free
 
-### Backend → Render
+See **[PRODUCTION.md](./PRODUCTION.md)** for the current Postgres + Clerk + Zoho production checklist.
+
+### Backend → Render (summary)
 
 1. Push this repo to GitHub.
-2. Go to [render.com](https://render.com) → **New Web Service** → connect repo.
-3. Set **Root Directory** to `backend`.
-4. Set **Build Command**: `pip install -r requirements.txt`
-5. Set **Start Command**: `uvicorn main:app --host 0.0.0.0 --port $PORT`
-6. Add environment variables in Render dashboard:
-   - `ANTHROPIC_API_KEY` = your key
-   - `ALLOWED_ORIGINS` = your Vercel site, e.g. `https://joblens-rosy.vercel.app` (scheme required for browsers; hostname-only like `myapp.vercel.app` is OK — the API normalizes it to `https://…`)
-7. Add a **Disk** (1 GB) mounted at `/opt/render/project/src/backend` for SQLite persistence.
-
-Alternatively, use the `render.yaml` in the repo root for one-click deploy.
+2. Render → **Blueprint** using `render.yaml` (creates Postgres + web service), **or** New Web Service with Root Directory `backend`.
+3. Start command: `python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT`
+4. Set secrets: `GROQ_API_KEY`, `ALLOWED_ORIGINS`, Clerk, Zoho, `TOKEN_ENCRYPTION_KEY`. Keep `ATS_AUTH_ENFORCE=true`.
+5. Confirm `https://<service>.onrender.com/health`.
 
 ### Frontend → Vercel
 
@@ -99,8 +95,9 @@ Alternatively, use the `render.yaml` in the repo root for one-click deploy.
 3. Add **one** of these (required — otherwise the UI calls `localhost` and shows “Failed to fetch”):
    - **Recommended:** `BACKEND_URL` = your Render **service root only**, e.g. `https://joblens-api.onrender.com` — **do not** add `/api` (that would produce `/api/api/...` and **Not Found**). The app proxies `/api/*` to FastAPI via `app/api/[[...path]]` at **request time** (set `BACKEND_URL` on Vercel and redeploy).
    - **Alternative:** `NEXT_PUBLIC_API_URL` = the same backend URL. The browser calls the API directly; use **https** and set `ALLOWED_ORIGINS` on the backend to your Vercel site.
-4. Redeploy after changing env vars so serverless picks up `BACKEND_URL`.
-5. Deploy — Vercel auto-detects Next.js.
+4. Add Clerk keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`).
+5. Redeploy after changing env vars so serverless picks up `BACKEND_URL`.
+6. Deploy — Vercel auto-detects Next.js.
 
 ---
 

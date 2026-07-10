@@ -10,7 +10,7 @@ from models import (
     CRMActivityUpdate,
     CRMActivityResponse,
 )
-from ats_auth import get_current_ats_user
+from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
 from services.audit import log_audit
 
 router = APIRouter()
@@ -26,13 +26,17 @@ def _get_or_404(db: Session, activity_id: int) -> CRMActivity:
 @router.post("/", response_model=CRMActivityResponse, status_code=201)
 async def create_activity(
     body: CRMActivityCreate,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
-    activity = CRMActivity(**body.model_dump())
+    data = body.model_dump()
+    if principal.user_id:
+        data["created_by"] = principal.user_id
+    activity = CRMActivity(**data)
     db.add(activity)
     db.commit()
     db.refresh(activity)
+    log_audit(db, "activity.created", "activity", activity.id, activity.subject or activity.activity_type, principal.user_id)
     return activity
 
 
@@ -44,7 +48,7 @@ async def list_activities(
     job_requirement_id: Optional[int] = Query(None),
     activity_type: Optional[str] = Query(None),
     limit: int = Query(100, le=500),
-    _: None = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(CRMActivity)
@@ -64,7 +68,7 @@ async def list_activities(
 @router.get("/{activity_id}", response_model=CRMActivityResponse)
 async def get_activity(
     activity_id: int,
-    _: None = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     return _get_or_404(db, activity_id)
@@ -74,7 +78,7 @@ async def get_activity(
 async def update_activity(
     activity_id: int,
     body: CRMActivityUpdate,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     activity = _get_or_404(db, activity_id)
@@ -82,17 +86,18 @@ async def update_activity(
         setattr(activity, key, value)
     db.commit()
     db.refresh(activity)
+    log_audit(db, "activity.updated", "activity", activity.id, activity.subject or activity.activity_type, principal.user_id)
     return activity
 
 
 @router.delete("/{activity_id}")
 async def delete_activity(
     activity_id: int,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     activity = _get_or_404(db, activity_id)
     db.delete(activity)
     db.commit()
-    log_audit(db, "activity.deleted", "activity", activity_id, "Deleted activity")
+    log_audit(db, "activity.deleted", "activity", activity_id, "Deleted activity", principal.user_id)
     return {"message": "Activity deleted."}

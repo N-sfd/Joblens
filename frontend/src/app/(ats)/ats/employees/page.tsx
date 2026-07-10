@@ -4,7 +4,7 @@ import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useRouter } from "next/navigation";
 import {
-  Plus, Loader2, Search, ChevronLeft, ChevronRight, Upload, Pencil, Archive, MoreHorizontal, UserRound,
+  Plus, Loader2, Search, ChevronLeft, ChevronRight, Upload, Pencil, Archive, MoreHorizontal, UserRound, FileUp,
 } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
@@ -127,9 +127,14 @@ export default function EmployeesPage() {
           <h1 className="page-title">Employees</h1>
           <p className="page-subtitle">Consultants and employees available for job matching.</p>
         </div>
-        <Link href="/ats/employees/new" className="btn-primary flex items-center gap-2 shrink-0">
-          <Plus size={16} /> Add Employee
-        </Link>
+        <div className="flex flex-wrap gap-2 shrink-0">
+          <Link href="/ats/employees/new-from-resume" className="btn-secondary flex items-center gap-2">
+            <FileUp size={16} /> Add from Resume
+          </Link>
+          <Link href="/ats/employees/new" className="btn-primary flex items-center gap-2">
+            <Plus size={16} /> Add Employee
+          </Link>
+        </div>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => load(filters)} className="mb-4" />}

@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -19,9 +19,11 @@ from models import (
     JobRequirementParseResponse,
     JobEmployeeMatchResult,
 )
-from ats_auth import AtsPrincipal, get_current_ats_user
+from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
+from services.audit import log_audit
 from services.claude_service import parse_job_requirement
 from services.job_employee_match import match_employees_to_job
+from services.rate_limit import rate_limit_ai
 
 router = APIRouter()
 
@@ -176,8 +178,10 @@ def _auto_link_crm(db: Session, data: dict) -> dict:
 @router.post("/parse", response_model=JobRequirementParseResponse)
 async def parse_job_requirement_text(
     body: JobRequirementParseRequest,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    request: Request,
+    principal: AtsPrincipal = Depends(require_writer),
 ):
+    rate_limit_ai(request, principal.user_id)
     if len(body.raw_text.strip()) < 20:
         raise HTTPException(status_code=422, detail="Paste more of the job email/description to parse.")
     try:
@@ -190,7 +194,7 @@ async def parse_job_requirement_text(
 @router.post("/", response_model=JobRequirementResponse, status_code=201)
 async def create_job_requirement(
     body: JobRequirementCreate,
-    principal: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     data = _prepare_create_data(body.model_dump())
@@ -201,6 +205,7 @@ async def create_job_requirement(
     db.add(job)
     db.commit()
     db.refresh(job)
+    log_audit(db, "job.created", "job_requirement", job.id, f"Created job {job.job_title}", principal.user_id)
     return _to_response(job)
 
 
@@ -326,7 +331,7 @@ async def get_job_employee_matches(
 async def update_job_requirement(
     job_id: int,
     body: JobRequirementUpdate,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     job = _get_job_or_404(db, job_id)
@@ -350,16 +355,19 @@ async def update_job_requirement(
 
     db.commit()
     db.refresh(job)
+    log_audit(db, "job.updated", "job_requirement", job.id, f"Updated job {job.job_title}", principal.user_id)
     return _to_response(job)
 
 
 @router.delete("/{job_id}")
 async def delete_job_requirement(
     job_id: int,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     job = _get_job_or_404(db, job_id)
+    title = job.job_title
     db.delete(job)
     db.commit()
+    log_audit(db, "job.deleted", "job_requirement", job_id, f"Deleted job {title}", principal.user_id)
     return {"message": "Job requirement deleted."}

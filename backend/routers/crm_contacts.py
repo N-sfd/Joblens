@@ -11,7 +11,7 @@ from models import (
     CRMContactUpdate,
     CRMContactResponse,
 )
-from ats_auth import get_current_ats_user
+from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
 from services.audit import log_audit
 
 router = APIRouter()
@@ -41,7 +41,7 @@ def _get_or_404(db: Session, contact_id: int) -> CRMContact:
 @router.post("/", response_model=CRMContactResponse, status_code=201)
 async def create_contact(
     body: CRMContactCreate,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     data = body.model_dump()
@@ -54,8 +54,11 @@ async def create_contact(
     db.add(contact)
     db.commit()
     db.refresh(contact)
-    log_audit(db, "contact.created", "contact", contact.id,
-              f"Created contact {contact.first_name or ''} {contact.last_name or ''}".strip())
+    log_audit(
+        db, "contact.created", "contact", contact.id,
+        f"Created contact {contact.first_name or ''} {contact.last_name or ''}".strip(),
+        principal.user_id,
+    )
     return _to_response(db, contact)
 
 
@@ -66,7 +69,7 @@ async def list_contacts(
     status: Optional[str] = Query(None),
     q: Optional[str] = Query(None),
     needs_review: Optional[bool] = Query(None),
-    _: None = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(CRMContact)
@@ -92,7 +95,7 @@ async def list_contacts(
 @router.get("/{contact_id}", response_model=CRMContactResponse)
 async def get_contact(
     contact_id: int,
-    _: None = Depends(get_current_ats_user),
+    _: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     return _to_response(db, _get_or_404(db, contact_id))
@@ -102,7 +105,7 @@ async def get_contact(
 async def update_contact(
     contact_id: int,
     body: CRMContactUpdate,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     contact = _get_or_404(db, contact_id)
@@ -121,18 +124,18 @@ async def update_contact(
         setattr(contact, key, value)
     db.commit()
     db.refresh(contact)
-    log_audit(db, "contact.updated", "contact", contact.id, "Updated contact")
+    log_audit(db, "contact.updated", "contact", contact.id, "Updated contact", principal.user_id)
     return _to_response(db, contact)
 
 
 @router.delete("/{contact_id}")
 async def delete_contact(
     contact_id: int,
-    _: None = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     contact = _get_or_404(db, contact_id)
     db.delete(contact)
     db.commit()
-    log_audit(db, "contact.deleted", "contact", contact_id, "Deleted contact")
+    log_audit(db, "contact.deleted", "contact", contact_id, "Deleted contact", principal.user_id)
     return {"message": "Contact deleted."}

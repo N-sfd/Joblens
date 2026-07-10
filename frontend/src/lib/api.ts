@@ -51,7 +51,7 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
 
 // Private ATS/CRM endpoints — these carry the Clerk session JWT for backend
 // verification (see ats_auth.py). Public job-seeker endpoints do not.
-const ATS_PREFIXES = ["/api/employees", "/api/job-requirements", "/api/crm", "/api/ats", "/api/zoho"];
+const ATS_PREFIXES = ["/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/interviews", "/api/offers", "/api/crm", "/api/ats", "/api/zoho"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
@@ -206,6 +206,11 @@ export const api = {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
     }),
   deleteEmployee: (id: number) => request<{ message: string }>(`/api/employees/${id}`, { method: "DELETE" }),
+  parseEmployeeResume: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<import("@/types").EmployeeResumeParsed>(`/api/employees/parse-resume`, { method: "POST", body: form });
+  },
 
   // Employee Resumes (ATS — private)
   uploadEmployeeResume: (employeeId: number, file: File) => {
@@ -262,6 +267,62 @@ export const api = {
     request<import("@/types").JobEmployeeMatch[]>(
       `/api/job-requirements/${jobId}/matches${minScore != null ? `?min_score=${minScore}` : ""}`
     ),
+  getJobSends: (params?: { job_requirement_id?: number; employee_id?: number; employee_response?: string; delivery_status?: string }) =>
+    request<import("@/types").JobSend[]>(`/api/job-sends/${qs(params)}`),
+  getJobSendDraft: (jobRequirementId: number, employeeId: number) =>
+    request<import("@/types").JobSendDraft>(
+      `/api/job-sends/draft${qs({ job_requirement_id: jobRequirementId, employee_id: employeeId })}`,
+      { method: "POST" },
+    ),
+  createJobSend: (jobRequirementId: number, data: { employee_id: number; message_subject?: string; message_body?: string; mark_sent?: boolean; notes?: string }) =>
+    request<import("@/types").JobSend>(`/api/job-sends/${qs({ job_requirement_id: jobRequirementId })}`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  updateJobSend: (id: number, data: { message_subject?: string; message_body?: string; delivery_status?: string; employee_response?: string; notes?: string }) =>
+    request<import("@/types").JobSend>(`/api/job-sends/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
+  getSubmissions: (params?: { job_requirement_id?: number; employee_id?: number; status?: string; active_only?: boolean }) =>
+    request<import("@/types").Submission[]>(`/api/submissions/${qs(params)}`),
+  getSubmission: (id: number) => request<import("@/types").Submission>(`/api/submissions/${id}`),
+  createSubmission: (data: import("@/types").SubmissionCreate) =>
+    request<import("@/types").Submission>("/api/submissions/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  createSubmissionFromJobSend: (sendId: number) =>
+    request<import("@/types").Submission>(`/api/submissions/from-job-send/${sendId}`, { method: "POST" }),
+  updateSubmission: (id: number, data: import("@/types").SubmissionUpdate) =>
+    request<import("@/types").Submission>(`/api/submissions/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+
+  getInterviews: (params?: { submission_id?: number; status?: string }) =>
+    request<import("@/types").Interview[]>(`/api/interviews/${qs(params)}`),
+  createInterview: (data: import("@/types").InterviewCreate) =>
+    request<import("@/types").Interview>("/api/interviews/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateInterview: (id: number, data: import("@/types").InterviewUpdate) =>
+    request<import("@/types").Interview>(`/api/interviews/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+
+  getOffers: (params?: { submission_id?: number; status?: string }) =>
+    request<import("@/types").Offer[]>(`/api/offers/${qs(params)}`),
+  createOffer: (data: import("@/types").OfferCreate) =>
+    request<import("@/types").Offer>("/api/offers/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateOffer: (id: number, data: import("@/types").OfferUpdate) =>
+    request<import("@/types").Offer>(`/api/offers/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+
   createJobRequirement: (data: import("@/types").JobRequirementCreate) =>
     request<import("@/types").JobRequirement>("/api/job-requirements/", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
@@ -278,6 +339,47 @@ export const api = {
 
   getAtsDashboardStats: () =>
     request<import("@/types").AtsDashboardStats>("/api/ats/dashboard"),
+
+  // Zoho Mail (ATS — private)
+  getZohoConnection: () =>
+    request<import("@/types").ZohoConnectionStatus>("/api/zoho/connection"),
+  getZohoAuthorizeUrl: () =>
+    request<{ authorize_url: string }>("/api/zoho/oauth/authorize"),
+  completeZohoOAuth: (code: string, state: string) =>
+    request<import("@/types").ZohoConnectionStatus>("/api/zoho/oauth/callback", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ code, state }),
+    }),
+  disconnectZoho: () =>
+    request<import("@/types").ZohoConnectionStatus>("/api/zoho/connection", { method: "DELETE" }),
+  syncZohoMail: () =>
+    request<import("@/types").ZohoSyncResponse>("/api/zoho/sync", { method: "POST" }),
+  getImportedEmails: (params?: { classification?: string; needs_review?: boolean; limit?: number }) =>
+    request<import("@/types").ImportedEmail[]>(`/api/zoho/emails${qs(params)}`),
+  getImportedEmail: (id: number) =>
+    request<import("@/types").ImportedEmailDetail>(`/api/zoho/emails/${id}`),
+  classifyImportedEmail: (id: number) =>
+    request<import("@/types").EmailClassificationResult>(`/api/zoho/emails/${id}/classify`, { method: "POST" }),
+  classifyUnclassifiedEmails: (limit?: number) =>
+    request<import("@/types").EmailClassifyBatchResult>(
+      `/api/zoho/emails/classify-unclassified${qs({ limit })}`,
+      { method: "POST" },
+    ),
+  parseImportedEmail: (id: number) =>
+    request<import("@/types").JobRequirementParseResult>(`/api/zoho/emails/${id}/parse`, { method: "POST" }),
+  createJobFromEmail: (id: number, data: import("@/types").JobRequirementCreate) =>
+    request<import("@/types").CreateJobFromEmailResult>(`/api/zoho/emails/${id}/create-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  updateImportedEmail: (id: number, data: { classification?: string; needs_review?: boolean }) =>
+    request<import("@/types").ImportedEmail>(`/api/zoho/emails/${id}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
 
   // CRM Organizations (ATS — private)
   getOrganizations: (params?: { type?: string; status?: string; q?: string; needs_review?: boolean }) =>

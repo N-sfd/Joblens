@@ -197,6 +197,32 @@ export type EmployeeCreate = Partial<Omit<Employee, "id" | "created_at" | "updat
 };
 export type EmployeeUpdate = Partial<EmployeeCreate>;
 
+export interface EmployeeResumeParsed {
+  first_name?: string;
+  middle_name?: string;
+  last_name?: string;
+  full_name?: string;
+  name?: string;
+  email?: string;
+  phone?: string;
+  current_location?: string;
+  current_job_title?: string;
+  primary_skill?: string;
+  secondary_skills?: string[];
+  skills?: string[];
+  total_experience_years?: number | string | null;
+  total_experience?: string;
+  relevant_experience_years?: number | string | null;
+  job_titles?: string[];
+  clients?: string[];
+  industries?: string[];
+  certifications?: string[];
+  education?: string[];
+  linkedin_url?: string;
+  professional_summary?: string;
+  summary?: string;
+}
+
 export interface EmployeeListItem extends Employee {
   resume_count: number;
   resume_status: "None" | "Parsed" | "Failed";
@@ -534,13 +560,190 @@ export interface JobEmployeeMatch {
   primary_skill: string | null;
   match_score: number;
   matching_skills: string[];
+  preferred_matching_skills: string[];
   missing_skills: string[];
   compatibility_warnings: string[];
   match_reason: string;
+  score_breakdown: Record<string, number>;
   work_authorization: string | null;
   availability: string | null;
   expected_rate: string | null;
   total_experience: string | null;
+}
+
+export const EMPLOYEE_RESPONSE_VALUES = [
+  "Pending", "Interested", "Not Interested", "Need More Information", "Not Available",
+] as const;
+export type EmployeeResponse = typeof EMPLOYEE_RESPONSE_VALUES[number];
+
+export interface JobSend {
+  id: number;
+  job_requirement_id: number;
+  employee_id: number;
+  job_title: string | null;
+  employee_name: string | null;
+  employee_email: string | null;
+  sent_by: string | null;
+  sent_at: string | null;
+  message_subject: string | null;
+  message_body: string | null;
+  delivery_status: string;
+  employee_response: string;
+  response_at: string | null;
+  match_score_at_send: number | null;
+  notes: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface JobSendDraft {
+  subject: string;
+  body: string;
+  employee_email: string | null;
+  employee_name: string | null;
+}
+
+export const SUBMISSION_STATUSES = [
+  "Draft", "Employee Contacted", "Employee Interested", "Submitted",
+  "Client Review", "Interview", "Offer", "Selected", "Rejected", "Withdrawn", "Closed",
+] as const;
+export type SubmissionStatus = typeof SUBMISSION_STATUSES[number];
+
+export interface Submission {
+  id: number;
+  job_requirement_id: number;
+  employee_id: number;
+  recruiter_contact_id: number | null;
+  vendor_id: number | null;
+  job_employee_send_id: number | null;
+  submitted_rate: string | null;
+  rate_type: string | null;
+  submission_date: string | null;
+  status: string;
+  vendor_reference: string | null;
+  notes: string | null;
+  job_title: string | null;
+  employee_name: string | null;
+  vendor_name: string | null;
+  recruiter_name: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface SubmissionCreate {
+  job_requirement_id: number;
+  employee_id: number;
+  recruiter_contact_id?: number | null;
+  vendor_id?: number | null;
+  job_employee_send_id?: number | null;
+  submitted_rate?: string | null;
+  rate_type?: string | null;
+  submission_date?: string | null;
+  status?: string;
+  vendor_reference?: string | null;
+  notes?: string | null;
+}
+
+export interface SubmissionUpdate {
+  recruiter_contact_id?: number | null;
+  vendor_id?: number | null;
+  submitted_rate?: string | null;
+  rate_type?: string | null;
+  submission_date?: string | null;
+  status?: string;
+  vendor_reference?: string | null;
+  notes?: string | null;
+}
+
+export const INTERVIEW_STATUSES = ["Scheduled", "Completed", "Cancelled", "No Show"] as const;
+export const INTERVIEW_OUTCOMES = ["Pending", "Passed", "Failed"] as const;
+
+export interface Interview {
+  id: number;
+  submission_id: number;
+  scheduled_at: string | null;
+  interview_type: string | null;
+  status: string;
+  interviewer_name: string | null;
+  location_or_link: string | null;
+  notes: string | null;
+  feedback: string | null;
+  outcome: string;
+  job_title: string | null;
+  employee_name: string | null;
+  submission_status: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface InterviewCreate {
+  submission_id: number;
+  scheduled_at?: string | null;
+  interview_type?: string | null;
+  status?: string;
+  interviewer_name?: string | null;
+  location_or_link?: string | null;
+  notes?: string | null;
+  feedback?: string | null;
+  outcome?: string;
+}
+
+export interface InterviewUpdate {
+  scheduled_at?: string | null;
+  interview_type?: string | null;
+  status?: string;
+  interviewer_name?: string | null;
+  location_or_link?: string | null;
+  notes?: string | null;
+  feedback?: string | null;
+  outcome?: string;
+}
+
+export const OFFER_STATUSES = ["Draft", "Extended", "Accepted", "Declined", "Withdrawn"] as const;
+export const ONBOARDING_STATUSES = ["Not Started", "In Progress", "Completed"] as const;
+
+export interface Offer {
+  id: number;
+  submission_id: number;
+  offered_rate: string | null;
+  rate_type: string | null;
+  start_date: string | null;
+  offer_date: string | null;
+  expiry_date: string | null;
+  status: string;
+  onboarding_status: string;
+  notes: string | null;
+  job_title: string | null;
+  employee_name: string | null;
+  submission_status: string | null;
+  created_by: string | null;
+  created_at: string;
+  updated_at: string;
+}
+
+export interface OfferCreate {
+  submission_id: number;
+  offered_rate?: string | null;
+  rate_type?: string | null;
+  start_date?: string | null;
+  offer_date?: string | null;
+  expiry_date?: string | null;
+  status?: string;
+  onboarding_status?: string;
+  notes?: string | null;
+}
+
+export interface OfferUpdate {
+  offered_rate?: string | null;
+  rate_type?: string | null;
+  start_date?: string | null;
+  offer_date?: string | null;
+  expiry_date?: string | null;
+  status?: string;
+  onboarding_status?: string;
+  notes?: string | null;
 }
 
 export interface AtsDashboardRecentJob {
@@ -555,17 +758,120 @@ export interface AtsDashboardRecentEmployee {
   primary_skill: string | null;
 }
 
+export interface AtsDashboardDeadline {
+  id: number;
+  job_title: string;
+  submission_deadline: string | null;
+  vendor: string | null;
+}
+
+export interface AtsDashboardEmailItem {
+  id: number;
+  subject: string | null;
+  from_name: string | null;
+  classification: string;
+  imported_at: string;
+}
+
+export interface AtsDashboardJobItem {
+  id: number;
+  job_title: string;
+  vendor: string | null;
+  status: string;
+}
+
+export interface AtsDashboardMatchItem {
+  job_requirement_id: number;
+  employee_id: number;
+  job_title: string | null;
+  employee_name: string | null;
+  match_score: number | null;
+}
+
+export interface AtsDashboardActivityItem {
+  id: number;
+  activity_type: string;
+  subject: string | null;
+  activity_date: string;
+  status: string;
+}
+
 export interface AtsDashboardStats {
+  total_employees?: number;
   active_employees: number;
   bench_employees: number;
+  available_now?: number;
   open_jobs: number;
+  new_jobs_today?: number;
   new_email_jobs: number;
   pending_matches: number;
   submissions: number;
+  pending_employee_responses: number;
+  zoho_emails_awaiting_review?: number;
   interviews: number;
   offers: number;
   organizations: number;
   contacts: number;
   recent_jobs: AtsDashboardRecentJob[];
   recent_employees: AtsDashboardRecentEmployee[];
+  upcoming_deadlines?: AtsDashboardDeadline[];
+  recent_zoho_emails?: AtsDashboardEmailItem[];
+  jobs_needing_review?: AtsDashboardJobItem[];
+  top_matches?: AtsDashboardMatchItem[];
+  recent_activities?: AtsDashboardActivityItem[];
 }
+
+export interface ZohoConnectionStatus {
+  connected: boolean;
+  status: string;
+  mailbox_email: string | null;
+  zoho_account_id: string | null;
+  last_sync_at: string | null;
+  last_error: string | null;
+}
+
+export interface ZohoSyncResponse {
+  imported: number;
+  skipped: number;
+  total_fetched: number;
+}
+
+export interface ImportedEmail {
+  id: number;
+  zoho_message_id: string;
+  from_address: string | null;
+  from_name: string | null;
+  subject: string | null;
+  received_at: string | null;
+  classification: string;
+  needs_review: boolean;
+  job_requirement_id: number | null;
+  imported_at: string;
+}
+
+export interface ImportedEmailDetail extends ImportedEmail {
+  body_text: string | null;
+  body_html: string | null;
+}
+
+export interface EmailClassificationResult {
+  id: number;
+  classification: string;
+  reason: string;
+  needs_review: boolean;
+}
+
+export interface EmailClassifyBatchResult {
+  classified: number;
+  results: EmailClassificationResult[];
+}
+
+export interface CreateJobFromEmailResult {
+  email: ImportedEmail;
+  job: JobRequirement;
+}
+
+export const EMAIL_CLASSIFICATIONS = [
+  "unclassified", "job_req", "candidate", "spam", "other",
+] as const;
+export type EmailClassification = typeof EMAIL_CLASSIFICATIONS[number];

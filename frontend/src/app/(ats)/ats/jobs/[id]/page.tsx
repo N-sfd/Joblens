@@ -54,18 +54,21 @@ export default function JobRequirementDetailPage() {
 
   const [job, setJob] = useState<JobRequirement | null>(null);
   const [topMatches, setTopMatches] = useState<JobEmployeeMatch[]>([]);
+  const [sends, setSends] = useState<import("@/types").JobSend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
   const load = async () => {
     setLoading(true);
     try {
-      const [j, matches] = await Promise.all([
+      const [j, matches, jobSends] = await Promise.all([
         api.getJobRequirement(jobId),
         api.getJobEmployeeMatches(jobId, 50),
+        api.getJobSends({ job_requirement_id: jobId }),
       ]);
       setJob(j);
       setTopMatches(matches.slice(0, 5));
+      setSends(jobSends);
       setError(null);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to load job requirement.");
@@ -169,8 +172,32 @@ export default function JobRequirementDetailPage() {
       </div>
 
       <div className="card p-6 mt-5">
-        <h2 className="font-bold text-slate-800 mb-1">Submissions</h2>
-        <p className="text-sm text-slate-500">Submission tracking will be added in Phase 8.</p>
+        <div className="flex items-center justify-between mb-3">
+          <h2 className="font-bold text-slate-800">Sent to Employees</h2>
+          <Link href="/ats/submissions" className="text-sm font-semibold text-indigo-600 hover:text-indigo-800">All sends</Link>
+        </div>
+        {sends.length === 0 ? (
+          <p className="text-sm text-slate-500">No employees contacted yet. Use Send Job on the matches page.</p>
+        ) : (
+          <div className="divide-y divide-slate-100">
+            {sends.map((s) => (
+              <div key={s.id} className="py-3 flex items-center justify-between gap-3">
+                <div>
+                  <Link href={`/ats/employees/${s.employee_id}`} className="font-semibold text-indigo-600 hover:text-indigo-800">
+                    {s.employee_name ?? `Employee #${s.employee_id}`}
+                  </Link>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {s.delivery_status} · {s.employee_response}
+                    {s.sent_at && ` · ${new Date(s.sent_at).toLocaleDateString()}`}
+                  </p>
+                </div>
+                {s.match_score_at_send != null && (
+                  <span className="text-sm font-bold text-indigo-600">{s.match_score_at_send}%</span>
+                )}
+              </div>
+            ))}
+          </div>
+        )}
       </div>
     </div>
   );

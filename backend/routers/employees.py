@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
@@ -13,7 +13,11 @@ from models import (
     EmployeeStatusUpdate,
     EmployeeResume,
 )
-from ats_auth import AtsPrincipal, get_current_ats_user
+from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
+from routers.employee_resumes import _read_and_validate, _extract_text
+from services.audit import log_audit
+from services.claude_service import parse_employee_resume
+from services.rate_limit import rate_limit_ai
 
 router = APIRouter()
 
@@ -80,7 +84,7 @@ def _resume_summary(db: Session, employee_ids: list[int]) -> dict[int, tuple[int
 @router.post("/", response_model=EmployeeResponse, status_code=201)
 async def create_employee(
     body: EmployeeCreate,
-    principal: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     data = body.model_dump()
@@ -90,6 +94,7 @@ async def create_employee(
     db.add(employee)
     db.commit()
     db.refresh(employee)
+    log_audit(db, "employee.created", "employee", employee.id, f"Created employee {employee.name}", principal.user_id)
     return employee
 
 
@@ -169,6 +174,29 @@ async def list_employees(
     )
 
 
+@router.post("/parse-resume")
+async def parse_resume_for_employee(
+    request: Request,
+    file: UploadFile = File(...),
+    principal: AtsPrincipal = Depends(require_writer),
+):
+    """Parse a resume file without creating an employee (for add-from-resume flow)."""
+    rate_limit_ai(request, principal.user_id)
+    filename, content = await _read_and_validate(file)
+    try:
+        resume_text = _extract_text(filename, content)
+    except HTTPException:
+        raise
+    except Exception:
+        raise HTTPException(status_code=400, detail="Could not read this file. It may be corrupted or password-protected.")
+    if len(resume_text.strip()) < 50:
+        raise HTTPException(status_code=422, detail="Could not extract readable text from the resume.")
+    try:
+        return await parse_employee_resume(resume_text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI parsing failed: {e}")
+
+
 @router.get("/{employee_id}", response_model=EmployeeResponse)
 async def get_employee(
     employee_id: int,
@@ -185,7 +213,7 @@ async def get_employee(
 async def update_employee(
     employee_id: int,
     body: EmployeeUpdate,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
@@ -195,6 +223,7 @@ async def update_employee(
         setattr(employee, key, value)
     db.commit()
     db.refresh(employee)
+    log_audit(db, "employee.updated", "employee", employee.id, f"Updated employee {employee.name}", principal.user_id)
     return employee
 
 
@@ -202,7 +231,7 @@ async def update_employee(
 async def update_employee_status(
     employee_id: int,
     body: EmployeeStatusUpdate,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
@@ -211,18 +240,21 @@ async def update_employee_status(
     employee.status = body.status
     db.commit()
     db.refresh(employee)
+    log_audit(db, "employee.status", "employee", employee.id, f"Status → {body.status}", principal.user_id)
     return employee
 
 
 @router.delete("/{employee_id}")
 async def delete_employee(
     employee_id: int,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     employee = db.query(Employee).filter(Employee.id == employee_id).first()
     if not employee:
         raise HTTPException(status_code=404, detail="Employee not found.")
+    name = employee.name
     db.delete(employee)
     db.commit()
+    log_audit(db, "employee.deleted", "employee", employee_id, f"Deleted employee {name}", principal.user_id)
     return {"message": "Employee deleted."}
