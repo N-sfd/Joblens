@@ -1,0 +1,27 @@
+# Local Postgres for JobLens ATS (Docker Desktop required).
+# Start:  docker compose -f docker-compose.postgres.yml up -d
+# Stop:   docker compose -f docker-compose.postgres.yml down
+# Then set DATABASE_URL in backend/.env and run: python -m alembic upgrade head
+
+services:
+  postgres:
+    image: postgres:16-alpine
+    container_name: joblens-postgres
+    restart: unless-stopped
+    ports:
+      # Host 5433 — 5432 often used by other local Postgres containers
+      - "5433:5432"
+    environment:
+      POSTGRES_USER: joblens
+      POSTGRES_PASSWORD: joblens
+      POSTGRES_DB: joblens
+    volumes:
+      - joblens_pgdata:/var/lib/postgresql/data
+    healthcheck:
+      test: ["CMD-SHELL", "pg_isready -U joblens -d joblens"]
+      interval: 5s
+      timeout: 5s
+      retries: 10
+
+volumes:
+  joblens_pgdata:

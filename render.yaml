@@ -1,18 +1,67 @@
+# JobLens / ApplyPilot — Render Blueprint
+# Docs: https://render.com/docs/blueprint-spec
+#
+# After first deploy:
+# 1. Attach the Postgres DB (created below) — DATABASE_URL is linked automatically.
+# 2. Set all sync:false secrets in the Render dashboard.
+# 3. Update Zoho redirect URI to your production frontend callback URL.
+# 4. Set Clerk production keys + ATS_AUTH_ENFORCE=true.
+# 5. On Vercel: BACKEND_URL=https://<this-service>.onrender.com
+
+databases:
+  - name: joblens-db
+    plan: free
+    databaseName: joblens
+    user: joblens
+
 services:
   - type: web
     name: joblens-api
     runtime: python
     rootDir: backend
+    plan: free
     buildCommand: pip install -r requirements.txt
-    startCommand: uvicorn main:app --host 0.0.0.0 --port $PORT
+    # Migrate schema on every deploy, then start the API.
+    startCommand: python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT
+    healthCheckPath: /health
     envVars:
-      - key: ANTHROPIC_API_KEY
-        sync: false          # set manually in Render dashboard
       - key: DATABASE_URL
-        value: sqlite:///./aijob.db
+        fromDatabase:
+          name: joblens-db
+          property: connectionString
+      - key: GROQ_API_KEY
+        sync: false
+      - key: ANTHROPIC_API_KEY
+        sync: false
+      - key: SECRET_KEY
+        generateValue: true
+      - key: ENV
+        value: production
+      - key: ATS_AUTH_ENFORCE
+        value: "true"
       - key: ALLOWED_ORIGINS
-        sync: false          # e.g. https://your-app.vercel.app (or hostname only; API adds https://)
-    disk:
-      name: sqlite-data
-      mountPath: /opt/render/project/src/backend
-      sizeGB: 1
+        sync: false
+      - key: CLERK_SECRET_KEY
+        sync: false
+      - key: CLERK_JWKS_URL
+        sync: false
+      - key: CLERK_ISSUER
+        sync: false
+      - key: ZOHO_CLIENT_ID
+        sync: false
+      - key: ZOHO_CLIENT_SECRET
+        sync: false
+      - key: ZOHO_REDIRECT_URI
+        sync: false
+      - key: ZOHO_ACCOUNTS_BASE_URL
+        value: https://accounts.zoho.com
+      - key: ZOHO_MAIL_API_BASE_URL
+        value: https://mail.zoho.com
+      - key: TOKEN_ENCRYPTION_KEY
+        sync: false
+      - key: STORAGE_PROVIDER
+        value: local
+      - key: AI_RATE_LIMIT_PER_MINUTE
+        value: "20"
+      - key: ZOHO_RATE_LIMIT_PER_MINUTE
+        value: "30"
