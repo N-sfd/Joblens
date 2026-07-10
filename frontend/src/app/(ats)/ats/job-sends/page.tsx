@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2 } from "lucide-react";
@@ -25,7 +25,7 @@ function responseClass(r: string) {
   }
 }
 
-export default function JobSendsPage() {
+function JobSendsPageInner() {
   const searchParams = useSearchParams();
   const initialFilter = searchParams.get("filter") === "pending" ? "pending" : "all";
 
@@ -171,5 +171,13 @@ export default function JobSendsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function JobSendsPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>}>
+      <JobSendsPageInner />
+    </Suspense>
   );
 }

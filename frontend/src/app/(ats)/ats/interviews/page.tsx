@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
@@ -15,7 +15,7 @@ function formatDateTime(iso: string | null) {
   return new Date(iso).toLocaleString("en-US", { month: "short", day: "numeric", hour: "numeric", minute: "2-digit" });
 }
 
-export default function InterviewsPage() {
+function InterviewsPageInner() {
   const searchParams = useSearchParams();
   const submissionIdParam = searchParams.get("submission_id");
 
@@ -172,5 +172,13 @@ export default function InterviewsPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function InterviewsPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>}>
+      <InterviewsPageInner />
+    </Suspense>
   );
 }

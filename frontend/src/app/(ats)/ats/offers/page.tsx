@@ -1,6 +1,6 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useSearchParams } from "next/navigation";
 import { Loader2, Plus } from "lucide-react";
@@ -24,7 +24,7 @@ function statusClass(status: string) {
   }
 }
 
-export default function OffersPage() {
+function OffersPageInner() {
   const searchParams = useSearchParams();
   const submissionIdParam = searchParams.get("submission_id");
 
@@ -174,5 +174,13 @@ export default function OffersPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function OffersPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>}>
+      <OffersPageInner />
+    </Suspense>
   );
 }

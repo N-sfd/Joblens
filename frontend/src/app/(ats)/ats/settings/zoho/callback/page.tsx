@@ -1,13 +1,13 @@
 "use client";
 
-import { useEffect, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
 import { Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import ErrorBanner from "@/components/ErrorBanner";
 
-export default function ZohoOAuthCallbackPage() {
+function ZohoOAuthCallbackPageInner() {
   const router = useRouter();
   const params = useSearchParams();
   const [error, setError] = useState<string | null>(null);
@@ -56,5 +56,13 @@ export default function ZohoOAuthCallbackPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function ZohoOAuthCallbackPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>}>
+      <ZohoOAuthCallbackPageInner />
+    </Suspense>
   );
 }
