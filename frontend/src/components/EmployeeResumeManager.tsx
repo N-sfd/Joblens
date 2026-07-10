@@ -9,6 +9,7 @@ import clsx from "clsx";
 import { api } from "@/lib/api";
 import type { Employee, EmployeeResume, ResumeUploadResult, ResumeFieldSuggestion } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 const MAX_BYTES = 10 * 1024 * 1024;
 const ALLOWED_EXT = [".pdf", ".docx", ".txt"];
@@ -42,6 +43,7 @@ interface Props {
 }
 
 export default function EmployeeResumeManager({ employeeId, onEmployeeUpdated }: Props) {
+  const { isAdmin } = useAtsRole();
   const [resumes, setResumes] = useState<EmployeeResume[]>([]);
   const [loading, setLoading] = useState(true);
   const [uploading, setUploading] = useState(false);
@@ -396,9 +398,11 @@ export default function EmployeeResumeManager({ employeeId, onEmployeeUpdated }:
                     <button type="button" onClick={() => handleDownload(r)} disabled={busyResumeId === r.id} title="Download" className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
                       <Download size={14} />
                     </button>
-                    <button type="button" onClick={() => handleDelete(r.id)} disabled={busyResumeId === r.id} title="Delete resume" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
-                      <Trash2 size={14} />
-                    </button>
+                    {isAdmin && (
+                      <button type="button" onClick={() => handleDelete(r.id)} disabled={busyResumeId === r.id} title="Delete resume" className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        <Trash2 size={14} />
+                      </button>
+                    )}
                   </div>
                 </div>
                 {expandedId === r.id && (

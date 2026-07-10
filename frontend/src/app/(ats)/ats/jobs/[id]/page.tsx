@@ -1,13 +1,14 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Pencil, GitCompareArrows, AlertTriangle } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, Trash2, GitCompareArrows, AlertTriangle } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import type { JobRequirement, JobEmployeeMatch } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 function Field({ label, value }: { label: string; value: string | null }) {
   return (
@@ -51,12 +52,15 @@ const STATUS_COLORS: Record<string, string> = {
 export default function JobRequirementDetailPage() {
   const params = useParams<{ id: string }>();
   const jobId = Number(params.id);
+  const router = useRouter();
+  const { isAdmin, canWrite } = useAtsRole();
 
   const [job, setJob] = useState<JobRequirement | null>(null);
   const [topMatches, setTopMatches] = useState<JobEmployeeMatch[]>([]);
   const [sends, setSends] = useState<import("@/types").JobSend[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -78,6 +82,18 @@ export default function JobRequirementDetailPage() {
   };
 
   useEffect(() => { load(); }, [jobId]);
+
+  const remove = async () => {
+    if (!confirm("Delete this job requirement? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await api.deleteJobRequirement(jobId);
+      router.push("/ats/jobs");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete job requirement.");
+      setDeleting(false);
+    }
+  };
 
   if (loading) return <div className="flex items-center justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>;
   if (error && !job) return <div className="p-8 max-w-3xl mx-auto"><ErrorBanner message={error} onRetry={load} /></div>;
@@ -105,9 +121,16 @@ export default function JobRequirementDetailPage() {
           <Link href={`/ats/jobs/${jobId}/matches`} className="btn-primary flex items-center gap-2">
             <GitCompareArrows size={14} /> View Matches
           </Link>
-          <Link href={`/ats/jobs/${jobId}/edit`} className="btn-secondary flex items-center gap-2">
-            <Pencil size={14} /> Edit
-          </Link>
+          {canWrite && (
+            <Link href={`/ats/jobs/${jobId}/edit`} className="btn-secondary flex items-center gap-2">
+              <Pencil size={14} /> Edit
+            </Link>
+          )}
+          {isAdmin && (
+            <button type="button" onClick={remove} disabled={deleting} className="btn-danger flex items-center gap-2">
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete
+            </button>
+          )}
         </div>
       </div>
 

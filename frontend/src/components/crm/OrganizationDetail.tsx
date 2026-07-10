@@ -10,8 +10,10 @@ import { ORGANIZATION_TYPES, ORGANIZATION_STATUSES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import ActivityTimeline from "@/components/crm/ActivityTimeline";
 import RelatedJobs from "@/components/crm/RelatedJobs";
+import { useAtsRole } from "@/lib/atsRole";
 
 export default function OrganizationDetail({ id, backPath }: { id: number; backPath: string }) {
+  const { isAdmin, canWrite } = useAtsRole();
   const router = useRouter();
   const [org, setOrg] = useState<CRMOrganization | null>(null);
   const [contacts, setContacts] = useState<CRMContact[]>([]);
@@ -102,10 +104,14 @@ export default function OrganizationDetail({ id, backPath }: { id: number; backP
           )}
         </div>
         <div className="flex gap-2 shrink-0">
-          <button className="btn-primary flex items-center gap-2" disabled={saving} onClick={save}>
-            {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
-          </button>
-          <button className="btn-danger flex items-center gap-2" onClick={remove}><Trash2 size={14} /> Delete</button>
+          {canWrite && (
+            <button className="btn-primary flex items-center gap-2" disabled={saving} onClick={save}>
+              {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />} Save
+            </button>
+          )}
+          {isAdmin && (
+            <button className="btn-danger flex items-center gap-2" onClick={remove}><Trash2 size={14} /> Delete</button>
+          )}
         </div>
       </div>
 

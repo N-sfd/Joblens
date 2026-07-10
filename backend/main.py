@@ -10,6 +10,7 @@ load_dotenv(Path(__file__).resolve().parent / ".env")
 from database import create_tables
 from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
+from services.storage import STORAGE_PROVIDER, validate_storage_config
 import logging
 
 logger = logging.getLogger(__name__)
@@ -17,6 +18,7 @@ logger = logging.getLogger(__name__)
 
 @asynccontextmanager
 async def lifespan(app: FastAPI):
+    env = os.getenv("ENV", "development").strip().lower()
     if ENFORCE:
         missing = []
         if not CLERK_JWKS_URL:
@@ -28,6 +30,18 @@ async def lifespan(app: FastAPI):
                 f"ATS_AUTH_ENFORCE=true but missing: {', '.join(missing)}. "
                 "Set Clerk env vars on Render before enabling enforcement."
             )
+    elif env == "production":
+        raise RuntimeError(
+            "ENV=production but ATS_AUTH_ENFORCE is not set to true — the private ATS/CRM "
+            "API would boot unauthenticated. Set ATS_AUTH_ENFORCE=true (and the Clerk env "
+            "vars) on Render before deploying."
+        )
+    validate_storage_config()
+    if env == "production" and STORAGE_PROVIDER == "local":
+        logger.warning(
+            "STORAGE_PROVIDER=local in production — uploaded employee resumes will be lost "
+            "on every redeploy (Render's disk is ephemeral). Set STORAGE_PROVIDER=supabase."
+        )
     if not os.getenv("GROQ_API_KEY", "").strip():
         logger.warning("GROQ_API_KEY is not set — resume/job AI parsing will fail.")
     create_tables()

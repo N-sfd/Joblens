@@ -6,8 +6,10 @@ import { ArrowLeft, Loader2, RefreshCw, Unplug } from "lucide-react";
 import { api } from "@/lib/api";
 import type { ZohoConnectionStatus } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 export default function ZohoSettingsPage() {
+  const { isAdmin } = useAtsRole();
   const [conn, setConn] = useState<ZohoConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -122,9 +124,11 @@ export default function ZohoSettingsPage() {
                   {busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
                   Sync Now
                 </button>
-                <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={disconnect}>
-                  <Unplug size={14} /> Disconnect
-                </button>
+                {isAdmin && (
+                  <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={disconnect}>
+                    <Unplug size={14} /> Disconnect
+                  </button>
+                )}
               </>
             )}
           </div>

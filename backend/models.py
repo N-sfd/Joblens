@@ -114,8 +114,8 @@ class Profile(Base):
 
 class Employee(Base):
     """ATS employee/consultant record — private admin data, never exposed via
-    public (guest_id-based) routes. See backend/ats_auth.py for the TODO on
-    gating these endpoints with verified Clerk sessions."""
+    public (guest_id-based) routes. Endpoints are gated by verified Clerk
+    sessions via require_writer/require_admin in backend/ats_auth.py."""
 
     __tablename__ = "employees"
 
@@ -217,9 +217,10 @@ class EmployeeResume(Base):
 
 
 class JobRequirement(Base):
-    """Private ATS job requirement — created manually (paste an email/JD) for
-    now; future steps will match these to employees. See backend/ats_auth.py
-    for the TODO on gating these endpoints with verified Clerk sessions."""
+    """Private ATS job requirement — created manually (paste an email/JD) or via
+    Zoho Mail parsing, matched to employees via services/job_employee_match.py.
+    Endpoints are gated by verified Clerk sessions via require_writer/require_admin
+    in backend/ats_auth.py."""
 
     __tablename__ = "job_requirements"
 

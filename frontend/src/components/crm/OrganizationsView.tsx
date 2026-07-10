@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import type { CRMOrganization, CRMOrganizationCreate } from "@/types";
 import { ORGANIZATION_TYPES, ORGANIZATION_STATUSES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 const STATUS_COLORS: Record<string, string> = {
   Active: "bg-green-50 text-green-700 ring-1 ring-green-200",
@@ -30,6 +31,7 @@ export default function OrganizationsView({
   types: readonly string[]; // accepted organization types to show
   defaultType: string; // default type for new records
 }) {
+  const { canWrite } = useAtsRole();
   const [orgs, setOrgs] = useState<CRMOrganization[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -66,14 +68,16 @@ export default function OrganizationsView({
           <h1 className="page-title">{title}</h1>
           <p className="page-subtitle">{subtitle}</p>
         </div>
-        <button onClick={() => setShowForm((s) => !s)} className="btn-primary flex items-center gap-2 shrink-0">
-          {showForm ? <><X size={16} /> Close</> : <><Plus size={16} /> Add</>}
-        </button>
+        {canWrite && (
+          <button onClick={() => setShowForm((s) => !s)} className="btn-primary flex items-center gap-2 shrink-0">
+            {showForm ? <><X size={16} /> Close</> : <><Plus size={16} /> Add</>}
+          </button>
+        )}
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={load} className="mb-4" />}
 
-      {showForm && (
+      {canWrite && showForm && (
         <NewOrganizationForm
           defaultType={defaultType}
           typeOptions={types}

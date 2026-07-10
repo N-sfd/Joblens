@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import type { CRMContact, CRMContactCreate, CRMOrganization } from "@/types";
 import { CONTACT_TYPES, CONTACT_STATUSES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 const STATUS_COLORS: Record<string, string> = {
   Active: "bg-green-50 text-green-700 ring-1 ring-green-200",
@@ -28,6 +29,7 @@ export default function ContactsView({
   detailBasePath: string; // e.g. /crm/recruiters or /crm/contacts
   fixedType?: string; // if set, only show/create this contact_type
 }) {
+  const { canWrite } = useAtsRole();
   const [contacts, setContacts] = useState<CRMContact[]>([]);
   const [orgs, setOrgs] = useState<CRMOrganization[]>([]);
   const [loading, setLoading] = useState(true);
@@ -72,14 +74,16 @@ export default function ContactsView({
           <h1 className="page-title">{title}</h1>
           <p className="page-subtitle">{subtitle}</p>
         </div>
-        <button onClick={() => setShowForm((s) => !s)} className="btn-primary flex items-center gap-2 shrink-0">
-          {showForm ? <><X size={16} /> Close</> : <><Plus size={16} /> Add</>}
-        </button>
+        {canWrite && (
+          <button onClick={() => setShowForm((s) => !s)} className="btn-primary flex items-center gap-2 shrink-0">
+            {showForm ? <><X size={16} /> Close</> : <><Plus size={16} /> Add</>}
+          </button>
+        )}
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={load} className="mb-4" />}
 
-      {showForm && (
+      {canWrite && showForm && (
         <NewContactForm
           orgs={orgs}
           fixedType={fixedType}

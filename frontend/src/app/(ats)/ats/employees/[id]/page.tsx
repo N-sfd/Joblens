@@ -1,14 +1,15 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { useParams } from "next/navigation";
+import { useParams, useRouter } from "next/navigation";
 import Link from "next/link";
-import { ArrowLeft, Loader2, Pencil, Upload } from "lucide-react";
+import { ArrowLeft, Loader2, Pencil, Trash2, Upload } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import type { Employee } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import EmployeeResumeManager from "@/components/EmployeeResumeManager";
+import { useAtsRole } from "@/lib/atsRole";
 
 const STATUS_COLORS: Record<string, string> = {
   Active: "bg-green-50 text-green-700 ring-1 ring-green-200",
@@ -37,10 +38,13 @@ function fullName(e: Employee): string {
 export default function EmployeeDetailPage() {
   const params = useParams<{ id: string }>();
   const employeeId = Number(params.id);
+  const router = useRouter();
+  const { isAdmin, canWrite } = useAtsRole();
 
   const [employee, setEmployee] = useState<Employee | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
+  const [deleting, setDeleting] = useState(false);
 
   const load = async () => {
     setLoading(true);
@@ -58,6 +62,18 @@ export default function EmployeeDetailPage() {
 
   const scrollToUpload = () => {
     document.getElementById("resume-upload")?.scrollIntoView({ behavior: "smooth", block: "start" });
+  };
+
+  const remove = async () => {
+    if (!confirm("Delete this employee? This cannot be undone.")) return;
+    setDeleting(true);
+    try {
+      await api.deleteEmployee(employeeId);
+      router.push("/ats/employees");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete employee.");
+      setDeleting(false);
+    }
   };
 
   if (loading) {
@@ -93,9 +109,16 @@ export default function EmployeeDetailPage() {
           <button type="button" onClick={scrollToUpload} className="btn-secondary flex items-center gap-2">
             <Upload size={14} /> Upload Resume
           </button>
-          <Link href={`/ats/employees/${employeeId}/edit`} className="btn-primary flex items-center gap-2">
-            <Pencil size={14} /> Edit Employee
-          </Link>
+          {canWrite && (
+            <Link href={`/ats/employees/${employeeId}/edit`} className="btn-primary flex items-center gap-2">
+              <Pencil size={14} /> Edit Employee
+            </Link>
+          )}
+          {isAdmin && (
+            <button type="button" onClick={remove} disabled={deleting} className="btn-danger flex items-center gap-2">
+              {deleting ? <Loader2 size={14} className="animate-spin" /> : <Trash2 size={14} />} Delete
+            </button>
+          )}
         </div>
       </div>
 

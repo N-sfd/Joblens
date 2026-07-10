@@ -1,11 +1,11 @@
 import io
 import json
+import mimetypes
 import os
 import re
-import uuid
 
 from fastapi import APIRouter, Depends, File, HTTPException, Request, UploadFile
-from fastapi.responses import FileResponse
+from fastapi.responses import Response
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -19,15 +19,15 @@ from models import (
     ApplyResumeSuggestionsRequest,
 )
 from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
+import services.storage as storage
 from services.audit import log_audit
 from services.claude_service import parse_employee_resume
 from services.rate_limit import rate_limit_ai
 
 router = APIRouter()
 
-# Local dev file storage. See module TODO below before deploying.
-UPLOAD_DIR = os.path.join(os.path.dirname(os.path.dirname(__file__)), "uploads", "employee_resumes")
-
+# File storage is pluggable — see services/storage.py (STORAGE_PROVIDER env var:
+# local | supabase).
 ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
 ALLOWED_MIME_TYPES = {
     "application/pdf",
@@ -37,12 +37,6 @@ ALLOWED_MIME_TYPES = {
     "",  # some clients omit content-type
 }
 MAX_UPLOAD_BYTES = 10 * 1024 * 1024  # 10 MB
-
-# TODO (production): move uploaded resume storage off the local filesystem —
-# Render/most PaaS hosts have ephemeral disks, so files saved here will be lost
-# on redeploy. Swap `_save_file` below for an upload to Supabase Storage,
-# Zoho WorkDrive, or S3-compatible storage, and store the returned URL/key in
-# `file_path`/`storage_path` instead of a local path.
 
 # Employee fields that MAY be auto-filled from a parsed resume, mapped to the
 # parser's output key. Sensitive fields (visa/work auth/rates/availability/
@@ -86,16 +80,6 @@ def _extract_text(filename: str, content: bytes) -> str:
     if lower.endswith(".txt"):
         return content.decode("utf-8", errors="ignore").strip()
     raise HTTPException(status_code=400, detail="Unsupported format. Upload a PDF, DOCX, or TXT file.")
-
-
-def _save_file(employee_id: int, filename: str, content: bytes) -> str:
-    os.makedirs(UPLOAD_DIR, exist_ok=True)
-    ext = os.path.splitext(filename)[1].lower()
-    stored_name = f"{employee_id}_{uuid.uuid4().hex}{ext}"
-    path = os.path.join(UPLOAD_DIR, stored_name)
-    with open(path, "wb") as f:
-        f.write(content)
-    return path
 
 
 def _loads(value) -> list:
@@ -268,7 +252,7 @@ async def upload_employee_resume(
     if len(resume_text.strip()) < 50:
         raise HTTPException(status_code=422, detail="Could not extract readable text. The file may be image-only or password-protected.")
 
-    file_path = _save_file(employee_id, filename, content)
+    storage_provider, storage_path, file_path = storage.save_resume_file(employee_id, filename, content)
 
     existing_count = db.query(EmployeeResume).filter(EmployeeResume.employee_id == employee_id).count()
     # Newest upload becomes primary (also covers "first resume is primary").
@@ -281,8 +265,8 @@ async def upload_employee_resume(
         file_type=ext.lstrip("."),
         file_size=len(content),
         file_path=file_path,
-        storage_provider="local",
-        storage_path=file_path,
+        storage_provider=storage_provider,
+        storage_path=storage_path,
         resume_text=resume_text,
         is_primary=True,
         version_number=existing_count + 1,
@@ -386,12 +370,13 @@ async def download_employee_resume(
     db: Session = Depends(get_db),
 ):
     resume = _get_resume_or_404(db, employee_id, resume_id)
-    # Prevent path traversal: the stored file must resolve inside UPLOAD_DIR.
-    upload_root = os.path.realpath(UPLOAD_DIR)
-    real_path = os.path.realpath(resume.file_path)
-    if not real_path.startswith(upload_root + os.sep) or not os.path.exists(real_path):
-        raise HTTPException(status_code=404, detail="Resume file is no longer available.")
-    return FileResponse(real_path, filename=resume.filename, media_type="application/octet-stream")
+    content = storage.read_resume_file(resume)
+    media_type = mimetypes.guess_type(resume.filename)[0] or "application/octet-stream"
+    return Response(
+        content=content,
+        media_type=media_type,
+        headers={"Content-Disposition": f'attachment; filename="{resume.filename}"'},
+    )
 
 
 @router.post("/{employee_id}/resumes/{resume_id}/reparse", response_model=ResumeUploadResult)
@@ -460,11 +445,7 @@ async def delete_employee_resume(
     resume = _get_resume_or_404(db, employee_id, resume_id)
     was_primary = resume.is_primary
 
-    try:
-        if resume.file_path and os.path.exists(resume.file_path):
-            os.remove(resume.file_path)
-    except OSError:
-        pass
+    storage.delete_resume_file(resume)
 
     db.delete(resume)
     db.flush()

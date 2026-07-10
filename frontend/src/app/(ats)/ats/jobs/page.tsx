@@ -8,6 +8,7 @@ import { api } from "@/lib/api";
 import type { JobRequirement, JobRequirementListParams } from "@/types";
 import { JOB_REQUIREMENT_STATUSES, JOB_REQUIREMENT_PRIORITIES, JOB_REQUIREMENT_SOURCES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 const WORK_TYPES = ["Remote", "Hybrid", "Onsite"];
 
@@ -37,6 +38,7 @@ function displayRate(job: JobRequirement) {
 }
 
 export default function JobRequirementsPage() {
+  const { canWrite } = useAtsRole();
   const [filters, setFilters] = useState<JobRequirementListParams>({ ...EMPTY });
   const [searchInput, setSearchInput] = useState("");
   const [jobs, setJobs] = useState<JobRequirement[]>([]);
@@ -87,9 +89,11 @@ export default function JobRequirementsPage() {
           <h1 className="page-title">Job Requirements</h1>
           <p className="page-subtitle">Job orders from recruiter emails or manual entry.</p>
         </div>
-        <Link href="/ats/jobs/new" className="btn-primary flex items-center gap-2 shrink-0">
-          <Plus size={16} /> Add Job Requirement
-        </Link>
+        {canWrite && (
+          <Link href="/ats/jobs/new" className="btn-primary flex items-center gap-2 shrink-0">
+            <Plus size={16} /> Add Job Requirement
+          </Link>
+        )}
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => load(filters)} className="mb-4" />}

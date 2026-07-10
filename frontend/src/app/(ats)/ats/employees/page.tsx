@@ -13,6 +13,7 @@ import {
   EMPLOYEE_STATUSES, EMPLOYMENT_TYPES, EMPLOYEE_AVAILABILITIES,
 } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 const STATUS_COLORS: Record<string, string> = {
   Active: "bg-green-50 text-green-700 ring-1 ring-green-200",
@@ -56,6 +57,7 @@ function displayName(emp: EmployeeListItem): string {
 
 export default function EmployeesPage() {
   const router = useRouter();
+  const { canWrite } = useAtsRole();
   const [filters, setFilters] = useState<EmployeeListParams>({ ...EMPTY_FILTERS });
   const [searchInput, setSearchInput] = useState("");
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
@@ -127,14 +129,16 @@ export default function EmployeesPage() {
           <h1 className="page-title">Employees</h1>
           <p className="page-subtitle">Consultants and employees available for job matching.</p>
         </div>
-        <div className="flex flex-wrap gap-2 shrink-0">
-          <Link href="/ats/employees/new-from-resume" className="btn-secondary flex items-center gap-2">
-            <FileUp size={16} /> Add from Resume
-          </Link>
-          <Link href="/ats/employees/new" className="btn-primary flex items-center gap-2">
-            <Plus size={16} /> Add Employee
-          </Link>
-        </div>
+        {canWrite && (
+          <div className="flex flex-wrap gap-2 shrink-0">
+            <Link href="/ats/employees/new-from-resume" className="btn-secondary flex items-center gap-2">
+              <FileUp size={16} /> Add from Resume
+            </Link>
+            <Link href="/ats/employees/new" className="btn-primary flex items-center gap-2">
+              <Plus size={16} /> Add Employee
+            </Link>
+          </div>
+        )}
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={() => load(filters)} className="mb-4" />}

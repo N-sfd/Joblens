@@ -1,17 +1,20 @@
 "use client";
 
 import { useEffect, useState } from "react";
-import { Loader2 } from "lucide-react";
+import { Loader2, Trash2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { CRMActivity } from "@/types";
 import { ACTIVITY_TYPES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 export default function ActivitiesPage() {
+  const { isAdmin } = useAtsRole();
   const [activities, setActivities] = useState<CRMActivity[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
   const [typeFilter, setTypeFilter] = useState("");
+  const [deletingId, setDeletingId] = useState<number | null>(null);
 
   const load = async () => {
     setLoading(true);
@@ -26,6 +29,19 @@ export default function ActivitiesPage() {
   };
 
   useEffect(() => { load(); /* eslint-disable-next-line react-hooks/exhaustive-deps */ }, [typeFilter]);
+
+  const remove = async (id: number) => {
+    if (!confirm("Delete this activity? This cannot be undone.")) return;
+    setDeletingId(id);
+    try {
+      await api.deleteActivity(id);
+      setActivities((prev) => prev.filter((a) => a.id !== id));
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to delete activity.");
+    } finally {
+      setDeletingId(null);
+    }
+  };
 
   return (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto">
@@ -57,7 +73,7 @@ export default function ActivitiesPage() {
             {activities.map((a) => (
               <li key={a.id} className="flex gap-3 border-b border-slate-100 last:border-0 pb-3 last:pb-0">
                 <div className="w-2 h-2 rounded-full bg-indigo-400 mt-1.5 shrink-0" />
-                <div className="min-w-0">
+                <div className="min-w-0 flex-1">
                   <div className="flex items-center gap-2 flex-wrap">
                     <span className="text-xs font-semibold text-indigo-600">{a.activity_type}</span>
                     <span className="text-xs text-slate-400">{new Date(a.activity_date).toLocaleString()}</span>
@@ -65,6 +81,17 @@ export default function ActivitiesPage() {
                   {a.subject && <p className="text-sm font-medium text-slate-800">{a.subject}</p>}
                   {a.description && <p className="text-sm text-slate-600 whitespace-pre-wrap">{a.description}</p>}
                 </div>
+                {isAdmin && (
+                  <button
+                    type="button"
+                    onClick={() => remove(a.id)}
+                    disabled={deletingId === a.id}
+                    title="Delete activity"
+                    className="p-1.5 h-fit text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors shrink-0"
+                  >
+                    <Trash2 size={14} />
+                  </button>
+                )}
               </li>
             ))}
           </ul>
