@@ -1,9 +1,9 @@
 "use client";
 
-import { useState, useEffect, useRef } from "react";
+import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { MatchResult, MatchHistoryEntry } from "@/types";
+import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
@@ -12,7 +12,8 @@ import PrivacyNote from "@/components/PrivacyNote";
 import {
   Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
   Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
-  ChevronUp, Copy, X, GraduationCap, Upload, FileText,
+  ChevronUp, Copy, X, GraduationCap, Search, RefreshCw, MapPin,
+  Mail, Phone, Pencil, Info, Inbox, WifiOff, Briefcase,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -65,15 +66,28 @@ export default function MatchPage() {
   );
   const [jobDescription, setJobDescription] = useState("");
   const [loading, setLoading] = useState(false);
+
+  // Select ATS Job vs. Paste Manually
+  const [mode, setMode] = useState<"ats" | "manual">("ats");
+  const [atsJobs, setAtsJobs] = useState<PublicJobListing[]>([]);
+  const [atsJobsLoading, setAtsJobsLoading] = useState(true);
+  const [atsJobsError, setAtsJobsError] = useState<string | null>(null);
+  const [atsSearch, setAtsSearch] = useState("");
+  const [atsLocation, setAtsLocation] = useState("");
+  const [atsWorkType, setAtsWorkType] = useState("");
+  const [atsSkills, setAtsSkills] = useState("");
+  const [selectedJobId, setSelectedJobId] = useState<number | "">("");
+  const [selectedJob, setSelectedJob] = useState<JobRequirement | null>(null);
+  const [selectedJobLoading, setSelectedJobLoading] = useState(false);
+  const [selectedJobError, setSelectedJobError] = useState<string | null>(null);
+  const [editOverride, setEditOverride] = useState(false);
+  const [overrideFields, setOverrideFields] = useState({
+    job_description: "", required_skills: "", preferred_skills: "",
+    location: "", work_type: "", rate: "",
+  });
   const [done, setDone] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MatchResult | null>(null);
-
-  // File upload (instead of copy/paste)
-  const resumeFileRef = useRef<HTMLInputElement>(null);
-  const jdFileRef = useRef<HTMLInputElement>(null);
-  const [resumeUpload, setResumeUpload] = useState<{ loading: boolean; error: string | null; filename: string | null }>({ loading: false, error: null, filename: null });
-  const [jdUpload, setJdUpload] = useState<{ loading: boolean; error: string | null; filename: string | null }>({ loading: false, error: null, filename: null });
 
   // Action states
   const [bullets, setBullets] = useState<string[] | null>(null);
@@ -116,30 +130,92 @@ export default function MatchPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const handleResumeFile = async (f: File) => {
-    setResumeUpload({ loading: true, error: null, filename: null });
+  const loadAtsJobs = async (overrides?: { search?: string; location?: string; work_type?: string; skills?: string }) => {
+    setAtsJobsLoading(true);
+    setAtsJobsError(null);
     try {
-      const data = await api.extractResumeText(f);
-      setResumeText(data.text);
-      localStorage.setItem(RESUME_KEY, data.text);
-      setResumeUpload({ loading: false, error: null, filename: data.filename });
+      const res = await api.listPublicJobs({
+        q: (overrides?.search ?? atsSearch) || undefined,
+        location: (overrides?.location ?? atsLocation) || undefined,
+        work_type: (overrides?.work_type ?? atsWorkType) || undefined,
+        skills: (overrides?.skills ?? atsSkills) || undefined,
+        page_size: 50,
+      });
+      setAtsJobs(res.items);
     } catch (e) {
-      setResumeUpload({ loading: false, error: e instanceof Error ? e.message : "Failed to read file.", filename: null });
+      setAtsJobsError(e instanceof Error ? e.message : "Couldn't reach the job source.");
+    } finally {
+      setAtsJobsLoading(false);
     }
   };
 
-  const handleJdFile = async (f: File) => {
-    setJdUpload({ loading: true, error: null, filename: null });
+  useEffect(() => {
+    if (mode === "ats") loadAtsJobs();
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [mode]);
+
+  const resetOverride = (job: JobRequirement | null) => {
+    setEditOverride(false);
+    setOverrideFields({
+      job_description: job?.job_description ?? "",
+      required_skills: (job?.required_skills ?? []).join(", "),
+      preferred_skills: (job?.preferred_skills ?? []).join(", "),
+      location: job?.location ?? "",
+      work_type: job?.work_type ?? "",
+      rate: job?.rate ?? "",
+    });
+  };
+
+  const selectJob = async (id: number | "") => {
+    setSelectedJobId(id);
+    setSelectedJob(null);
+    setSelectedJobError(null);
+    if (id === "") return;
+    setSelectedJobLoading(true);
     try {
-      const data = await api.extractJobDescriptionText(f);
-      setJobDescription(data.text);
-      setJdUpload({ loading: false, error: null, filename: data.filename });
+      const job = await api.getPublicJob(Number(id));
+      setSelectedJob(job);
+      resetOverride(job);
+      showToast(`Imported "${job.job_title}" from ATS.`);
     } catch (e) {
-      setJdUpload({ loading: false, error: e instanceof Error ? e.message : "Failed to read file.", filename: null });
+      setSelectedJobError(
+        e instanceof Error ? e.message : "This job is no longer available — it may have closed or been unpublished."
+      );
+    } finally {
+      setSelectedJobLoading(false);
     }
   };
+
+  // Builds the text actually sent to the matcher: the full structured job
+  // context, with any "Edit for this analysis" overrides applied locally —
+  // never written back to the source ATS record.
+  const effectiveJobDescription = () => {
+    if (mode === "manual" || !selectedJob) return jobDescription;
+    const f = overrideFields;
+    const lines = [
+      `Job Title: ${selectedJob.job_title}`,
+      selectedJob.client ? `Client: ${selectedJob.client}` : "",
+      selectedJob.vendor ? `Vendor: ${selectedJob.vendor}` : "",
+      selectedJob.end_client ? `End Client: ${selectedJob.end_client}` : "",
+      f.location ? `Location: ${f.location}` : "",
+      f.work_type ? `Work Arrangement: ${f.work_type}` : "",
+      selectedJob.employment_type ? `Employment Type: ${selectedJob.employment_type}` : "",
+      selectedJob.duration ? `Duration: ${selectedJob.duration}` : "",
+      f.rate ? `Rate: ${f.rate}` : "",
+      selectedJob.visa_requirement ? `Work Authorization: ${selectedJob.visa_requirement}` : "",
+      f.required_skills ? `Required Skills: ${f.required_skills}` : "",
+      f.preferred_skills ? `Preferred Skills: ${f.preferred_skills}` : "",
+      "",
+      f.job_description || "",
+    ].filter(Boolean);
+    return lines.join("\n");
+  };
+
+  const effectiveCompanyName = () =>
+    mode === "ats" && selectedJob ? (selectedJob.client || selectedJob.vendor || undefined) : undefined;
 
   const run = async () => {
+    const effectiveJD = effectiveJobDescription();
     setLoading(true);
     setDone(false);
     setError(null);
@@ -148,10 +224,13 @@ export default function MatchPage() {
     setQuestions(null);
     setQuestionsDone(false);
     try {
-      const data = await api.matchJob(resumeText, jobDescription);
+      const data = await api.matchJob(resumeText, effectiveJD, {
+        company_name: effectiveCompanyName(),
+        job_requirement_id: mode === "ats" ? selectedJob?.id : undefined,
+      });
       setDone(true);
       setResult(data);
-      localStorage.setItem(JD_KEY, jobDescription);
+      if (mode === "manual") localStorage.setItem(JD_KEY, jobDescription);
       api.getMatchHistory().then(setHistory).catch(() => {});
     } catch (e) {
       setError(e instanceof Error ? e.message : "Match failed.");
@@ -164,7 +243,7 @@ export default function MatchPage() {
     setBulletsLoading(true);
     setBulletsDone(false);
     try {
-      const data = await api.generateResumeBullets(resumeText, jobDescription);
+      const data = await api.generateResumeBullets(resumeText, effectiveJobDescription());
       setBulletsDone(true);
       setBullets(data.bullets);
     } catch (e) {
@@ -178,7 +257,7 @@ export default function MatchPage() {
     setQuestionsLoading(true);
     setQuestionsDone(false);
     try {
-      const data = await api.createInterviewQuestions(resumeText, jobDescription);
+      const data = await api.createInterviewQuestions(resumeText, effectiveJobDescription());
       setQuestionsDone(true);
       setQuestions(data.questions);
     } catch (e) {
@@ -212,7 +291,7 @@ export default function MatchPage() {
   };
 
   const handleCoverLetter = () => {
-    localStorage.setItem(JD_KEY, jobDescription);
+    localStorage.setItem(JD_KEY, effectiveJobDescription());
     router.push("/cover-letter");
   };
 
@@ -260,103 +339,263 @@ export default function MatchPage() {
       />
 
       {/* Input Panel */}
-      <div className="card p-5 mb-5">
-        <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="label !mb-0">Your Resume</label>
+      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
+        {/* Left: resume */}
+        <div className="card p-5">
+          <label className="label">Your Resume</label>
+          <textarea
+            className="textarea h-64"
+            placeholder="Paste your resume text here…"
+            value={resumeText}
+            onChange={(e) => setResumeText(e.target.value)}
+          />
+          {typeof window !== "undefined" && localStorage.getItem(RESUME_KEY) && resumeText !== localStorage.getItem(RESUME_KEY) && (
+            <button type="button" onClick={() => setResumeText(localStorage.getItem(RESUME_KEY) ?? "")}
+              className="text-xs text-indigo-600 hover:underline mt-1.5 flex items-center gap-1">
+              <ArrowRight size={11} /> Load from last analysis
+            </button>
+          )}
+        </div>
+
+        {/* Right: job — Select ATS Job / Paste Manually */}
+        <div className="card p-5">
+          <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
+            {([{ key: "ats", label: "Select ATS Job" }, { key: "manual", label: "Paste Manually" }] as const).map((t) => (
               <button
+                key={t.key}
                 type="button"
-                onClick={() => resumeFileRef.current?.click()}
-                disabled={resumeUpload.loading}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-60"
+                onClick={() => setMode(t.key)}
+                className={clsx(
+                  "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
+                  mode === t.key
+                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm"
+                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
+                )}
               >
-                {resumeUpload.loading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                Upload file
+                {t.label}
               </button>
-              <input
-                ref={resumeFileRef}
-                type="file"
-                accept=".pdf,.docx,.txt"
-                aria-label="Upload resume file"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleResumeFile(f); e.target.value = ""; }}
-              />
-            </div>
-            <textarea
-              className="textarea h-56"
-              placeholder="Paste your resume text here, or upload a PDF/DOCX/TXT file…"
-              value={resumeText}
-              onChange={(e) => setResumeText(e.target.value)}
-            />
-            {resumeUpload.filename && (
-              <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><FileText size={11} /> Loaded from {resumeUpload.filename}</p>
-            )}
-            {resumeUpload.error && (
-              <p className="text-xs text-red-500 mt-1.5">{resumeUpload.error}</p>
-            )}
-            {typeof window !== "undefined" && localStorage.getItem(RESUME_KEY) && resumeText !== localStorage.getItem(RESUME_KEY) && (
-              <button type="button" onClick={() => setResumeText(localStorage.getItem(RESUME_KEY) ?? "")}
-                className="text-xs text-indigo-600 hover:underline mt-1.5 flex items-center gap-1">
-                <ArrowRight size={11} /> Load from last analysis
-              </button>
-            )}
+            ))}
           </div>
-          <div>
-            <div className="flex items-center justify-between mb-1.5">
-              <label className="label !mb-0">Job Description</label>
-              <button
-                type="button"
-                onClick={() => jdFileRef.current?.click()}
-                disabled={jdUpload.loading}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-60"
-              >
-                {jdUpload.loading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                Upload file
-              </button>
-              <input
-                ref={jdFileRef}
-                type="file"
-                accept=".pdf,.docx,.txt"
-                aria-label="Upload job description file"
-                className="hidden"
-                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleJdFile(f); e.target.value = ""; }}
-              />
-            </div>
+
+          {mode === "manual" ? (
             <textarea
-              className="textarea h-56"
-              placeholder="Paste the job description here, or upload a PDF/DOCX/TXT file…"
+              className="textarea h-64"
+              placeholder="Paste the job description here…"
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
             />
-            {jdUpload.filename && (
-              <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><FileText size={11} /> Loaded from {jdUpload.filename}</p>
-            )}
-            {jdUpload.error && (
-              <p className="text-xs text-red-500 mt-1.5">{jdUpload.error}</p>
-            )}
-          </div>
+          ) : (
+            <div className="space-y-3">
+              {/* Search + refresh */}
+              <div className="flex gap-2">
+                <div className="relative flex-1">
+                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
+                  <input
+                    className="input pl-8"
+                    placeholder="Search title, client, vendor, skills…"
+                    value={atsSearch}
+                    onChange={(e) => setAtsSearch(e.target.value)}
+                    onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()}
+                  />
+                </div>
+                <button type="button" onClick={() => loadAtsJobs()} disabled={atsJobsLoading} title="Refresh"
+                  className="btn-secondary px-3">
+                  <RefreshCw size={14} className={atsJobsLoading ? "animate-spin" : ""} />
+                </button>
+              </div>
+              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
+                <input className="input text-sm" placeholder="Location" value={atsLocation}
+                  onChange={(e) => setAtsLocation(e.target.value)}
+                  onBlur={() => loadAtsJobs()}
+                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
+                <select
+                  className="input text-sm"
+                  aria-label="Work arrangement filter"
+                  value={atsWorkType}
+                  onChange={(e) => { setAtsWorkType(e.target.value); loadAtsJobs({ work_type: e.target.value }); }}
+                >
+                  <option value="">Any arrangement</option>
+                  <option value="Remote">Remote</option>
+                  <option value="Hybrid">Hybrid</option>
+                  <option value="Onsite">Onsite</option>
+                </select>
+                <input className="input text-sm" placeholder="Skills (comma-separated)" value={atsSkills}
+                  onChange={(e) => setAtsSkills(e.target.value)}
+                  onBlur={() => loadAtsJobs()}
+                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
+              </div>
+
+              {/* Job picker states */}
+              {atsJobsLoading ? (
+                <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-8">
+                  <Loader2 size={16} className="animate-spin" /> Loading published jobs…
+                </div>
+              ) : atsJobsError ? (
+                <div className="text-center py-6">
+                  <WifiOff size={28} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-sm text-slate-600 dark:text-slate-400">External job source unavailable.</p>
+                  <p className="text-xs text-slate-400 mt-0.5">{atsJobsError}</p>
+                  <button type="button" onClick={() => loadAtsJobs()} className="btn-secondary text-xs mt-3">
+                    <RefreshCw size={12} className="inline mr-1" /> Retry connection
+                  </button>
+                </div>
+              ) : atsJobs.length === 0 ? (
+                <div className="text-center py-6">
+                  <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-sm text-slate-600 dark:text-slate-400">No published jobs available right now.</p>
+                  <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline mt-1">
+                    Paste a job description manually instead
+                  </button>
+                </div>
+              ) : (
+                <select
+                  className="input"
+                  aria-label="Select a published ATS job"
+                  value={selectedJobId}
+                  onChange={(e) => selectJob(e.target.value ? Number(e.target.value) : "")}
+                >
+                  <option value="">— Choose a published job —</option>
+                  {atsJobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.job_title}{j.client ? ` — ${j.client}` : j.vendor ? ` — ${j.vendor}` : ""}{j.location ? ` · ${j.location}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+
+              {/* Selected job */}
+              {selectedJobLoading && (
+                <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-6">
+                  <Loader2 size={16} className="animate-spin" /> Importing job details…
+                </div>
+              )}
+              {selectedJobError && (
+                <ErrorBanner
+                  message={selectedJobError}
+                  onDismiss={() => setSelectedJobError(null)}
+                  onRetry={() => selectJob(selectedJobId)}
+                />
+              )}
+              {selectedJob && !selectedJobLoading && (
+                <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 max-h-[420px] overflow-y-auto">
+                  <div className="flex items-center justify-between gap-2">
+                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-2.5 py-1 rounded-full">
+                      <Info size={11} /> Imported from ATS
+                    </span>
+                    <button
+                      type="button"
+                      onClick={() => setEditOverride((v) => !v)}
+                      className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline"
+                    >
+                      <Pencil size={11} /> {editOverride ? "Done editing" : "Edit for this analysis"}
+                    </button>
+                  </div>
+
+                  <div>
+                    <p className="font-semibold text-slate-900 dark:text-white">{selectedJob.job_title}</p>
+                    <p className="text-xs text-slate-400 mt-0.5">
+                      {selectedJob.job_reference_number && <>Ref #{selectedJob.job_reference_number} · </>}
+                      Received {selectedJob.received_at ? new Date(selectedJob.received_at).toLocaleDateString() : "—"}
+                    </p>
+                  </div>
+
+                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
+                    <span className="text-slate-400">Client</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.client || "—"}</span>
+                    <span className="text-slate-400">Vendor</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.vendor || "—"}</span>
+                    {selectedJob.end_client && <><span className="text-slate-400">End Client</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.end_client}</span></>}
+                    <span className="text-slate-400 flex items-center gap-1"><MapPin size={11} /> Location</span>
+                    {editOverride ? (
+                      <input className="input text-xs py-1" value={overrideFields.location}
+                        onChange={(e) => setOverrideFields((f) => ({ ...f, location: e.target.value }))} />
+                    ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.location || "—"}</span>}
+                    <span className="text-slate-400">Arrangement</span>
+                    {editOverride ? (
+                      <input className="input text-xs py-1" value={overrideFields.work_type}
+                        onChange={(e) => setOverrideFields((f) => ({ ...f, work_type: e.target.value }))} />
+                    ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.work_type || "—"}</span>}
+                    <span className="text-slate-400">Employment Type</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.employment_type || "—"}</span>
+                    <span className="text-slate-400">Duration</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.duration || "—"}</span>
+                    <span className="text-slate-400">Rate</span>
+                    {editOverride ? (
+                      <input className="input text-xs py-1" value={overrideFields.rate}
+                        onChange={(e) => setOverrideFields((f) => ({ ...f, rate: e.target.value }))} />
+                    ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.rate || "—"}</span>}
+                    <span className="text-slate-400">Work Authorization</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.visa_requirement || "—"}</span>
+                  </div>
+
+                  <div>
+                    <p className="text-xs text-slate-400 mb-1">Required Skills</p>
+                    {editOverride ? (
+                      <input className="input text-xs py-1" value={overrideFields.required_skills}
+                        onChange={(e) => setOverrideFields((f) => ({ ...f, required_skills: e.target.value }))} />
+                    ) : (
+                      <div className="flex flex-wrap gap-1.5">
+                        {selectedJob.required_skills.map((s, i) => (
+                          <span key={i} className="px-2 py-0.5 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 rounded-full text-[11px] font-medium">{s}</span>
+                        ))}
+                      </div>
+                    )}
+                  </div>
+                  {(selectedJob.preferred_skills.length > 0 || editOverride) && (
+                    <div>
+                      <p className="text-xs text-slate-400 mb-1">Preferred Skills</p>
+                      {editOverride ? (
+                        <input className="input text-xs py-1" value={overrideFields.preferred_skills}
+                          onChange={(e) => setOverrideFields((f) => ({ ...f, preferred_skills: e.target.value }))} />
+                      ) : (
+                        <div className="flex flex-wrap gap-1.5">
+                          {selectedJob.preferred_skills.map((s, i) => (
+                            <span key={i} className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 rounded-full text-[11px] font-medium">{s}</span>
+                          ))}
+                        </div>
+                      )}
+                    </div>
+                  )}
+
+                  <div>
+                    <p className="text-xs text-slate-400 mb-1">Job Description</p>
+                    {editOverride ? (
+                      <textarea className="textarea text-xs h-28" value={overrideFields.job_description}
+                        onChange={(e) => setOverrideFields((f) => ({ ...f, job_description: e.target.value }))} />
+                    ) : (
+                      <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap leading-relaxed">{selectedJob.job_description || "—"}</p>
+                    )}
+                  </div>
+
+                  <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
+                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1"><Briefcase size={11} /> Recruiter</p>
+                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
+                      <span className="text-slate-400">Name</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.recruiter_name || "—"}</span>
+                      <span className="text-slate-400">Company</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.vendor || "—"}</span>
+                      <span className="text-slate-400 flex items-center gap-1"><Mail size={11} /> Email</span><span className="text-slate-700 dark:text-slate-300 truncate">{selectedJob.recruiter_email || "—"}</span>
+                      <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> Phone</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.recruiter_phone || "—"}</span>
+                    </div>
+                  </div>
+                </div>
+              )}
+            </div>
+          )}
         </div>
-
-        <PrivacyNote className="mb-4">
-          Your resume and this job description are used only to generate your match score and are never sold or shared. Read our
-        </PrivacyNote>
-
-        {error && (
-          <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={run} className="mb-4" />
-        )}
-
-        <button
-          type="button"
-          onClick={run}
-          disabled={loading || resumeText.length < 50 || jobDescription.length < 50}
-          className="btn-primary flex items-center gap-2 w-full justify-center py-3"
-        >
-          {loading
-            ? <><Loader2 size={16} className="animate-spin" /> Analyzing match…</>
-            : <><Target size={16} /> Analyze Match</>}
-        </button>
       </div>
+
+      <PrivacyNote className="mb-4">
+        Your resume and this job description are used only to generate your match score and are never sold or shared. Read our
+      </PrivacyNote>
+
+      {error && (
+        <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={run} className="mb-4" />
+      )}
+
+      <button
+        type="button"
+        onClick={run}
+        disabled={loading || resumeText.length < 50 || effectiveJobDescription().length < 50}
+        className="btn-primary flex items-center gap-2 w-full justify-center py-3 mb-5"
+      >
+        {loading
+          ? <><Loader2 size={16} className="animate-spin" /> Analyzing…</>
+          : <><Target size={16} /> Analyze Resume Against This Job</>}
+      </button>
 
       {/* Main match agent activity */}
       <AgentActivity steps={MATCH_STEPS} isRunning={loading} isDone={done} className="mb-5" />

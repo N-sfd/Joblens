@@ -16,7 +16,7 @@ import { getStatusBreakdown, getWeeklyApplications, getPipelineRates, getActivit
 import {
   Briefcase, FileText, Target, PenTool, TrendingUp, ArrowRight,
   CheckCircle, Clock, Trophy, XCircle, Plus, Bot, Trash2,
-  MessagesSquare, Award, ThumbsDown, HandCoins,
+  MessagesSquare, Award, ThumbsDown, HandCoins, Import,
 } from "lucide-react";
 
 const statCards = [
@@ -45,6 +45,7 @@ const activityIcons: Record<string, React.ReactNode> = {
   status_changed:          <TrendingUp size={13} className="text-slate-500" />,
   job_deleted:             <XCircle size={13} className="text-red-400" />,
   negotiation_advice:      <HandCoins size={13} className="text-teal-500" />,
+  job_imported:            <Import size={13} className="text-indigo-500" />,
 };
 
 function timeAgo(iso: string) {

@@ -1,9 +1,9 @@
 "use client";
 
-import { Suspense, useEffect, useRef, useState } from "react";
+import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Sparkles, ArrowLeft, Upload, FileText } from "lucide-react";
+import { Loader2, Sparkles, ArrowLeft } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import ErrorBanner from "@/components/ErrorBanner";
@@ -31,11 +31,7 @@ function NewJobRequirementPageInner() {
   const [saveError, setSaveError] = useState<string | null>(null);
   const [loadingEmail, setLoadingEmail] = useState(!!emailId);
 
-  // File upload (instead of copy/paste)
-  const fileRef = useRef<HTMLInputElement>(null);
-  const [fileUpload, setFileUpload] = useState<{ loading: boolean; error: string | null; filename: string | null }>({ loading: false, error: null, filename: null });
-
-  const update = (field: keyof JobFormState, value: string) =>
+  const update = (field: keyof JobFormState, value: string | boolean) =>
     setForm((f) => ({ ...f, [field]: value }));
 
   useEffect(() => {
@@ -114,17 +110,6 @@ function NewJobRequirementPageInner() {
     }
   };
 
-  const handleFileUpload = async (f: File) => {
-    setFileUpload({ loading: true, error: null, filename: null });
-    try {
-      const data = await api.extractJobRequirementText(f);
-      setRawText(data.text);
-      setFileUpload({ loading: false, error: null, filename: data.filename });
-    } catch (e) {
-      setFileUpload({ loading: false, error: e instanceof Error ? e.message : "Failed to read file.", filename: null });
-    }
-  };
-
   const handleSave = async () => {
     if (!form.job_title.trim()) {
       setSaveError("Job title is required.");
@@ -192,32 +177,11 @@ function NewJobRequirementPageInner() {
 
       {mode === "paste" && (
         <div className="card p-6 mb-5">
-          <div className="flex items-center justify-between mb-1">
-            <h2 className="font-bold text-slate-800">
-              {emailId ? "Source Email" : "Paste Job Email / Job Description"}
-            </h2>
-            {!emailId && (
-              <button
-                type="button"
-                onClick={() => fileRef.current?.click()}
-                disabled={fileUpload.loading}
-                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-60"
-              >
-                {fileUpload.loading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
-                Upload file
-              </button>
-            )}
-            <input
-              ref={fileRef}
-              type="file"
-              accept=".pdf,.docx,.txt"
-              aria-label="Upload job description file"
-              className="hidden"
-              onChange={(e) => { const f = e.target.files?.[0]; if (f) handleFileUpload(f); e.target.value = ""; }}
-            />
-          </div>
+          <h2 className="font-bold text-slate-800 mb-1">
+            {emailId ? "Source Email" : "Paste Job Email / Job Description"}
+          </h2>
           <p className="text-sm text-slate-500 mb-3">
-            {emailId ? "Re-parse if you need to refresh AI-extracted fields." : "Upload a PDF/DOCX/TXT file or paste it below, then parse with AI and review before saving."}
+            {emailId ? "Re-parse if you need to refresh AI-extracted fields." : "Parse with AI, then review and edit before saving."}
           </p>
           {parseError && <ErrorBanner message={parseError} onDismiss={() => setParseError(null)} className="mb-3" />}
           <textarea
@@ -226,14 +190,8 @@ function NewJobRequirementPageInner() {
             value={rawText}
             onChange={(e) => setRawText(e.target.value)}
             readOnly={!!emailId}
-            placeholder="Paste the job email or description here, or upload a file above..."
+            placeholder="Paste the job email or description here..."
           />
-          {fileUpload.filename && (
-            <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><FileText size={11} /> Loaded from {fileUpload.filename}</p>
-          )}
-          {fileUpload.error && (
-            <p className="text-xs text-red-500 mt-1.5">{fileUpload.error}</p>
-          )}
           <div className="flex justify-end mt-3">
             <button type="button" onClick={handleParse} disabled={parsing} className="btn-primary flex items-center gap-2">
               {parsing ? <><Loader2 size={14} className="animate-spin" /> Parsing…</> : <><Sparkles size={14} /> Parse Job Details</>}

@@ -4,9 +4,10 @@ from typing import List
 import json
 
 from database import get_db
-from models import MatchRequest, JobMatch
+from models import MatchRequest, JobMatch, JobRequirement
 from services.claude_service import match_job, generate_resume_bullets, create_interview_questions
 from auth import Owner, get_owner, owned, log_activity
+from routers.public_jobs import _to_public_detail
 from pydantic import BaseModel
 
 router = APIRouter()
@@ -32,9 +33,25 @@ async def match_resume_to_job(
     except Exception as e:
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
 
+    # If this match was run against a job selected from the internal ATS,
+    # store a point-in-time snapshot so this historical result stays intact
+    # even if the source job is later edited, unpublished, or closed.
+    job_snapshot_json = None
+    job_requirement_id = None
+    company_name = request.company_name
+    if request.job_requirement_id is not None:
+        job = db.query(JobRequirement).filter(JobRequirement.id == request.job_requirement_id).first()
+        if job:
+            job_requirement_id = job.id
+            job_snapshot_json = json.dumps(_to_public_detail(job).model_dump(mode="json"))
+            company_name = company_name or job.client or job.vendor
+
     db.add(JobMatch(
         resume_text=request.resume_text,
         job_description=request.job_description,
+        company_name=company_name,
+        job_requirement_id=job_requirement_id,
+        job_snapshot_json=job_snapshot_json,
         match_json=json.dumps(result),
         guest_id=owner.guest_id,
         user_id=owner.user_id,
@@ -64,6 +81,9 @@ async def match_history(
             "id": r.id,
             "resume_text": r.resume_text,
             "job_description": r.job_description,
+            "company_name": r.company_name,
+            "job_requirement_id": r.job_requirement_id,
+            "job_snapshot": json.loads(r.job_snapshot_json) if r.job_snapshot_json else None,
             "match": json.loads(r.match_json) if r.match_json else None,
             "created_at": r.created_at.isoformat() if r.created_at else None,
         }

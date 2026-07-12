@@ -50,6 +50,7 @@ export interface JobFormState {
   priority: string;
   source: string;
   notes: string;
+  published_for_matching: boolean;
 }
 
 export const emptyJobForm = (): JobFormState => ({
@@ -61,7 +62,7 @@ export const emptyJobForm = (): JobFormState => ({
   required_skills: "", preferred_skills: "", minimum_experience: "", education_requirement: "",
   certification_requirement: "", job_description: "", submission_instructions: "",
   submission_deadline: "", number_of_openings: "", status: "New", priority: "Medium",
-  source: "Manual", notes: "",
+  source: "Manual", notes: "", published_for_matching: false,
 });
 
 export const splitSkills = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -154,6 +155,7 @@ export function jobToForm(job: import("@/types").JobRequirement): JobFormState {
     priority: job.priority,
     source: job.source,
     notes: job.notes ?? "",
+    published_for_matching: job.published_for_matching ?? false,
   };
 }
 
@@ -200,6 +202,7 @@ export function formToPayload(form: JobFormState, rawEmail?: string | null): imp
     priority: form.priority,
     source: form.source,
     notes: form.notes || null,
+    published_for_matching: form.published_for_matching,
     external_job_id: null,
     received_at: null,
   };
@@ -207,7 +210,7 @@ export function formToPayload(form: JobFormState, rawEmail?: string | null): imp
 
 interface Props {
   form: JobFormState;
-  onChange: (field: keyof JobFormState, value: string) => void;
+  onChange: (field: keyof JobFormState, value: string | boolean) => void;
 }
 
 function Field({ label, children }: { label: string; children: React.ReactNode }) {
@@ -372,6 +375,21 @@ export default function JobRequirementForm({ form, onChange }: Props) {
           </select>
         </Field>
       </div>
+
+      <label className="flex items-start gap-2.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl px-4 py-3 cursor-pointer">
+        <input
+          type="checkbox"
+          className="mt-0.5 accent-indigo-600"
+          checked={form.published_for_matching}
+          onChange={(e) => onChange("published_for_matching", e.target.checked)}
+        />
+        <span>
+          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Publish to JobLens candidates</span>
+          <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+            Makes this job (title, description, skills, rate, and recruiter contact info) selectable in the public Job Matcher. Closing or rejecting the job automatically hides it again.
+          </span>
+        </span>
+      </label>
 
       <Field label="Notes"><textarea title="Notes" className="textarea" rows={3} value={form.notes} onChange={set("notes")} /></Field>
     </div>

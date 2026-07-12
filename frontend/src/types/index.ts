@@ -15,7 +15,8 @@ export type ActivityType =
   | "job_added"
   | "status_changed"
   | "job_deleted"
-  | "negotiation_advice";
+  | "negotiation_advice"
+  | "job_imported";
 
 export interface ActivityEntry {
   id: number;
@@ -507,6 +508,9 @@ export interface JobRequirement {
   received_at: string | null;
   created_at: string;
   updated_at: string;
+  // Recruiter opt-in to surface this requisition in the public Job Matcher —
+  // see PublicJobListing/getPublicJob and types below.
+  published_for_matching: boolean;
 }
 
 export type JobRequirementCreate = Omit<
@@ -534,6 +538,38 @@ export interface JobRequirementListParams {
 
 export interface JobRequirementListResponse {
   items: JobRequirement[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+// Public (candidate-facing) browse of published ATS jobs — see
+// backend/routers/public_jobs.py. Not Clerk-gated; same guest/user pattern
+// as the rest of the public app.
+export interface PublicJobListing {
+  id: number;
+  job_title: string;
+  client: string | null;
+  vendor: string | null;
+  location: string | null;
+  work_type: string | null;
+  employment_type: string | null;
+  rate: string | null;
+  required_skills: string[];
+}
+
+export interface PublicJobListParams {
+  q?: string;
+  location?: string;
+  work_type?: string;
+  skills?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface PublicJobListResponse {
+  items: PublicJobListing[];
   total: number;
   page: number;
   page_size: number;

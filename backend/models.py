@@ -64,6 +64,13 @@ class JobMatch(Base):
     job_description = Column(Text)
     company_name = Column(String(255), nullable=True)
     match_json = Column(Text)
+    # Set when the match was run against a job selected from the internal ATS
+    # (routers/public_jobs.py) rather than pasted manually. `job_snapshot_json`
+    # is a point-in-time copy of the job + recruiter fields at analysis time —
+    # historical results must not change if the source job is later edited,
+    # closed, or removed, so this is never re-joined against JobRequirement.
+    job_requirement_id = Column(Integer, nullable=True, index=True)
+    job_snapshot_json = Column(Text, nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
@@ -266,6 +273,12 @@ class JobRequirement(Base):
     number_of_openings = Column(Integer, nullable=True)
     status = Column(String(50), default="New")
     priority = Column(String(20), default="Medium")
+    # Explicit recruiter opt-in to surface this requisition to public JobLens
+    # job-seeker accounts in the Job Matcher (see routers/public_jobs.py).
+    # Independent of `status` — a job can be "Ready for Match" internally
+    # without ever being published, and closing it (status change) hides it
+    # from candidates automatically without needing a second toggle.
+    published_for_matching = Column(Boolean, default=False)
     source = Column(String(50), default="Manual")
     notes = Column(Text, nullable=True)
     created_by = Column(String(255), nullable=True)
@@ -279,6 +292,11 @@ class JobRequirement(Base):
     client_org = relationship("CRMOrganization", foreign_keys=[client_id], viewonly=True)
     end_client_org = relationship("CRMOrganization", foreign_keys=[end_client_id], viewonly=True)
     recruiter_contact = relationship("CRMContact", foreign_keys=[recruiter_contact_id], viewonly=True)
+
+
+# Statuses that hide a job requirement from the public Job Matcher even if
+# `published_for_matching` is still True — see routers/public_jobs.py.
+PUBLIC_CLOSED_JOB_STATUSES = {"Closed", "Rejected", "Duplicate", "Spam", "On Hold"}
 
 
 class CRMOrganization(Base):
@@ -632,6 +650,8 @@ class FollowUpEmailResponse(BaseModel):
 class MatchRequest(BaseModel):
     resume_text: str
     job_description: str
+    company_name: Optional[str] = None
+    job_requirement_id: Optional[int] = None
 
 
 class CoverLetterRequest(BaseModel):
@@ -918,6 +938,7 @@ class JobRequirementBase(BaseModel):
     source: str = "Manual"
     notes: Optional[str] = None
     received_at: Optional[datetime] = None
+    published_for_matching: bool = False
 
 
 class JobRequirementCreate(JobRequirementBase):
@@ -948,6 +969,33 @@ class JobRequirementResponse(JobRequirementBase):
 
 class JobRequirementListResponse(BaseModel):
     items: list[JobRequirementResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+# --- Public Job Matcher (candidate-facing browse of published ATS jobs) ---
+
+class PublicJobListing(BaseModel):
+    """Trimmed row for the Job Matcher's job picker — enough to populate a
+    dropdown without pulling every job's full description repeatedly."""
+
+    id: int
+    job_title: str
+    client: Optional[str] = None
+    vendor: Optional[str] = None
+    location: Optional[str] = None
+    work_type: Optional[str] = None
+    employment_type: Optional[str] = None
+    rate: Optional[str] = None
+    required_skills: list[str] = []
+
+    model_config = {"from_attributes": True}
+
+
+class PublicJobListResponse(BaseModel):
+    items: list[PublicJobListing]
     total: int
     page: int
     page_size: int

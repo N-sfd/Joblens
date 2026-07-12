@@ -8,7 +8,7 @@ import os
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
 import logging
@@ -90,6 +90,9 @@ app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
 app.include_router(account.router, prefix="/api/account", tags=["Account"])
+# Public read of ATS jobs a recruiter has explicitly published for candidate
+# matching (routers/public_jobs.py) — guest_id/user pattern, not Clerk-gated.
+app.include_router(public_jobs.router, prefix="/api/public-jobs", tags=["Public Jobs"])
 # Private ATS data — Clerk JWT verification via ats_auth.py (set ATS_AUTH_ENFORCE=true in production).
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
