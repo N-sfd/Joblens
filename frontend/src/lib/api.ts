@@ -122,6 +122,13 @@ export const api = {
       "/api/resume/analyze", { method: "POST", body: form }
     );
   },
+  extractResumeText: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ filename: string; text: string }>(
+      "/api/resume/extract-text", { method: "POST", body: form }
+    );
+  },
   generateResumeOnlyBullets: (resume_text: string) =>
     request<{ bullets: string[] }>("/api/resume/bullets", {
       method: "POST", headers: { "Content-Type": "application/json" },
@@ -156,6 +163,13 @@ export const api = {
     request<import("@/types").JobPostingParseResult>("/api/jobs/parse", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),
     }),
+  extractJobDescriptionText: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ filename: string; text: string }>(
+      "/api/jobs/extract-text", { method: "POST", body: form }
+    );
+  },
   generateNegotiationAdvice: (id: number) =>
     request<import("@/types").NegotiationAdvice>(`/api/jobs/${id}/negotiate`, { method: "POST" }),
   loadDemoJobs: () => request<{ message: string; companies: string[] }>("/api/jobs/demo", { method: "POST" }),
@@ -342,6 +356,13 @@ export const api = {
     request<import("@/types").JobRequirementParseResult>("/api/job-requirements/parse", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),
     }),
+  extractJobRequirementText: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<{ filename: string; text: string }>(
+      "/api/job-requirements/extract-text", { method: "POST", body: form }
+    );
+  },
 
   getAtsDashboardStats: () =>
     request<import("@/types").AtsDashboardStats>("/api/ats/dashboard"),

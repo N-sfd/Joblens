@@ -1,6 +1,6 @@
 import json
 
-from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi import APIRouter, Depends, File, HTTPException, Query, Request, UploadFile
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -22,6 +22,7 @@ from models import (
 from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
 from services.audit import log_audit
 from services.claude_service import parse_job_requirement
+from services.file_text import read_upload, extract_text
 from services.job_employee_match import match_employees_to_job
 from services.rate_limit import rate_limit_ai
 
@@ -173,6 +174,23 @@ def _auto_link_crm(db: Session, data: dict) -> dict:
         if contact:
             data["recruiter_contact_id"] = contact.id
     return data
+
+
+@router.post("/extract-text")
+async def extract_job_requirement_text(
+    file: UploadFile = File(...),
+    principal: AtsPrincipal = Depends(require_writer),
+):
+    """Extract plain text from an uploaded job description file (PDF/DOCX/TXT),
+    so it can auto-fill the paste box instead of copy-pasting."""
+    filename, content = await read_upload(file)
+    text = extract_text(filename, content)
+    if len(text.strip()) < 20:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not extract readable text. Ensure the file is not image-only.",
+        )
+    return {"filename": filename, "text": text}
 
 
 @router.post("/parse", response_model=JobRequirementParseResponse)

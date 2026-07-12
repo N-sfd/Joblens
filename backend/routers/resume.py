@@ -8,6 +8,7 @@ from services.claude_service import (
     generate_resume_bullets_generic,
     create_interview_questions_generic,
 )
+from services.file_text import read_upload, extract_text
 from auth import Owner, get_owner, owned, log_activity
 from pydantic import BaseModel
 import pypdf
@@ -31,6 +32,23 @@ def extract_docx_text(data: bytes) -> str:
     from docx import Document
     doc = Document(io.BytesIO(data))
     return "\n".join(p.text for p in doc.paragraphs).strip()
+
+
+@router.post("/extract-text")
+async def extract_resume_text(
+    file: UploadFile = File(...),
+    owner: Owner = Depends(get_owner),
+):
+    """Extract plain text from an uploaded resume file — no AI analysis, so it can
+    back an auto-fill flow (e.g. Job Matcher) without generating a full report."""
+    filename, content = await read_upload(file)
+    text = extract_text(filename, content)
+    if len(text.strip()) < 50:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not extract readable text. Ensure the file is not image-only.",
+        )
+    return {"filename": filename, "text": text}
 
 
 @router.post("/analyze")

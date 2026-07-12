@@ -1,4 +1,4 @@
-from fastapi import APIRouter, Depends, HTTPException
+from fastapi import APIRouter, Depends, File, HTTPException, UploadFile
 from sqlalchemy.orm import Session
 from database import get_db
 from models import (
@@ -9,6 +9,7 @@ from models import (
     FollowUpEmailResponse,
 )
 from services.claude_service import generate_follow_up_email, parse_job_posting, generate_negotiation_advice
+from services.file_text import read_upload, extract_text
 from auth import Owner, get_owner, owned, log_activity
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -136,6 +137,23 @@ async def list_reminders(
         .order_by(JobApplication.follow_up_date.asc())
         .all()
     )
+
+
+@router.post("/extract-text")
+async def extract_job_description_text(
+    file: UploadFile = File(...),
+    owner: Owner = Depends(get_owner),
+):
+    """Extract plain text from an uploaded job description file (PDF/DOCX/TXT),
+    so it can auto-fill the Job Matcher instead of copy-pasting."""
+    filename, content = await read_upload(file)
+    text = extract_text(filename, content)
+    if len(text.strip()) < 30:
+        raise HTTPException(
+            status_code=422,
+            detail="Could not extract readable text. Ensure the file is not image-only.",
+        )
+    return {"filename": filename, "text": text}
 
 
 @router.post("/parse")

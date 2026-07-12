@@ -1,6 +1,6 @@
 "use client";
 
-import { useState, useEffect } from "react";
+import { useState, useEffect, useRef } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
 import type { MatchResult, MatchHistoryEntry } from "@/types";
@@ -12,7 +12,7 @@ import PrivacyNote from "@/components/PrivacyNote";
 import {
   Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
   Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
-  ChevronUp, Copy, X, GraduationCap,
+  ChevronUp, Copy, X, GraduationCap, Upload, FileText,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -69,6 +69,12 @@ export default function MatchPage() {
   const [error, setError] = useState<string | null>(null);
   const [result, setResult] = useState<MatchResult | null>(null);
 
+  // File upload (instead of copy/paste)
+  const resumeFileRef = useRef<HTMLInputElement>(null);
+  const jdFileRef = useRef<HTMLInputElement>(null);
+  const [resumeUpload, setResumeUpload] = useState<{ loading: boolean; error: string | null; filename: string | null }>({ loading: false, error: null, filename: null });
+  const [jdUpload, setJdUpload] = useState<{ loading: boolean; error: string | null; filename: string | null }>({ loading: false, error: null, filename: null });
+
   // Action states
   const [bullets, setBullets] = useState<string[] | null>(null);
   const [bulletsLoading, setBulletsLoading] = useState(false);
@@ -108,6 +114,29 @@ export default function MatchPage() {
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
+  };
+
+  const handleResumeFile = async (f: File) => {
+    setResumeUpload({ loading: true, error: null, filename: null });
+    try {
+      const data = await api.extractResumeText(f);
+      setResumeText(data.text);
+      localStorage.setItem(RESUME_KEY, data.text);
+      setResumeUpload({ loading: false, error: null, filename: data.filename });
+    } catch (e) {
+      setResumeUpload({ loading: false, error: e instanceof Error ? e.message : "Failed to read file.", filename: null });
+    }
+  };
+
+  const handleJdFile = async (f: File) => {
+    setJdUpload({ loading: true, error: null, filename: null });
+    try {
+      const data = await api.extractJobDescriptionText(f);
+      setJobDescription(data.text);
+      setJdUpload({ loading: false, error: null, filename: data.filename });
+    } catch (e) {
+      setJdUpload({ loading: false, error: e instanceof Error ? e.message : "Failed to read file.", filename: null });
+    }
   };
 
   const run = async () => {
@@ -234,13 +263,38 @@ export default function MatchPage() {
       <div className="card p-5 mb-5">
         <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
           <div>
-            <label className="label">Your Resume</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label !mb-0">Your Resume</label>
+              <button
+                type="button"
+                onClick={() => resumeFileRef.current?.click()}
+                disabled={resumeUpload.loading}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-60"
+              >
+                {resumeUpload.loading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                Upload file
+              </button>
+              <input
+                ref={resumeFileRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                aria-label="Upload resume file"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleResumeFile(f); e.target.value = ""; }}
+              />
+            </div>
             <textarea
               className="textarea h-56"
-              placeholder="Paste your resume text here…"
+              placeholder="Paste your resume text here, or upload a PDF/DOCX/TXT file…"
               value={resumeText}
               onChange={(e) => setResumeText(e.target.value)}
             />
+            {resumeUpload.filename && (
+              <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><FileText size={11} /> Loaded from {resumeUpload.filename}</p>
+            )}
+            {resumeUpload.error && (
+              <p className="text-xs text-red-500 mt-1.5">{resumeUpload.error}</p>
+            )}
             {typeof window !== "undefined" && localStorage.getItem(RESUME_KEY) && resumeText !== localStorage.getItem(RESUME_KEY) && (
               <button type="button" onClick={() => setResumeText(localStorage.getItem(RESUME_KEY) ?? "")}
                 className="text-xs text-indigo-600 hover:underline mt-1.5 flex items-center gap-1">
@@ -249,13 +303,38 @@ export default function MatchPage() {
             )}
           </div>
           <div>
-            <label className="label">Job Description</label>
+            <div className="flex items-center justify-between mb-1.5">
+              <label className="label !mb-0">Job Description</label>
+              <button
+                type="button"
+                onClick={() => jdFileRef.current?.click()}
+                disabled={jdUpload.loading}
+                className="flex items-center gap-1.5 text-xs font-semibold text-indigo-600 hover:text-indigo-700 disabled:opacity-60"
+              >
+                {jdUpload.loading ? <Loader2 size={12} className="animate-spin" /> : <Upload size={12} />}
+                Upload file
+              </button>
+              <input
+                ref={jdFileRef}
+                type="file"
+                accept=".pdf,.docx,.txt"
+                aria-label="Upload job description file"
+                className="hidden"
+                onChange={(e) => { const f = e.target.files?.[0]; if (f) handleJdFile(f); e.target.value = ""; }}
+              />
+            </div>
             <textarea
               className="textarea h-56"
-              placeholder="Paste the job description here…"
+              placeholder="Paste the job description here, or upload a PDF/DOCX/TXT file…"
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
             />
+            {jdUpload.filename && (
+              <p className="text-xs text-slate-400 mt-1.5 flex items-center gap-1"><FileText size={11} /> Loaded from {jdUpload.filename}</p>
+            )}
+            {jdUpload.error && (
+              <p className="text-xs text-red-500 mt-1.5">{jdUpload.error}</p>
+            )}
           </div>
         </div>
 
