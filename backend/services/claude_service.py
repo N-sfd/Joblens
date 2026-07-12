@@ -77,7 +77,10 @@ Return this exact JSON structure:
     {{"section": "<resume section>", "suggestion": "<specific change to make>"}}
   ],
   "keywords_to_add": ["<keyword>", "<keyword>"],
-  "interview_preparation": ["<tip>", "<tip>", "<tip>"]
+  "interview_preparation": ["<tip>", "<tip>", "<tip>"],
+  "learning_resources": [
+    {{"skill": "<one of the missing skills>", "suggestion": "<specific, generic guidance for closing this gap, e.g. 'Take a hands-on course covering X and build a small project with it' — do not invent specific course names or URLs>"}}
+  ]
 }}"""
 
 TONE_GUIDE = {
@@ -194,6 +197,7 @@ async def match_job(resume_text: str, job_description: str) -> dict:
         "tailoring_suggestions": llm.get("tailoring_suggestions", []),
         "keywords_to_add": llm.get("keywords_to_add", []),
         "interview_preparation": llm.get("interview_preparation", []),
+        "learning_resources": llm.get("learning_resources", []),
     }
 
 
@@ -377,6 +381,88 @@ async def generate_follow_up_email(
                     company=company,
                     role=role,
                     recruiter_contact=recruiter_contact or "Unknown",
+                    notes=notes or "None",
+                ),
+            }
+        ],
+    )
+    return json.loads(response.choices[0].message.content)
+
+
+JOB_POSTING_PARSE_PROMPT = """\
+You are a job-search assistant helping a candidate quickly log a job they found. Parse the pasted job posting/description below into structured fields for a personal job tracker. Return ONLY a JSON object — no markdown, no explanation.
+
+Raw text:
+{raw_text}
+
+Rules:
+- Do NOT invent missing information. Return an empty string when a value is not present in the text.
+- work_type must be one of "Remote", "Hybrid", "Onsite", or "" if not stated.
+- notes should be a concise 2-3 sentence summary of the role's core responsibilities and requirements, useful as a personal reminder.
+
+Return this exact JSON structure (never omit a key):
+{{
+  "company": "<company/employer name, or ''>",
+  "role": "<job title, or ''>",
+  "location": "<city/state, 'Remote', or ''>",
+  "work_type": "<Remote | Hybrid | Onsite | ''>",
+  "salary_range": "<salary/comp range as stated, e.g. '$120k - $150k', or ''>",
+  "notes": "<2-3 sentence summary, or ''>"
+}}"""
+
+
+async def parse_job_posting(raw_text: str) -> dict:
+    """Parses a pasted job posting/description into JobApplication fields for the job tracker."""
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=768,
+        response_format={"type": "json_object"},
+        messages=[{"role": "user", "content": JOB_POSTING_PARSE_PROMPT.format(raw_text=raw_text)}],
+    )
+    data = json.loads(response.choices[0].message.content)
+    defaults = {"company": "", "role": "", "location": "", "work_type": "", "salary_range": "", "notes": ""}
+    defaults.update(data)
+    return defaults
+
+
+NEGOTIATION_ADVICE_PROMPT = """\
+You are an expert salary negotiation coach helping a candidate who just received a job offer. Return ONLY a JSON object — no markdown, no explanation.
+
+Company: {company}
+Role: {role}
+Offered salary/range: {salary_range}
+Notes about the offer/role: {notes}
+
+Give the candidate concrete, actionable negotiation guidance. Return this exact JSON structure:
+{{
+  "market_context": "<1-2 sentence framing of how to think about this offer and negotiation leverage, generic and realistic — do not invent specific market salary figures>",
+  "talking_points": ["<specific, actionable negotiation talking point>", "<talking point>", "<talking point>", "<talking point>", "<talking point>"],
+  "counter_offer_email": {{
+    "subject": "<short email subject line>",
+    "body": "<polite, confident counter-offer or clarifying-questions email body, under 180 words, with proper paragraph breaks, starting with a greeting and signing off with '[Your Name]'>"
+  }}
+}}"""
+
+
+async def generate_negotiation_advice(
+    company: str,
+    role: str,
+    salary_range: str = "",
+    notes: str = "",
+) -> dict:
+    client = get_client()
+    response = client.chat.completions.create(
+        model=MODEL,
+        max_tokens=1024,
+        response_format={"type": "json_object"},
+        messages=[
+            {
+                "role": "user",
+                "content": NEGOTIATION_ADVICE_PROMPT.format(
+                    company=company,
+                    role=role,
+                    salary_range=salary_range or "Not specified",
                     notes=notes or "None",
                 ),
             }

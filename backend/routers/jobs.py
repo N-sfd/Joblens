@@ -8,7 +8,7 @@ from models import (
     JobApplicationResponse,
     FollowUpEmailResponse,
 )
-from services.claude_service import generate_follow_up_email
+from services.claude_service import generate_follow_up_email, parse_job_posting, generate_negotiation_advice
 from auth import Owner, get_owner, owned, log_activity
 from typing import List, Optional
 from datetime import datetime, timedelta
@@ -17,6 +17,10 @@ from pydantic import BaseModel
 
 class BulkDeleteRequest(BaseModel):
     ids: List[int]
+
+
+class JobPostingParseRequest(BaseModel):
+    raw_text: str
 
 router = APIRouter()
 
@@ -134,6 +138,21 @@ async def list_reminders(
     )
 
 
+@router.post("/parse")
+async def parse_job_posting_text(
+    body: JobPostingParseRequest,
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
+    if len(body.raw_text.strip()) < 30:
+        raise HTTPException(status_code=422, detail="Paste more of the job posting to auto-fill from it.")
+    try:
+        parsed = await parse_job_posting(body.raw_text)
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    return parsed
+
+
 @router.get("/", response_model=List[JobApplicationResponse])
 async def list_jobs(
     status: Optional[str] = None,
@@ -219,6 +238,26 @@ async def follow_up_email(
         raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
     log_activity(db, owner, "cover_letter_generated", f"Drafted follow-up email for {job.company} — {job.role}")
     return email
+
+
+@router.post("/{job_id}/negotiate")
+async def negotiate_offer(
+    job_id: int,
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
+    job = get_owned_job(db, owner, job_id)
+    try:
+        advice = await generate_negotiation_advice(
+            company=job.company,
+            role=job.role,
+            salary_range=job.salary_range or "",
+            notes=job.notes or "",
+        )
+    except Exception as e:
+        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    log_activity(db, owner, "negotiation_advice", f"Generated negotiation advice for {job.company} — {job.role}")
+    return advice
 
 
 @router.delete("/{job_id}")

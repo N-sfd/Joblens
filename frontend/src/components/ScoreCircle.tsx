@@ -28,7 +28,8 @@ export default function ScoreCircle({ score, label, size = 120, strokeColor = "#
             cy={size / 2}
             r={radius}
             fill="none"
-            stroke="#f1f5f9"
+            stroke="currentColor"
+            className="text-slate-100 dark:text-slate-800"
             strokeWidth="7"
           />
           <circle
@@ -45,11 +46,11 @@ export default function ScoreCircle({ score, label, size = 120, strokeColor = "#
           />
         </svg>
         <div className="absolute flex flex-col items-center justify-center">
-          <span className="text-2xl font-bold text-slate-900 tracking-tight">{score}</span>
+          <span className="text-2xl font-bold text-slate-900 dark:text-white tracking-tight">{score}</span>
           <span className="text-[11px] text-slate-400 font-medium">/100</span>
         </div>
       </div>
-      <span className="text-xs font-semibold text-slate-600 text-center uppercase tracking-wide">{label}</span>
+      <span className="text-xs font-semibold text-slate-600 dark:text-slate-400 text-center uppercase tracking-wide">{label}</span>
     </div>
   );
 }

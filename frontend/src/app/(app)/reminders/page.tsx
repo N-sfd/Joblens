@@ -48,12 +48,12 @@ export default function RemindersPage() {
 
   const renderGroup = (title: string, items: JobApplication[], tone: "overdue" | "upcoming") => (
     <div className="card">
-      <div className="px-5 py-4 border-b border-slate-100">
-        <h2 className={`font-semibold ${tone === "overdue" ? "text-red-600" : "text-slate-800"}`}>{title}</h2>
+      <div className="px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+        <h2 className={`font-semibold ${tone === "overdue" ? "text-red-600 dark:text-red-400" : "text-slate-800 dark:text-slate-100"}`}>{title}</h2>
       </div>
-      <div className="divide-y divide-slate-100">
+      <div className="divide-y divide-slate-100 dark:divide-slate-800">
         {items.map((job) => (
-          <div key={job.id} className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 transition-colors">
+          <div key={job.id} className="px-5 py-3.5 flex items-center justify-between gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
             <div className="flex items-center gap-3 min-w-0">
               {job.reminder_type && (() => {
                 const Icon = REMINDER_TYPE_ICON[job.reminder_type];
@@ -64,7 +64,7 @@ export default function RemindersPage() {
                 );
               })()}
               <div className="min-w-0">
-                <Link href="/jobs" className="text-sm font-semibold text-slate-800 hover:text-indigo-600 transition-colors">
+                <Link href="/jobs" className="text-sm font-semibold text-slate-800 dark:text-slate-100 hover:text-indigo-600 transition-colors">
                   {job.company}
                 </Link>
                 <p className="text-xs text-slate-500">
@@ -74,7 +74,7 @@ export default function RemindersPage() {
               </div>
             </div>
             <div className="flex items-center gap-3 shrink-0">
-              <span className={`text-xs font-medium ${tone === "overdue" ? "text-red-500" : "text-slate-400"}`}>
+              <span className={`text-xs font-medium ${tone === "overdue" ? "text-red-500 dark:text-red-400" : "text-slate-400"}`}>
                 {job.follow_up_date ? formatDate(job.follow_up_date) : ""}
               </span>
               <StatusBadge status={job.status} />

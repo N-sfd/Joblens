@@ -209,7 +209,7 @@ export default function ResumePage() {
           <div
             className={clsx(
               "border-2 border-dashed rounded-xl p-6 sm:p-10 text-center transition-all duration-150 cursor-pointer",
-              dragging ? "border-indigo-400 bg-indigo-50" : "border-slate-200 hover:border-indigo-300 hover:bg-slate-50"
+              dragging ? "border-indigo-400 bg-indigo-50 dark:bg-indigo-950/30" : "border-slate-200 dark:border-slate-700 hover:border-indigo-300 hover:bg-slate-50 dark:hover:bg-slate-800/60"
             )}
             onDragOver={(e) => { e.preventDefault(); setDragging(true); }}
             onDragLeave={() => setDragging(false)}
@@ -217,7 +217,7 @@ export default function ResumePage() {
             onClick={() => inputRef.current?.click()}
           >
             <Upload size={36} className={clsx("mx-auto mb-3 transition-colors", dragging ? "text-indigo-500" : "text-slate-300")} />
-            <p className="font-semibold text-slate-600 mb-1">Drop your resume here</p>
+            <p className="font-semibold text-slate-600 dark:text-slate-400 mb-1">Drop your resume here</p>
             <p className="text-sm text-slate-400">or click to browse · PDF, DOCX, TXT supported</p>
             <input
               ref={inputRef}
@@ -230,11 +230,11 @@ export default function ResumePage() {
           </div>
 
           {file && (
-            <div className="mt-4 flex items-center justify-between bg-slate-50 rounded-lg px-4 py-3">
+            <div className="mt-4 flex items-center justify-between bg-slate-50 dark:bg-slate-800/60 rounded-lg px-4 py-3">
               <div className="flex items-center gap-3">
                 <FileText size={18} className="text-indigo-500" />
                 <div>
-                  <p className="text-sm font-medium text-slate-700">{file.name}</p>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{file.name}</p>
                   <p className="text-xs text-slate-400">{(file.size / 1024).toFixed(1)} KB</p>
                 </div>
               </div>
@@ -274,7 +274,7 @@ export default function ResumePage() {
           <div className="card p-6">
             <div className="flex items-center justify-between mb-6">
               <div>
-                <h2 className="font-semibold text-slate-800">Analysis Results</h2>
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100">Analysis Results</h2>
                 <p className="text-xs text-slate-400 mt-0.5">{result.filename}</p>
               </div>
               <div className="flex items-center gap-2 shrink-0">
@@ -296,10 +296,10 @@ export default function ResumePage() {
                 ].map((row) => (
                   <div key={row.label}>
                     <div className="flex items-center justify-between mb-1">
-                      <span className="text-sm font-medium text-slate-700">{row.label}</span>
+                      <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{row.label}</span>
                       <span className="text-xs text-slate-400">{row.score}/100</span>
                     </div>
-                    <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                    <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                       <div
                         className={clsx(
                           "h-full rounded-full transition-all duration-700",
@@ -316,33 +316,33 @@ export default function ResumePage() {
 
           {/* Summary */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 mb-2 flex items-center gap-2">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-2 flex items-center gap-2">
               <FileText size={15} className="text-indigo-500" /> Summary
             </h3>
-            <p className="text-sm text-slate-600 leading-relaxed">{result.analysis.overall_summary}</p>
+            <p className="text-sm text-slate-600 dark:text-slate-400 leading-relaxed">{result.analysis.overall_summary}</p>
           </div>
 
           {/* Strengths & Issues */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <CheckCircle size={15} className="text-green-500" /> Strengths
               </h3>
               <ul className="space-y-2">
                 {result.analysis.strengths.map((s, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <CheckCircle size={13} className="text-green-400 mt-0.5 shrink-0" /> {s}
                   </li>
                 ))}
               </ul>
             </div>
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <XCircle size={15} className="text-red-400" /> Issues Found
               </h3>
               <ul className="space-y-2">
                 {result.analysis.weaknesses.map((w, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <XCircle size={13} className="text-red-400 mt-0.5 shrink-0" /> {w}
                   </li>
                 ))}
@@ -352,12 +352,12 @@ export default function ResumePage() {
 
           {/* Skills / Matching Keywords */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
               <Tag size={15} className="text-indigo-500" /> Matching Keywords Found
             </h3>
             <div className="space-y-3">
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Technical</p>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Technical</p>
                 <div className="flex flex-wrap gap-2">
                   {result.analysis.skills_identified.technical.map((s, i) => (
                     <span key={i} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium">{s}</span>
@@ -365,10 +365,10 @@ export default function ResumePage() {
                 </div>
               </div>
               <div>
-                <p className="text-xs font-semibold text-slate-500 uppercase tracking-wider mb-2">Soft Skills</p>
+                <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider mb-2">Soft Skills</p>
                 <div className="flex flex-wrap gap-2">
                   {result.analysis.skills_identified.soft.map((s, i) => (
-                    <span key={i} className="px-2.5 py-1 bg-slate-100 text-slate-600 rounded-full text-xs font-medium">{s}</span>
+                    <span key={i} className="px-2.5 py-1 bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400 rounded-full text-xs font-medium">{s}</span>
                   ))}
                 </div>
               </div>
@@ -378,12 +378,12 @@ export default function ResumePage() {
           {/* Missing Keywords */}
           {result.analysis.keywords_missing.length > 0 && (
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <AlertCircle size={15} className="text-amber-500" /> Missing Keywords
               </h3>
               <div className="flex flex-wrap gap-2">
                 {result.analysis.keywords_missing.map((k, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-amber-50 text-amber-700 rounded-full text-xs font-medium border border-amber-200">{k}</span>
+                  <span key={i} className="px-2.5 py-1 bg-amber-50 dark:bg-amber-950/30 text-amber-700 dark:text-amber-400 rounded-full text-xs font-medium border border-amber-200 dark:border-amber-900">{k}</span>
                 ))}
               </div>
             </div>
@@ -392,12 +392,12 @@ export default function ResumePage() {
           {/* Formatting Suggestions */}
           {result.analysis.formatting_suggestions.length > 0 && (
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <AlignLeft size={15} className="text-indigo-500" /> Formatting Suggestions
               </h3>
               <ul className="space-y-2">
                 {result.analysis.formatting_suggestions.map((s, i) => (
-                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600">
+                  <li key={i} className="flex items-start gap-2 text-sm text-slate-600 dark:text-slate-400">
                     <AlignLeft size={13} className="text-indigo-400 mt-0.5 shrink-0" /> {s}
                   </li>
                 ))}
@@ -407,14 +407,14 @@ export default function ResumePage() {
 
           {/* Recommendations */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
               <Lightbulb size={15} className="text-amber-500" /> Recommendations
             </h3>
             <div className="space-y-3">
               {result.analysis.recommendations.map((r, i) => (
                 <div key={i} className="flex items-start gap-3">
                   <span className={priorityClass[r.priority]}>{r.priority}</span>
-                  <p className="text-sm text-slate-600 flex-1">{r.suggestion}</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400 flex-1">{r.suggestion}</p>
                 </div>
               ))}
             </div>
@@ -422,7 +422,7 @@ export default function ResumePage() {
 
           {/* Action buttons */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 mb-3">Take it further</h3>
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3">Take it further</h3>
             <div className="flex flex-col sm:flex-row flex-wrap gap-2">
               <button type="button"
                 onClick={handleBullets}
@@ -454,20 +454,20 @@ export default function ResumePage() {
           {bullets && (
             <div className="card p-5 animate-slide-up">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                   <Zap size={15} className="text-purple-500" /> Improved Resume Bullets
                 </h3>
                 <button
                   type="button"
                   onClick={() => navigator.clipboard.writeText(bullets.map(b => `• ${b}`).join("\n"))}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
                 >
                   <Copy size={12} /> Copy all
                 </button>
               </div>
               <ul className="space-y-2.5">
                 {bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700 bg-purple-50 rounded-lg px-4 py-2.5">
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700 dark:text-slate-300 bg-purple-50 rounded-lg px-4 py-2.5">
                     <span className="text-purple-500 font-bold shrink-0 mt-0.5">•</span> {b}
                   </li>
                 ))}
@@ -486,7 +486,7 @@ export default function ResumePage() {
           {questions && (
             <div className="card p-5 animate-slide-up">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                   <MessageSquare size={15} className="text-amber-500" /> Interview Preparation
                 </h3>
                 <button
@@ -494,31 +494,31 @@ export default function ResumePage() {
                   onClick={() => navigator.clipboard.writeText(
                     questions.map((q, i) => `${i + 1}. [${q.type}] ${q.question}\n${q.suggested_answer}`).join("\n\n")
                   )}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
                 >
                   <Copy size={12} /> Copy all
                 </button>
               </div>
               <div className="space-y-2">
                 {questions.map((q, i) => (
-                  <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+                  <div key={i} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                     <button
                       type="button"
                       onClick={() => setOpenQuestion(openQuestion === i ? null : i)}
-                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", typeColor[q.type] ?? "bg-slate-100 text-slate-600")}>
+                        <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", typeColor[q.type] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                           {q.type}
                         </span>
-                        <span className="text-sm font-medium text-slate-800 truncate">{q.question}</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{q.question}</span>
                       </div>
                       {openQuestion === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
                     </button>
                     {openQuestion === i && (
-                      <div className="px-4 pb-4 bg-amber-50 border-t border-slate-100">
+                      <div className="px-4 pb-4 bg-amber-50 dark:bg-amber-950/20 border-t border-slate-100 dark:border-slate-800">
                         <p className="text-xs font-semibold text-amber-700 mt-3 mb-1.5">Suggested Answer</p>
-                        <p className="text-sm text-slate-700 leading-relaxed">{q.suggested_answer}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{q.suggested_answer}</p>
                       </div>
                     )}
                   </div>

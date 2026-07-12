@@ -71,22 +71,22 @@ export default function AuthModal({ onClose }: Props) {
       onClick={onClose}
     >
       <div
-        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white shadow-2xl animate-slide-up my-auto p-6 sm:p-8"
+        className="relative w-full max-w-md max-h-[90vh] overflow-y-auto rounded-2xl bg-white dark:bg-slate-900 shadow-2xl animate-slide-up my-auto p-6 sm:p-8"
         onClick={(e) => e.stopPropagation()}
       >
         <button
           type="button"
           aria-label="Close"
           onClick={onClose}
-          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600"
+          className="absolute top-4 right-4 text-slate-400 hover:text-slate-600 dark:hover:text-slate-200"
         >
           <X size={18} />
         </button>
 
-        <h3 className="text-xl font-bold text-slate-900 pr-6">
+        <h3 className="text-xl font-bold text-slate-900 dark:text-white pr-6">
           {mode === "signin" ? "Sign in to JobLens" : "Create your JobLens account"}
         </h3>
-        <p className="text-sm text-slate-500 mt-1.5 mb-6">
+        <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 mb-6">
           Save your applications, resume scores, cover letters, and reminders.
         </p>
 
@@ -128,7 +128,7 @@ export default function AuthModal({ onClose }: Props) {
           </button>
         </form>
 
-        <p className="text-sm text-slate-500 text-center mt-5">
+        <p className="text-sm text-slate-500 dark:text-slate-400 text-center mt-5">
           {mode === "signin" ? "Don't have an account?" : "Already have an account?"}{" "}
           <button
             type="button"

@@ -3,11 +3,11 @@
 import { useEffect, useState } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { JobApplication, JobApplicationStatus, ReminderType } from "@/types";
+import type { JobApplication, JobApplicationStatus, ReminderType, NegotiationAdvice } from "@/types";
 import {
   Plus, Pencil, Trash2, ExternalLink, Loader2,
   X, Sparkles, Target, PenTool, RefreshCw, MessageSquare, Mail,
-  Copy, CheckCircle, ChevronDown, ChevronUp, FileDown,
+  Copy, CheckCircle, ChevronDown, ChevronUp, FileDown, Wand2, HandCoins,
 } from "lucide-react";
 import clsx from "clsx";
 import { EmptyJobsIllustration } from "@/components/illustrations/EmptyState";
@@ -26,13 +26,13 @@ const STATUS_COLORS: Record<string, string> = {
   Interviewing: "bg-purple-100 text-purple-700",
   Offer: "bg-green-100 text-green-700",
   Rejected: "bg-red-100 text-red-700",
-  Saved: "bg-slate-100 text-slate-600",
+  Saved: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
 };
 
 const WORK_TYPE_COLORS: Record<string, string> = {
   Remote: "bg-blue-50 text-blue-600",
   Hybrid: "bg-purple-50 text-purple-600",
-  Onsite: "bg-slate-100 text-slate-600",
+  Onsite: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
 };
 
 const TYPE_COLOR: Record<string, string> = {
@@ -91,6 +91,18 @@ export default function JobsPage() {
   const [emailDraft, setEmailDraft] = useState<{ subject: string; body: string } | null>(null);
   const [emailCopied, setEmailCopied] = useState(false);
 
+  // Paste-a-job auto-fill (Add modal only)
+  const [parseText, setParseText] = useState("");
+  const [parsing, setParsing] = useState(false);
+  const [parseError, setParseError] = useState<string | null>(null);
+
+  // Negotiation assistant modal
+  const [negotiationJob, setNegotiationJob] = useState<JobApplication | null>(null);
+  const [negotiationLoading, setNegotiationLoading] = useState(false);
+  const [negotiationError, setNegotiationError] = useState<string | null>(null);
+  const [negotiationAdvice, setNegotiationAdvice] = useState<NegotiationAdvice | null>(null);
+  const [negotiationCopied, setNegotiationCopied] = useState(false);
+
   const showToast = (msg: string) => {
     setToast(msg);
     setTimeout(() => setToast(null), 3000);
@@ -110,7 +122,10 @@ export default function JobsPage() {
 
   useEffect(() => { load(); }, []);
 
-  const openAdd = () => { setEditing(null); setForm(emptyForm); setShowModal(true); };
+  const openAdd = () => {
+    setEditing(null); setForm(emptyForm); setShowModal(true);
+    setParseText(""); setParseError(null);
+  };
   const openEdit = (job: JobApplication) => {
     setEditing(job);
     setForm({
@@ -307,6 +322,62 @@ export default function JobsPage() {
     return `mailto:${to}?subject=${encodeURIComponent(emailDraft.subject)}&body=${encodeURIComponent(emailDraft.body)}`;
   };
 
+  const handleAutofill = async () => {
+    if (parseText.trim().length < 30) {
+      setParseError("Paste a bit more of the job posting to auto-fill from it.");
+      return;
+    }
+    setParsing(true);
+    setParseError(null);
+    try {
+      const parsed = await api.parseJobPosting(parseText);
+      setForm((f) => ({
+        ...f,
+        company: parsed.company || f.company,
+        role: parsed.role || f.role,
+        location: parsed.location || f.location,
+        work_type: parsed.work_type || f.work_type,
+        salary_range: parsed.salary_range || f.salary_range,
+        notes: parsed.notes || f.notes,
+      }));
+    } catch (e) {
+      setParseError(e instanceof Error ? e.message : "Failed to parse job posting.");
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const handleNegotiate = async (job: JobApplication) => {
+    setNegotiationJob(job);
+    setNegotiationAdvice(null);
+    setNegotiationError(null);
+    setNegotiationCopied(false);
+    setNegotiationLoading(true);
+    try {
+      const data = await api.generateNegotiationAdvice(job.id);
+      setNegotiationAdvice(data);
+    } catch (e) {
+      setNegotiationError(e instanceof Error ? e.message : "Failed to generate negotiation advice.");
+    } finally {
+      setNegotiationLoading(false);
+    }
+  };
+
+  const copyNegotiationEmail = async () => {
+    if (!negotiationAdvice) return;
+    await navigator.clipboard.writeText(
+      `Subject: ${negotiationAdvice.counter_offer_email.subject}\n\n${negotiationAdvice.counter_offer_email.body}`
+    );
+    setNegotiationCopied(true);
+    setTimeout(() => setNegotiationCopied(false), 2500);
+  };
+
+  const negotiationMailtoHref = () => {
+    if (!negotiationAdvice || !negotiationJob) return "#";
+    const to = negotiationJob.recruiter_email ?? "";
+    return `mailto:${to}?subject=${encodeURIComponent(negotiationAdvice.counter_offer_email.subject)}&body=${encodeURIComponent(negotiationAdvice.counter_offer_email.body)}`;
+  };
+
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
       {/* Toast */}
@@ -377,14 +448,14 @@ export default function JobsPage() {
       </div>
 
       {/* Filter Tabs */}
-      <div className="flex gap-1 mb-5 bg-slate-100 rounded-xl p-1 w-fit flex-wrap">
+      <div className="flex gap-1 mb-5 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit flex-wrap">
         {FILTERS.map((f) => (
           <button
             key={f}
             type="button"
             onClick={() => setFilter(f)}
             className={`px-3.5 py-1.5 rounded-lg text-sm font-medium transition-all duration-150 ${
-              filter === f ? "bg-white text-slate-900 shadow-sm" : "text-slate-500 hover:text-slate-700"
+              filter === f ? "bg-white dark:bg-slate-800 text-slate-900 dark:text-white shadow-sm" : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
             }`}
           >
             {f}
@@ -404,15 +475,15 @@ export default function JobsPage() {
         ) : visible.length === 0 ? (
           <div className="py-12 text-center">
             <EmptyJobsIllustration className="mx-auto mb-3" />
-            <p className="text-slate-500 font-medium">No applications found.</p>
+            <p className="text-slate-500 dark:text-slate-400 font-medium">No applications found.</p>
             <p className="text-slate-400 text-sm mt-1">Add a job or load demo data to get started.</p>
           </div>
         ) : (
           <>
             {/* Mobile card list */}
-            <div className="md:hidden divide-y divide-slate-100">
+            <div className="md:hidden divide-y divide-slate-100 dark:divide-slate-800">
               {visible.map((job) => (
-                <div key={job.id} className={clsx("p-4 transition-colors", selected.has(job.id) && "bg-indigo-50")}>
+                <div key={job.id} className={clsx("p-4 transition-colors", selected.has(job.id) && "bg-indigo-50 dark:bg-indigo-950/30")}>
                   <div className="flex items-start gap-3 mb-2">
                     <input
                       type="checkbox"
@@ -423,12 +494,12 @@ export default function JobsPage() {
                     />
                     <div className="flex-1 flex items-start justify-between gap-2">
                     <div>
-                      <p className="font-semibold text-slate-800 text-sm">{job.company}</p>
-                      <p className="text-xs text-slate-500 mt-0.5">{job.role}</p>
+                      <p className="font-semibold text-slate-800 dark:text-slate-100 text-sm">{job.company}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 mt-0.5">{job.role}</p>
                       <div className="flex items-center gap-1.5 flex-wrap mt-1">
                         {job.location && <span className="text-xs text-slate-400">{job.location}</span>}
                         {job.work_type && (
-                          <span className={clsx("text-[11px] font-medium px-1.5 py-0.5 rounded-full", WORK_TYPE_COLORS[job.work_type] ?? "bg-slate-100 text-slate-600")}>
+                          <span className={clsx("text-[11px] font-medium px-1.5 py-0.5 rounded-full", WORK_TYPE_COLORS[job.work_type] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                             {job.work_type}
                           </span>
                         )}
@@ -443,7 +514,7 @@ export default function JobsPage() {
                         aria-label={`Status for ${job.company}`}
                         className={clsx(
                           "text-xs font-semibold px-2 py-1 rounded-full border-0 cursor-pointer appearance-none shrink-0",
-                          STATUS_COLORS[job.status] ?? "bg-slate-100 text-slate-600"
+                          STATUS_COLORS[job.status] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                         )}
                       >
                         {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
@@ -462,37 +533,43 @@ export default function JobsPage() {
                       <p className="text-xs text-slate-400">{job.salary_range}</p>
                     )}
                     {job.notes && (
-                      <p className="text-xs text-slate-500 italic truncate">{job.notes}</p>
+                      <p className="text-xs text-slate-500 dark:text-slate-400 italic truncate">{job.notes}</p>
                     )}
                     <div className="flex items-center gap-0.5 flex-wrap -ml-1.5">
                       <button type="button" onClick={() => handleAnalyzeMatch(job)} title="Analyze Match"
-                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                        className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors">
                         <Target size={14} />
                       </button>
                       <button type="button" onClick={() => handleCoverLetter(job)} title="Generate Cover Letter"
-                        className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
+                        className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-lg transition-colors">
                         <PenTool size={14} />
                       </button>
                       <button type="button" onClick={() => handlePrepareInterview(job)} title="Prepare Interview"
-                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                        className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-lg transition-colors">
                         <MessageSquare size={14} />
                       </button>
                       <button type="button" onClick={() => handleFollowUpEmail(job)} title="Send Follow-up Email"
-                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                        className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors">
                         <Mail size={14} />
                       </button>
+                      {job.status === "Offer" && (
+                        <button type="button" onClick={() => handleNegotiate(job)} title="Negotiation Assistant"
+                          className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/30 rounded-lg transition-colors">
+                          <HandCoins size={14} />
+                        </button>
+                      )}
                       {job.job_url && (
                         <a href={job.job_url} target="_blank" rel="noreferrer" title="Open job listing"
-                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                          className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors">
                           <ExternalLink size={14} />
                         </a>
                       )}
                       <button type="button" onClick={() => openEdit(job)} title="Edit"
-                        className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
+                        className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
                         <Pencil size={14} />
                       </button>
                       <button type="button" onClick={() => setDeleteId(job.id)} title="Delete"
-                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                        className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors">
                         <Trash2 size={14} />
                       </button>
                     </div>
@@ -506,7 +583,7 @@ export default function JobsPage() {
             <div className="hidden md:block overflow-x-auto">
               <table className="w-full text-sm">
                 <thead>
-                  <tr className="border-b border-slate-100 bg-slate-50">
+                  <tr className="border-b border-slate-100 dark:border-slate-800 bg-slate-50 dark:bg-slate-800/60">
                     <th className="px-4 py-3 w-10">
                       <input
                         type="checkbox"
@@ -517,13 +594,13 @@ export default function JobsPage() {
                       />
                     </th>
                     {["Company", "Job Title", "Status", "Location", "Work Type", "Applied", "Follow-up", "Salary", "Actions"].map((h) => (
-                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider">{h}</th>
+                      <th key={h} className="text-left px-4 py-3 text-xs font-semibold text-slate-500 dark:text-slate-400 uppercase tracking-wider">{h}</th>
                     ))}
                   </tr>
                 </thead>
-                <tbody className="divide-y divide-slate-100">
+                <tbody className="divide-y divide-slate-100 dark:divide-slate-800">
                   {visible.map((job) => (
-                    <tr key={job.id} className={clsx("transition-colors", selected.has(job.id) ? "bg-indigo-50" : "hover:bg-slate-50")}>
+                    <tr key={job.id} className={clsx("transition-colors", selected.has(job.id) ? "bg-indigo-50 dark:bg-indigo-950/30" : "hover:bg-slate-50 dark:hover:bg-slate-800/60")}>
                       <td className="px-4 py-3">
                         <input
                           type="checkbox"
@@ -534,9 +611,9 @@ export default function JobsPage() {
                         />
                       </td>
                       <td className="px-4 py-3">
-                        <span className="font-semibold text-slate-800">{job.company}</span>
+                        <span className="font-semibold text-slate-800 dark:text-slate-100">{job.company}</span>
                       </td>
-                      <td className="px-4 py-3 text-slate-600">{job.role}</td>
+                      <td className="px-4 py-3 text-slate-600 dark:text-slate-400">{job.role}</td>
                       <td className="px-4 py-3">
                         {updatingStatus === job.id ? (
                           <Loader2 size={14} className="animate-spin text-indigo-500" />
@@ -547,52 +624,58 @@ export default function JobsPage() {
                             aria-label={`Status for ${job.company} — ${job.role}`}
                             className={clsx(
                               "text-xs font-semibold px-2.5 py-1 rounded-full border-0 cursor-pointer appearance-none",
-                              STATUS_COLORS[job.status] ?? "bg-slate-100 text-slate-600"
+                              STATUS_COLORS[job.status] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                             )}
                           >
                             {STATUSES.map((s) => <option key={s} value={s}>{s}</option>)}
                           </select>
                         )}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                         {[job.location, job.work_type].filter(Boolean).join(" · ") || "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400">
                         {job.date_applied
                           ? new Date(job.date_applied).toLocaleDateString("en-US", { month: "short", day: "numeric", year: "numeric" })
                           : "—"}
                       </td>
-                      <td className="px-4 py-3 text-slate-500">{job.salary_range ?? "—"}</td>
+                      <td className="px-4 py-3 text-slate-500 dark:text-slate-400">{job.salary_range ?? "—"}</td>
                       <td className="px-4 py-3">
                         <div className="flex items-center gap-1">
                           <button type="button" onClick={() => handleAnalyzeMatch(job)} title="Analyze Match"
-                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-indigo-600 hover:bg-indigo-50 dark:hover:bg-indigo-950/30 rounded-lg transition-colors">
                             <Target size={14} />
                           </button>
                           <button type="button" onClick={() => handleCoverLetter(job)} title="Generate Cover Letter"
-                            className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-purple-600 hover:bg-purple-50 dark:hover:bg-purple-950/30 rounded-lg transition-colors">
                             <PenTool size={14} />
                           </button>
                           <button type="button" onClick={() => handlePrepareInterview(job)} title="Prepare Interview"
-                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-amber-600 hover:bg-amber-50 dark:hover:bg-amber-950/30 rounded-lg transition-colors">
                             <MessageSquare size={14} />
                           </button>
                           <button type="button" onClick={() => handleFollowUpEmail(job)} title="Send Follow-up Email"
-                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-emerald-600 hover:bg-emerald-50 dark:hover:bg-emerald-950/30 rounded-lg transition-colors">
                             <Mail size={14} />
                           </button>
+                          {job.status === "Offer" && (
+                            <button type="button" onClick={() => handleNegotiate(job)} title="Negotiation Assistant"
+                              className="p-1.5 text-slate-400 hover:text-teal-600 hover:bg-teal-50 dark:hover:bg-teal-950/30 rounded-lg transition-colors">
+                              <HandCoins size={14} />
+                            </button>
+                          )}
                           {job.job_url && (
                             <a href={job.job_url} target="_blank" rel="noreferrer" title="Open listing"
-                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 rounded-lg transition-colors">
+                              className="p-1.5 text-slate-400 hover:text-blue-600 hover:bg-blue-50 dark:hover:bg-blue-950/30 rounded-lg transition-colors">
                               <ExternalLink size={14} />
                             </a>
                           )}
                           <button type="button" onClick={() => openEdit(job)} title="Edit"
-                            className="p-1.5 text-slate-400 hover:text-slate-700 hover:bg-slate-100 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg transition-colors">
                             <Pencil size={14} />
                           </button>
                           <button type="button" onClick={() => setDeleteId(job.id)} title="Delete"
-                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 rounded-lg transition-colors">
+                            className="p-1.5 text-slate-400 hover:text-red-600 hover:bg-red-50 dark:hover:bg-red-950/30 rounded-lg transition-colors">
                             <Trash2 size={14} />
                           </button>
                         </div>
@@ -612,21 +695,46 @@ export default function JobsPage() {
         <span className="flex items-center gap-1"><PenTool size={11} /> Cover Letter</span>
         <span className="flex items-center gap-1"><MessageSquare size={11} /> Prepare Interview</span>
         <span className="flex items-center gap-1"><Mail size={11} /> Follow-up Email</span>
+        <span className="flex items-center gap-1"><HandCoins size={11} /> Negotiation Assistant (Offer status)</span>
         <span className="flex items-center gap-1"><RefreshCw size={11} /> Click status to update</span>
       </div>
 
       {/* Add/Edit Modal */}
       {showModal && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
-              <h3 className="font-bold text-slate-800">{editing ? "Edit Application" : "Add Application"}</h3>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[90vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">{editing ? "Edit Application" : "Add Application"}</h3>
               <button type="button" aria-label="Close modal" onClick={() => setShowModal(false)}
-                className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+                className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400">
                 <X size={18} />
               </button>
             </div>
             <div className="px-6 py-5 space-y-4">
+              {!editing && (
+                <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl p-4 space-y-2.5">
+                  <label htmlFor="modal-paste" className="text-sm font-semibold text-indigo-700 flex items-center gap-1.5">
+                    <Wand2 size={14} /> Paste a job posting to auto-fill
+                  </label>
+                  <textarea
+                    id="modal-paste"
+                    className="textarea bg-white dark:bg-slate-900"
+                    rows={3}
+                    value={parseText}
+                    onChange={(e) => setParseText(e.target.value)}
+                    placeholder="Paste the job description here…"
+                  />
+                  {parseError && <p className="text-xs text-red-600">{parseError}</p>}
+                  <button
+                    type="button"
+                    onClick={handleAutofill}
+                    disabled={parsing || parseText.trim().length < 30}
+                    className="flex items-center gap-1.5 text-sm font-semibold text-indigo-700 hover:text-indigo-800 disabled:opacity-50 disabled:cursor-not-allowed"
+                  >
+                    {parsing ? <><Loader2 size={14} className="animate-spin" /> Auto-filling…</> : <><Wand2 size={14} /> Auto-fill fields below</>}
+                  </button>
+                </div>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
                 <div>
                   <label htmlFor="modal-company" className="label">Company *</label>
@@ -713,7 +821,7 @@ export default function JobsPage() {
                   onChange={(e) => setForm({ ...form, notes: e.target.value })} placeholder="Add any notes..." />
               </div>
             </div>
-            <div className="px-6 py-4 border-t border-slate-100 flex gap-3 justify-end">
+            <div className="px-6 py-4 border-t border-slate-100 dark:border-slate-800 flex gap-3 justify-end">
               <button type="button" onClick={() => setShowModal(false)} className="btn-secondary">Cancel</button>
               <button type="button" onClick={save} disabled={saving || !form.company || !form.role}
                 className="btn-primary flex items-center gap-2">
@@ -727,9 +835,9 @@ export default function JobsPage() {
       {/* Clear All Confirm */}
       {showClearConfirm && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
-            <h3 className="font-bold text-slate-800 mb-2">Clear All Jobs?</h3>
-            <p className="text-sm text-slate-500 mb-5">This will permanently delete all {jobs.length} applications. Cannot be undone.</p>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
+            <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-2">Clear All Jobs?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">This will permanently delete all {jobs.length} applications. Cannot be undone.</p>
             <div className="flex gap-3 justify-end">
               <button type="button" onClick={() => setShowClearConfirm(false)} className="btn-secondary">Cancel</button>
               <button type="button" onClick={handleClearAll} disabled={clearing}
@@ -744,9 +852,9 @@ export default function JobsPage() {
       {/* Delete Confirm */}
       {deleteId !== null && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
-            <h3 className="font-bold text-slate-800 mb-2">Delete Application?</h3>
-            <p className="text-sm text-slate-500 mb-5">This action cannot be undone.</p>
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
+            <h3 className="font-bold text-slate-800 dark:text-slate-100 mb-2">Delete Application?</h3>
+            <p className="text-sm text-slate-500 dark:text-slate-400 mb-5">This action cannot be undone.</p>
             <div className="flex gap-3 justify-end">
               <button type="button" onClick={() => setDeleteId(null)} className="btn-secondary">Cancel</button>
               <button type="button" onClick={() => confirmDelete(deleteId)}
@@ -761,21 +869,21 @@ export default function JobsPage() {
       {/* Prepare Interview Modal */}
       {interviewJob && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <MessageSquare size={16} className="text-amber-500" /> Interview Prep
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">{interviewJob.company} — {interviewJob.role}</p>
               </div>
-              <button type="button" aria-label="Close" onClick={() => setInterviewJob(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+              <button type="button" aria-label="Close" onClick={() => setInterviewJob(null)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400">
                 <X size={18} />
               </button>
             </div>
             <div className="px-6 py-5">
               {interviewLoading && (
-                <div className="flex items-center justify-center gap-2 text-slate-500 py-10">
+                <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 py-10">
                   <Loader2 size={18} className="animate-spin" /> Generating interview prep…
                 </div>
               )}
@@ -785,24 +893,24 @@ export default function JobsPage() {
               {interviewQuestions && (
                 <div className="space-y-2">
                   {interviewQuestions.map((q, i) => (
-                    <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
+                    <div key={i} className="border border-slate-200 dark:border-slate-700 rounded-xl overflow-hidden">
                       <button
                         type="button"
                         onClick={() => setOpenQuestion(openQuestion === i ? null : i)}
-                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
+                        className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors"
                       >
                         <div className="flex items-center gap-3 min-w-0">
-                          <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", TYPE_COLOR[q.type] ?? "bg-slate-100 text-slate-600")}>
+                          <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", TYPE_COLOR[q.type] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                             {q.type}
                           </span>
-                          <span className="text-sm font-medium text-slate-800 truncate">{q.question}</span>
+                          <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{q.question}</span>
                         </div>
                         {openQuestion === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
                       </button>
                       {openQuestion === i && (
-                        <div className="px-4 pb-4 bg-amber-50 border-t border-slate-100">
+                        <div className="px-4 pb-4 bg-amber-50 dark:bg-amber-950/20 border-t border-slate-100 dark:border-slate-800">
                           <p className="text-xs font-semibold text-amber-700 mt-3 mb-1.5">Suggested Answer</p>
-                          <p className="text-sm text-slate-700 leading-relaxed">{q.suggested_answer}</p>
+                          <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{q.suggested_answer}</p>
                         </div>
                       )}
                     </div>
@@ -817,21 +925,21 @@ export default function JobsPage() {
       {/* Follow-up Email Modal */}
       {emailJob && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
-            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
               <div>
-                <h3 className="font-bold text-slate-800 flex items-center gap-2">
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
                   <Mail size={16} className="text-emerald-500" /> Follow-up Email
                 </h3>
                 <p className="text-xs text-slate-400 mt-0.5">{emailJob.company} — {emailJob.role}</p>
               </div>
-              <button type="button" aria-label="Close" onClick={() => setEmailJob(null)} className="p-1 hover:bg-slate-100 rounded-lg text-slate-400">
+              <button type="button" aria-label="Close" onClick={() => setEmailJob(null)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400">
                 <X size={18} />
               </button>
             </div>
             <div className="px-6 py-5">
               {emailLoading && (
-                <div className="flex items-center justify-center gap-2 text-slate-500 py-10">
+                <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 py-10">
                   <Loader2 size={18} className="animate-spin" /> Drafting follow-up email…
                 </div>
               )}
@@ -842,11 +950,11 @@ export default function JobsPage() {
                 <div className="space-y-3">
                   <div>
                     <p className="label">Subject</p>
-                    <p className="text-sm font-medium text-slate-800 bg-slate-50 rounded-lg px-3 py-2">{emailDraft.subject}</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2">{emailDraft.subject}</p>
                   </div>
                   <div>
                     <p className="label">Body</p>
-                    <p className="text-sm text-slate-700 bg-slate-50 rounded-lg px-3 py-3 whitespace-pre-wrap leading-relaxed">{emailDraft.body}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-3 whitespace-pre-wrap leading-relaxed">{emailDraft.body}</p>
                   </div>
                   <div className="flex gap-2 pt-2">
                     <button type="button" onClick={copyEmail}
@@ -854,6 +962,64 @@ export default function JobsPage() {
                       {emailCopied ? <><CheckCircle size={14} /> Copied!</> : <><Copy size={14} /> Copy</>}
                     </button>
                     <a href={mailtoHref()} className="btn-primary flex items-center gap-1.5 text-sm">
+                      <Mail size={14} /> Open in Email Client
+                    </a>
+                  </div>
+                </div>
+              )}
+            </div>
+          </div>
+        </div>
+      )}
+
+      {/* Negotiation Assistant Modal */}
+      {negotiationJob && (
+        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-lg max-h-[85vh] overflow-y-auto animate-slide-up">
+            <div className="flex items-center justify-between px-6 py-4 border-b border-slate-100 dark:border-slate-800">
+              <div>
+                <h3 className="font-bold text-slate-800 dark:text-slate-100 flex items-center gap-2">
+                  <HandCoins size={16} className="text-teal-500" /> Negotiation Assistant
+                </h3>
+                <p className="text-xs text-slate-400 mt-0.5">{negotiationJob.company} — {negotiationJob.role}</p>
+              </div>
+              <button type="button" aria-label="Close" onClick={() => setNegotiationJob(null)} className="p-1 hover:bg-slate-100 dark:hover:bg-slate-800 rounded-lg text-slate-400">
+                <X size={18} />
+              </button>
+            </div>
+            <div className="px-6 py-5">
+              {negotiationLoading && (
+                <div className="flex items-center justify-center gap-2 text-slate-500 dark:text-slate-400 py-10">
+                  <Loader2 size={18} className="animate-spin" /> Preparing negotiation advice…
+                </div>
+              )}
+              {negotiationError && (
+                <ErrorBanner message={negotiationError} onDismiss={() => setNegotiationError(null)} onRetry={() => handleNegotiate(negotiationJob)} />
+              )}
+              {negotiationAdvice && (
+                <div className="space-y-4">
+                  <p className="text-sm text-slate-600 dark:text-slate-400 bg-teal-50 dark:bg-teal-950/20 rounded-lg px-3 py-2.5">{negotiationAdvice.market_context}</p>
+                  <div>
+                    <p className="label">Talking Points</p>
+                    <ul className="space-y-2">
+                      {negotiationAdvice.talking_points.map((t, i) => (
+                        <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
+                          <span className="text-teal-500 font-bold shrink-0">→</span> {t}
+                        </li>
+                      ))}
+                    </ul>
+                  </div>
+                  <div>
+                    <p className="label">Counter-offer Email</p>
+                    <p className="text-sm font-medium text-slate-800 dark:text-slate-100 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-2 mb-2">{negotiationAdvice.counter_offer_email.subject}</p>
+                    <p className="text-sm text-slate-700 dark:text-slate-300 bg-slate-50 dark:bg-slate-800/60 rounded-lg px-3 py-3 whitespace-pre-wrap leading-relaxed">{negotiationAdvice.counter_offer_email.body}</p>
+                  </div>
+                  <div className="flex gap-2 pt-2">
+                    <button type="button" onClick={copyNegotiationEmail}
+                      className={clsx("flex items-center gap-1.5 text-sm font-semibold px-4 py-2 rounded-lg transition-all", negotiationCopied ? "bg-green-100 text-green-700" : "btn-secondary")}>
+                      {negotiationCopied ? <><CheckCircle size={14} /> Copied!</> : <><Copy size={14} /> Copy</>}
+                    </button>
+                    <a href={negotiationMailtoHref()} className="btn-primary flex items-center gap-1.5 text-sm">
                       <Mail size={14} /> Open in Email Client
                     </a>
                   </div>

@@ -31,7 +31,7 @@ export default function HistoryPanel<T>({
         onClick={() => setOpen((v) => !v)}
         className="w-full flex items-center justify-between px-5 py-3.5"
       >
-        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700">
+        <span className="flex items-center gap-2 text-sm font-semibold text-slate-700 dark:text-slate-200">
           <History size={14} className="text-indigo-500" /> {title}
           {items.length > 0 && <span className="text-xs text-slate-400 font-normal">({items.length})</span>}
         </span>
@@ -39,7 +39,7 @@ export default function HistoryPanel<T>({
       </button>
 
       {open && (
-        <div className="divide-y divide-slate-100 border-t border-slate-100">
+        <div className="divide-y divide-slate-100 dark:divide-slate-800 border-t border-slate-100 dark:border-slate-800">
           {loading ? (
             <p className="px-5 py-4 text-sm text-slate-400">Loading...</p>
           ) : (
@@ -50,10 +50,10 @@ export default function HistoryPanel<T>({
                   key={getKey(item)}
                   type="button"
                   onClick={() => onSelect(item)}
-                  className="w-full text-left px-5 py-3 hover:bg-slate-50 transition-colors flex items-center justify-between gap-3"
+                  className="w-full text-left px-5 py-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors flex items-center justify-between gap-3"
                 >
                   <div className="min-w-0">
-                    <p className="text-sm font-medium text-slate-700 truncate">{primary}</p>
+                    <p className="text-sm font-medium text-slate-700 dark:text-slate-200 truncate">{primary}</p>
                     {secondary && <p className="text-xs text-slate-400 truncate">{secondary}</p>}
                   </div>
                   <span className="text-xs text-slate-400 shrink-0">

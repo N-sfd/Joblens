@@ -14,7 +14,8 @@ export type ActivityType =
   | "cover_letter_generated"
   | "job_added"
   | "status_changed"
-  | "job_deleted";
+  | "job_deleted"
+  | "negotiation_advice";
 
 export interface ActivityEntry {
   id: number;
@@ -73,6 +74,21 @@ export interface JobApplication {
 
 export type JobApplicationStatus = JobApplication["status"];
 
+export interface JobPostingParseResult {
+  company: string;
+  role: string;
+  location: string;
+  work_type: string;
+  salary_range: string;
+  notes: string;
+}
+
+export interface NegotiationAdvice {
+  market_context: string;
+  talking_points: string[];
+  counter_offer_email: { subject: string; body: string };
+}
+
 export interface JobStats {
   total: number;
   by_status: Record<string, number>;
@@ -118,6 +134,7 @@ export interface MatchResult {
   tailoring_suggestions: { section: string; suggestion: string }[];
   keywords_to_add: string[];
   interview_preparation: string[];
+  learning_resources: { skill: string; suggestion: string }[];
 }
 
 export interface ExperienceEntry { title: string; company: string; start?: string; end?: string; description?: string }

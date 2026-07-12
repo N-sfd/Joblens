@@ -21,14 +21,14 @@ export default function UserMenu() {
   }, [showMenu]);
 
   if (isLoading) {
-    return <div className="w-8 h-8 rounded-full bg-slate-100 animate-pulse" />;
+    return <div className="w-8 h-8 rounded-full bg-slate-100 dark:bg-slate-800 animate-pulse" />;
   }
 
   if (!user) {
     return (
       <>
         <div className="flex items-center gap-2.5">
-          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 bg-indigo-50 border border-indigo-100 px-2.5 py-1 rounded-full">
+          <span className="hidden sm:inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-2.5 py-1 rounded-full">
             <span className="w-1.5 h-1.5 rounded-full bg-indigo-500" />
             Guest Session
           </span>
@@ -52,7 +52,7 @@ export default function UserMenu() {
       <button
         type="button"
         onClick={() => setShowMenu((v) => !v)}
-        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 transition-colors"
+        className="flex items-center gap-2 pl-1 pr-2 py-1 rounded-full hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
       >
         <span className="w-7 h-7 rounded-full bg-indigo-600 text-white text-xs font-semibold flex items-center justify-center">
           {initial}
@@ -61,15 +61,15 @@ export default function UserMenu() {
       </button>
 
       {showMenu && (
-        <div className="absolute right-0 mt-2 w-56 bg-white rounded-xl shadow-lg border border-slate-100 py-1.5 z-40">
-          <div className="px-3.5 py-2 border-b border-slate-100">
-            <p className="text-sm font-semibold text-slate-800 truncate">{user.name || "Account"}</p>
-            <p className="text-xs text-slate-500 truncate">{user.email}</p>
+        <div className="absolute right-0 mt-2 w-56 bg-white dark:bg-slate-900 rounded-xl shadow-lg border border-slate-100 dark:border-slate-800 py-1.5 z-40">
+          <div className="px-3.5 py-2 border-b border-slate-100 dark:border-slate-800">
+            <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 truncate">{user.name || "Account"}</p>
+            <p className="text-xs text-slate-500 dark:text-slate-400 truncate">{user.email}</p>
           </div>
           <button
             type="button"
             onClick={() => { setShowMenu(false); signOut(); }}
-            className="w-full flex items-center gap-2 px-3.5 py-2 text-sm text-slate-600 hover:bg-slate-50 transition-colors"
+            className="w-full flex items-center gap-2 px-3.5 py-2 text-sm text-slate-600 dark:text-slate-300 hover:bg-slate-50 dark:hover:bg-slate-800 transition-colors"
           >
             <LogOut size={14} /> Sign out
           </button>

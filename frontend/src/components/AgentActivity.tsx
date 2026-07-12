@@ -41,13 +41,13 @@ export default function AgentActivity({
   if (!isRunning && !isDone) return null;
 
   return (
-    <div className={clsx("card p-5 border-indigo-100", className)}>
+    <div className={clsx("card p-5 border-indigo-100 dark:border-indigo-900/50", className)}>
       {/* Header */}
-      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100">
-        <div className="w-6 h-6 rounded-lg bg-indigo-100 flex items-center justify-center">
-          <Bot size={13} className="text-indigo-600" />
+      <div className="flex items-center gap-2 mb-4 pb-3 border-b border-slate-100 dark:border-slate-800">
+        <div className="w-6 h-6 rounded-lg bg-indigo-100 dark:bg-indigo-950/50 flex items-center justify-center">
+          <Bot size={13} className="text-indigo-600 dark:text-indigo-400" />
         </div>
-        <span className="font-semibold text-slate-700 text-sm">Agent Activity</span>
+        <span className="font-semibold text-slate-700 dark:text-slate-300 text-sm">Agent Activity</span>
         <span className="ml-auto flex items-center gap-1.5">
           {isRunning && !isDone ? (
             <>
@@ -56,7 +56,7 @@ export default function AgentActivity({
             </>
           ) : (
             <>
-              <span className="w-1.5 h-1.5 rounded-full bg-slate-300" />
+              <span className="w-1.5 h-1.5 rounded-full bg-slate-300 dark:bg-slate-600" />
               <span className="text-xs text-slate-400 font-medium">Complete</span>
             </>
           )}
@@ -85,13 +85,13 @@ export default function AgentActivity({
               ) : active ? (
                 <Loader2 size={15} className="text-indigo-500 animate-spin shrink-0" />
               ) : (
-                <Circle size={15} className="text-slate-300 shrink-0" />
+                <Circle size={15} className="text-slate-300 dark:text-slate-600 shrink-0" />
               )}
               <span
                 className={clsx(
                   "transition-colors duration-200",
-                  done && "text-slate-700",
-                  active && "text-indigo-600 font-medium",
+                  done && "text-slate-700 dark:text-slate-300",
+                  active && "text-indigo-600 dark:text-indigo-400 font-medium",
                   pending && "text-slate-400"
                 )}
               >

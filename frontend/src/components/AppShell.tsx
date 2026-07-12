@@ -2,17 +2,19 @@
 
 import { useState } from "react";
 import { usePathname } from "next/navigation";
-import { Menu } from "lucide-react";
+import { Menu, Sun, Moon } from "lucide-react";
 import Link from "next/link";
 import { SignedIn, SignedOut, SignInButton, UserButton } from "@clerk/nextjs";
 import Sidebar, { nav } from "./Sidebar";
 import LogoMark from "./Logo";
 import UserMenu from "./UserMenu";
+import { useTheme } from "@/lib/ThemeContext";
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
   const pathname = usePathname();
   const current = nav.find((n) => n.href === pathname);
+  const { theme, toggleTheme } = useTheme();
 
   return (
     <div className="flex h-screen overflow-hidden">
@@ -36,12 +38,12 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
       {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
         {/* Top bar */}
-        <header className="flex items-center gap-3 px-4 sm:px-6 py-3 bg-white/80 backdrop-blur-sm border-b border-slate-200 shrink-0">
+        <header className="flex items-center gap-3 px-4 sm:px-6 py-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 shrink-0">
           <button
             type="button"
             aria-label="Open menu"
             onClick={() => setOpen(true)}
-            className="md:hidden p-1.5 rounded-lg text-slate-500 hover:bg-slate-100 transition-colors"
+            className="md:hidden p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
           >
             <Menu size={20} />
           </button>
@@ -49,20 +51,28 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             <div className="w-6 h-6 bg-indigo-600 rounded-md flex items-center justify-center">
               <LogoMark size={13} className="text-white" />
             </div>
-            <span className="font-bold text-slate-900 text-sm">JobLens</span>
+            <span className="font-bold text-slate-900 dark:text-white text-sm">JobLens</span>
           </div>
 
           <div className="hidden md:flex items-center gap-2 text-sm">
             <span className="text-slate-400 font-medium">JobLens</span>
-            <span className="text-slate-300">/</span>
-            <span className="text-slate-800 font-semibold">{current?.label ?? "Dashboard"}</span>
+            <span className="text-slate-300 dark:text-slate-600">/</span>
+            <span className="text-slate-800 dark:text-slate-100 font-semibold">{current?.label ?? "Dashboard"}</span>
           </div>
 
           <div className="ml-auto flex items-center gap-3">
+            <button
+              type="button"
+              aria-label={theme === "dark" ? "Switch to light mode" : "Switch to dark mode"}
+              onClick={toggleTheme}
+              className="p-1.5 rounded-lg text-slate-500 dark:text-slate-400 hover:bg-slate-100 dark:hover:bg-slate-800 transition-colors"
+            >
+              {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
+            </button>
             <SignedIn>
               <Link
                 href="/ats"
-                className="hidden sm:inline text-xs font-medium text-slate-500 hover:text-slate-800 transition-colors"
+                className="hidden sm:inline text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
               >
                 ATS Dashboard
               </Link>
@@ -72,7 +82,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
               <SignInButton mode="modal">
                 <button
                   type="button"
-                  className="hidden sm:inline text-xs font-medium text-slate-400 hover:text-slate-700 transition-colors"
+                  className="hidden sm:inline text-xs font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
                 >
                   ATS Sign in
                 </button>
@@ -82,7 +92,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
           </div>
         </header>
 
-        <main className="flex-1 overflow-y-auto bg-slate-50">
+        <main className="flex-1 overflow-y-auto bg-slate-50 dark:bg-slate-950">
           {children}
         </main>
       </div>

@@ -16,7 +16,7 @@ import { getStatusBreakdown, getWeeklyApplications, getPipelineRates, getActivit
 import {
   Briefcase, FileText, Target, PenTool, TrendingUp, ArrowRight,
   CheckCircle, Clock, Trophy, XCircle, Plus, Bot, Trash2,
-  MessagesSquare, Award, ThumbsDown,
+  MessagesSquare, Award, ThumbsDown, HandCoins,
 } from "lucide-react";
 
 const statCards = [
@@ -44,6 +44,7 @@ const activityIcons: Record<string, React.ReactNode> = {
   job_added:               <Plus size={13} className="text-green-500" />,
   status_changed:          <TrendingUp size={13} className="text-slate-500" />,
   job_deleted:             <XCircle size={13} className="text-red-400" />,
+  negotiation_advice:      <HandCoins size={13} className="text-teal-500" />,
 };
 
 function timeAgo(iso: string) {
@@ -117,9 +118,9 @@ export default function DashboardPage() {
             <div className={`w-9 h-9 rounded-lg ${color} flex items-center justify-center mb-3`}>
               <Icon size={18} />
             </div>
-            <p className="text-2xl font-bold text-slate-900">
+            <p className="text-2xl font-bold text-slate-900 dark:text-white">
               {loading
-                ? <span className="inline-block w-8 h-7 bg-slate-100 rounded animate-pulse" />
+                ? <span className="inline-block w-8 h-7 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
                 : getCount(key)}
             </p>
             <p className="text-xs text-slate-500 mt-0.5 font-medium">{label}</p>
@@ -129,7 +130,7 @@ export default function DashboardPage() {
 
       {/* Analytics */}
       <div className="mb-8">
-        <h2 className="font-semibold text-slate-800 px-1 mb-3">Analytics</h2>
+        <h2 className="font-semibold text-slate-800 dark:text-slate-100 px-1 mb-3">Analytics</h2>
         <div className="grid grid-cols-1 lg:grid-cols-3 gap-4 mb-4">
           <RateGaugeCard
             label="Interview Rate" rate={rates.interviewRate} icon={MessagesSquare} color="#a855f7"
@@ -157,21 +158,21 @@ export default function DashboardPage() {
         {/* Recent Applications */}
         <div className="lg:col-span-2 space-y-6">
           <div className="card">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
-              <h2 className="font-semibold text-slate-800">Recent Applications</h2>
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
+              <h2 className="font-semibold text-slate-800 dark:text-slate-100">Recent Applications</h2>
               <Link href="/jobs" className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
                 View all <ArrowRight size={14} />
               </Link>
             </div>
-            <div className="divide-y divide-slate-100">
+            <div className="divide-y divide-slate-100 dark:divide-slate-800">
               {loading
                 ? Array.from({ length: 3 }).map((_, i) => (
                     <div key={i} className="px-5 py-3.5 flex items-center justify-between">
                       <div className="space-y-1.5">
-                        <div className="h-4 w-32 bg-slate-100 rounded animate-pulse" />
-                        <div className="h-3 w-24 bg-slate-100 rounded animate-pulse" />
+                        <div className="h-4 w-32 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
+                        <div className="h-3 w-24 bg-slate-100 dark:bg-slate-800 rounded animate-pulse" />
                       </div>
-                      <div className="h-5 w-20 bg-slate-100 rounded-full animate-pulse" />
+                      <div className="h-5 w-20 bg-slate-100 dark:bg-slate-800 rounded-full animate-pulse" />
                     </div>
                   ))
                 : recent.length === 0
@@ -185,9 +186,9 @@ export default function DashboardPage() {
                     </div>
                   )
                   : recent.map((job) => (
-                    <div key={job.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 transition-colors">
+                    <div key={job.id} className="px-5 py-3.5 flex items-center justify-between hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                       <div>
-                        <p className="text-sm font-semibold text-slate-800">{job.company}</p>
+                        <p className="text-sm font-semibold text-slate-800 dark:text-slate-100">{job.company}</p>
                         <p className="text-xs text-slate-500">{job.role}{job.location ? ` · ${job.location}` : ""}</p>
                       </div>
                       <div className="flex items-center gap-3">
@@ -206,10 +207,10 @@ export default function DashboardPage() {
 
           {/* AI Activity History */}
           <div className="card">
-            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100">
+            <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
                 <Bot size={15} className="text-indigo-500" />
-                <h2 className="font-semibold text-slate-800">AI Activity</h2>
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100">AI Activity</h2>
               </div>
               {activity.length > 0 && (
                 <button
@@ -228,14 +229,14 @@ export default function DashboardPage() {
                 <p className="text-slate-400 text-xs mt-1">Analyze a resume or match a job to see history here.</p>
               </div>
             ) : (
-              <div className="divide-y divide-slate-100">
+              <div className="divide-y divide-slate-100 dark:divide-slate-800">
                 {activity.slice(0, 8).map((entry) => (
-                  <div key={entry.id} className="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 transition-colors">
-                    <div className="w-6 h-6 rounded-lg bg-slate-100 flex items-center justify-center shrink-0 mt-0.5">
+                  <div key={entry.id} className="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
+                    <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 mt-0.5">
                       {activityIcons[entry.activity_type] ?? <Bot size={13} className="text-slate-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
-                      <p className="text-sm font-medium text-slate-700">{entry.summary}</p>
+                      <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{entry.summary}</p>
                       {entry.detail && <p className="text-xs text-slate-400 mt-0.5 truncate">{entry.detail}</p>}
                     </div>
                     <span className="text-xs text-slate-400 shrink-0">{timeAgo(entry.created_at)}</span>
@@ -250,7 +251,7 @@ export default function DashboardPage() {
         <div className="space-y-3">
           <UpcomingReminders limit={4} />
 
-          <h2 className="font-semibold text-slate-800 px-1">Quick Actions</h2>
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100 px-1">Quick Actions</h2>
           {quickActions.map(({ href, label, desc, icon: Icon, color }) => (
             <Link key={href} href={href}
               className="card p-4 flex items-center gap-4 hover:shadow-md hover:-translate-y-0.5 transition-all duration-150 group block">
@@ -258,19 +259,19 @@ export default function DashboardPage() {
                 <Icon size={18} className="text-white" />
               </div>
               <div className="min-w-0">
-                <p className="text-sm font-semibold text-slate-800 group-hover:text-indigo-600 transition-colors">{label}</p>
+                <p className="text-sm font-semibold text-slate-800 dark:text-slate-100 group-hover:text-indigo-600 transition-colors">{label}</p>
                 <p className="text-xs text-slate-500">{desc}</p>
               </div>
               <ArrowRight size={14} className="text-slate-300 group-hover:text-indigo-500 ml-auto shrink-0 transition-colors" />
             </Link>
           ))}
 
-          <div className="card p-4 bg-gradient-to-br from-indigo-50 to-purple-50 border-indigo-100">
+          <div className="card p-4 bg-gradient-to-br from-indigo-50 to-purple-50 dark:from-indigo-950/40 dark:to-purple-950/40 border-indigo-100 dark:border-indigo-900/50">
             <div className="flex items-center gap-2 mb-2">
-              <CheckCircle size={14} className="text-indigo-600" />
-              <p className="text-xs font-semibold text-indigo-700">Pro Tip</p>
+              <CheckCircle size={14} className="text-indigo-600 dark:text-indigo-400" />
+              <p className="text-xs font-semibold text-indigo-700 dark:text-indigo-400">Pro Tip</p>
             </div>
-            <p className="text-xs text-slate-600 leading-relaxed">
+            <p className="text-xs text-slate-600 dark:text-slate-400 leading-relaxed">
               Tailor your resume for each application. Run the Job Matcher to see your fit score before applying.
             </p>
           </div>

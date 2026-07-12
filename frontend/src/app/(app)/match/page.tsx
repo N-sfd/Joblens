@@ -12,7 +12,7 @@ import PrivacyNote from "@/components/PrivacyNote";
 import {
   Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
   Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
-  ChevronUp, Copy, X,
+  ChevronUp, Copy, X, GraduationCap,
 } from "lucide-react";
 import clsx from "clsx";
 
@@ -293,7 +293,7 @@ export default function MatchPage() {
                 <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start mb-2">
                   <span className={clsx(
                     "px-3 py-1 rounded-full text-sm font-bold",
-                    recommendationStyle[result.recommendation] ?? "bg-slate-100 text-slate-600"
+                    recommendationStyle[result.recommendation] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
                   )}>
                     {result.recommendation}
                   </span>
@@ -310,12 +310,12 @@ export default function MatchPage() {
                     {result.ats_verdict}
                   </span>
                 </div>
-                <p className="text-slate-600 text-sm mt-3 leading-relaxed">{result.summary}</p>
+                <p className="text-slate-600 dark:text-slate-400 text-sm mt-3 leading-relaxed">{result.summary}</p>
               </div>
             </div>
 
             {/* Action Buttons */}
-            <div className="mt-5 pt-5 border-t border-slate-100 flex flex-col sm:flex-row flex-wrap gap-2">
+            <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row flex-wrap gap-2">
               <button type="button"
                 onClick={() => setShowSave(true)}
                 className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors w-full sm:w-auto"
@@ -349,7 +349,7 @@ export default function MatchPage() {
 
           {/* ATS Score Breakdown */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 mb-4 flex items-center gap-2">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
               <Target size={15} className="text-indigo-500" /> ATS Score Breakdown
             </h3>
             <div className="space-y-3">
@@ -362,10 +362,10 @@ export default function MatchPage() {
               ].map((row) => (
                 <div key={row.label}>
                   <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700">{row.label}</span>
+                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{row.label}</span>
                     <span className="text-xs text-slate-400">{row.score}/100</span>
                   </div>
-                  <div className="h-2 bg-slate-100 rounded-full overflow-hidden">
+                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
                     <div
                       className={clsx(
                         "h-full rounded-full transition-all duration-700",
@@ -382,7 +382,7 @@ export default function MatchPage() {
           {/* Important Job Keywords */}
           {importantKeywords.length > 0 && (
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <Tag size={15} className="text-indigo-500" /> Important Job Keywords
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -405,7 +405,7 @@ export default function MatchPage() {
           {/* Keyword Scan */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <CheckCircle size={15} className="text-green-500" /> Keywords Found in Resume
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -420,7 +420,7 @@ export default function MatchPage() {
               </div>
             </div>
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <XCircle size={15} className="text-red-400" /> Keywords Missing from Resume
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -439,12 +439,12 @@ export default function MatchPage() {
           {/* Formatting Issues */}
           {result.formatting_issues.length > 0 && (
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <AlertCircle size={15} className="text-amber-500" /> ATS Formatting Issues
               </h3>
               <ul className="space-y-2">
                 {result.formatting_issues.map((issue, i) => (
-                  <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
                     <AlertCircle size={13} className="text-amber-400 mt-0.5 shrink-0" /> {issue}
                   </li>
                 ))}
@@ -455,7 +455,7 @@ export default function MatchPage() {
           {/* Skills */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <CheckCircle size={15} className="text-green-500" /> Matching Skills
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -465,7 +465,7 @@ export default function MatchPage() {
               </div>
             </div>
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <XCircle size={15} className="text-red-400" /> Missing Skills
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -479,24 +479,24 @@ export default function MatchPage() {
           {/* Experience & Gaps */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <CheckCircle size={15} className="text-indigo-500" /> Matching Experience
               </h3>
               <ul className="space-y-2">
                 {result.matching_experience.map((e, i) => (
-                  <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
                     <CheckCircle size={13} className="text-indigo-400 mt-0.5 shrink-0" /> {e}
                   </li>
                 ))}
               </ul>
             </div>
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <AlertCircle size={15} className="text-amber-500" /> Gaps
               </h3>
               <ul className="space-y-2">
                 {result.gaps.map((g, i) => (
-                  <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
                     <AlertCircle size={13} className="text-amber-400 mt-0.5 shrink-0" /> {g}
                   </li>
                 ))}
@@ -506,14 +506,14 @@ export default function MatchPage() {
 
           {/* Tailoring Suggestions */}
           <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
               <Lightbulb size={15} className="text-amber-500" /> Tailoring Suggestions
             </h3>
             <div className="space-y-3">
               {result.tailoring_suggestions.map((s, i) => (
-                <div key={i} className="flex items-start gap-3 bg-amber-50 rounded-lg px-4 py-3">
+                <div key={i} className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg px-4 py-3">
                   <span className="text-xs font-bold text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full shrink-0 mt-0.5">{s.section}</span>
-                  <p className="text-sm text-slate-700">{s.suggestion}</p>
+                  <p className="text-sm text-slate-700 dark:text-slate-300">{s.suggestion}</p>
                 </div>
               ))}
             </div>
@@ -522,7 +522,7 @@ export default function MatchPage() {
           {/* Keywords & Interview Tips */}
           <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <Tag size={15} className="text-indigo-500" /> Keywords to Add
               </h3>
               <div className="flex flex-wrap gap-2">
@@ -532,18 +532,35 @@ export default function MatchPage() {
               </div>
             </div>
             <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 mb-3 flex items-center gap-2">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
                 <BookOpen size={15} className="text-purple-500" /> Quick Interview Tips
               </h3>
               <ul className="space-y-2">
                 {result.interview_preparation.map((t, i) => (
-                  <li key={i} className="text-sm text-slate-600 flex items-start gap-2">
+                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
                     <span className="text-purple-400 font-bold shrink-0">→</span> {t}
                   </li>
                 ))}
               </ul>
             </div>
           </div>
+
+          {/* Learning Resources for Missing Skills */}
+          {result.learning_resources.length > 0 && (
+            <div className="card p-5">
+              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
+                <GraduationCap size={15} className="text-emerald-500" /> Close the Gap
+              </h3>
+              <div className="space-y-3">
+                {result.learning_resources.map((r, i) => (
+                  <div key={i} className="flex items-start gap-3 bg-emerald-50 rounded-lg px-4 py-3">
+                    <span className="text-xs font-bold text-emerald-700 bg-emerald-200 px-2 py-0.5 rounded-full shrink-0 mt-0.5">{r.skill}</span>
+                    <p className="text-sm text-slate-700 dark:text-slate-300">{r.suggestion}</p>
+                  </div>
+                ))}
+              </div>
+            </div>
+          )}
 
           {/* Bullets agent activity */}
           <AgentActivity steps={BULLETS_STEPS} isRunning={bulletsLoading} isDone={bulletsDone} />
@@ -552,20 +569,20 @@ export default function MatchPage() {
           {bullets && (
             <div className="card p-5 animate-slide-up">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                   <Zap size={15} className="text-purple-500" /> AI-Improved Resume Bullets
                 </h3>
                 <button
                   type="button"
                   onClick={() => navigator.clipboard.writeText(bullets.map(b => `• ${b}`).join("\n"))}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
                 >
                   <Copy size={12} /> Copy all
                 </button>
               </div>
               <ul className="space-y-2.5">
                 {bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700 bg-purple-50 rounded-lg px-4 py-2.5">
+                  <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700 dark:text-slate-300 bg-purple-50 rounded-lg px-4 py-2.5">
                     <span className="text-purple-500 font-bold shrink-0 mt-0.5">•</span> {b}
                   </li>
                 ))}
@@ -580,7 +597,7 @@ export default function MatchPage() {
           {questions && (
             <div className="card p-5 animate-slide-up">
               <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-700 flex items-center gap-2">
+                <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
                   <MessageSquare size={15} className="text-amber-500" /> Interview Questions & Answers
                 </h3>
                 <button
@@ -588,7 +605,7 @@ export default function MatchPage() {
                   onClick={() => navigator.clipboard.writeText(
                     questions.map((q, i) => `${i + 1}. [${q.type}] ${q.question}\n${q.suggested_answer}`).join("\n\n")
                   )}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 hover:text-indigo-600 transition-colors"
+                  className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
                 >
                   <Copy size={12} /> Copy all
                 </button>
@@ -602,17 +619,17 @@ export default function MatchPage() {
                       className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
                     >
                       <div className="flex items-center gap-3 min-w-0">
-                        <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", typeColor[q.type] ?? "bg-slate-100 text-slate-600")}>
+                        <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", typeColor[q.type] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
                           {q.type}
                         </span>
-                        <span className="text-sm font-medium text-slate-800 truncate">{q.question}</span>
+                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{q.question}</span>
                       </div>
                       {openQuestion === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
                     </button>
                     {openQuestion === i && (
-                      <div className="px-4 pb-4 bg-amber-50 border-t border-slate-100">
+                      <div className="px-4 pb-4 bg-amber-50 dark:bg-amber-950/20 border-t border-slate-100">
                         <p className="text-xs font-semibold text-amber-700 mt-3 mb-1.5">Suggested Answer</p>
-                        <p className="text-sm text-slate-700 leading-relaxed">{q.suggested_answer}</p>
+                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{q.suggested_answer}</p>
                       </div>
                     )}
                   </div>
@@ -626,10 +643,10 @@ export default function MatchPage() {
       {/* Save to Tracker Modal */}
       {showSave && (
         <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
+          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
             <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-800">Save to Job Tracker</h3>
-              <button type="button" aria-label="Close" onClick={() => setShowSave(false)} className="text-slate-400 hover:text-slate-600"><X size={18} /></button>
+              <h3 className="font-bold text-slate-800 dark:text-slate-100">Save to Job Tracker</h3>
+              <button type="button" aria-label="Close" onClick={() => setShowSave(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400"><X size={18} /></button>
             </div>
             <div className="space-y-3">
               <div>

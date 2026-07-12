@@ -4,6 +4,7 @@ import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, ResponsiveContaine
 import { BarChart3 } from "lucide-react";
 import ChartCard from "./ChartCard";
 import type { WeekBucket } from "@/lib/chartData";
+import { useTheme } from "@/lib/ThemeContext";
 
 interface Props {
   data: WeekBucket[];
@@ -12,6 +13,8 @@ interface Props {
 
 export default function WeeklyApplicationsChart({ data, loading }: Props) {
   const total = data.reduce((sum, d) => sum + d.count, 0);
+  const { theme } = useTheme();
+  const isDark = theme === "dark";
 
   return (
     <ChartCard title="Weekly Applications" icon={BarChart3} iconColor="text-blue-500" subtitle="Applications submitted per week, last 8 weeks">
@@ -26,12 +29,18 @@ export default function WeeklyApplicationsChart({ data, loading }: Props) {
         <div className="h-52">
           <ResponsiveContainer width="100%" height="100%">
             <BarChart data={data} margin={{ top: 4, right: 4, left: -20, bottom: 0 }}>
-              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke="#f1f5f9" />
+              <CartesianGrid strokeDasharray="3 3" vertical={false} stroke={isDark ? "#1e293b" : "#f1f5f9"} />
               <XAxis dataKey="label" tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} />
               <YAxis allowDecimals={false} tick={{ fontSize: 11, fill: "#94a3b8" }} axisLine={false} tickLine={false} width={28} />
               <Tooltip
-                cursor={{ fill: "#eef2ff" }}
-                contentStyle={{ borderRadius: 10, border: "1px solid #e2e8f0", fontSize: 12 }}
+                cursor={{ fill: isDark ? "#1e1b4b" : "#eef2ff" }}
+                contentStyle={{
+                  borderRadius: 10,
+                  border: `1px solid ${isDark ? "#334155" : "#e2e8f0"}`,
+                  background: isDark ? "#0f172a" : "#fff",
+                  color: isDark ? "#f1f5f9" : "#0f172a",
+                  fontSize: 12,
+                }}
                 formatter={(value) => [value, "Applications"]}
               />
               <Bar dataKey="count" fill="#6366f1" radius={[6, 6, 0, 0]} maxBarSize={36} />

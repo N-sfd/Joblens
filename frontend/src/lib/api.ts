@@ -152,6 +152,12 @@ export const api = {
   deleteJob: (id: number) => request<{ message: string }>(`/api/jobs/${id}`, { method: "DELETE" }),
   generateFollowUpEmail: (id: number) =>
     request<{ subject: string; body: string }>(`/api/jobs/${id}/follow-up-email`, { method: "POST" }),
+  parseJobPosting: (rawText: string) =>
+    request<import("@/types").JobPostingParseResult>("/api/jobs/parse", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),
+    }),
+  generateNegotiationAdvice: (id: number) =>
+    request<import("@/types").NegotiationAdvice>(`/api/jobs/${id}/negotiate`, { method: "POST" }),
   loadDemoJobs: () => request<{ message: string; companies: string[] }>("/api/jobs/demo", { method: "POST" }),
   clearAllJobs: () => request<{ message: string }>("/api/jobs/all", { method: "DELETE" }),
   bulkDeleteJobs: (ids: number[]) =>
