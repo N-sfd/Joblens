@@ -37,6 +37,27 @@ class JobApplication(Base):
     recruiter_email = Column(String(255), nullable=True)
     follow_up_date = Column(DateTime, nullable=True)
     reminder_type = Column(String(50), nullable=True)
+    # Set when this tracker entry was created from a published CRM/ATS job
+    # (Discover Jobs → Save Job / Add to Tracker / Contact Recruiter) rather
+    # than added manually. Lets the Job Tracker link back to the full job
+    # detail page; absence of a link (source job unpublished/removed) never
+    # affects this row, which already carries its own copy of the key fields.
+    source_job_requirement_id = Column(Integer, nullable=True, index=True)
+    # Full job detail captured at save time (same shape as the public
+    # JobRequirementResponse projection) — lets a user who already saved or
+    # tracked this job keep viewing its description, skills, recruiter info,
+    # rate, and location after the source job is closed or unpublished. The
+    # Job Details page falls back to this instead of the live ATS record.
+    job_snapshot_json = Column(Text, nullable=True)
+    # Apply Options workflow (see routers/jobs.py's from-external /
+    # mark-applied endpoints). `application_method` is one of
+    # employer_website | recruiter_email | manual.
+    application_source = Column(String(50), nullable=True)
+    application_method = Column(String(30), nullable=True)
+    application_opened_at = Column(DateTime, nullable=True)
+    applied_at = Column(DateTime, nullable=True)
+    recruiter_contacted_at = Column(DateTime, nullable=True)
+    last_activity_at = Column(DateTime, nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
@@ -267,12 +288,21 @@ class JobRequirement(Base):
     education_requirement = Column(Text, nullable=True)
     certification_requirement = Column(Text, nullable=True)
     job_description = Column(Text, nullable=True)
+    # Direct employer application link, when the recruiter/email provided one
+    # — powers "Apply on Employer Website" in JobLens's Apply Options modal.
+    application_url = Column(String(500), nullable=True)
     raw_email_text = Column(Text, nullable=True)
     submission_instructions = Column(Text, nullable=True)
     submission_deadline = Column(String(50), nullable=True)
     number_of_openings = Column(Integer, nullable=True)
     status = Column(String(50), default="New")
     priority = Column(String(20), default="Medium")
+    # Editorial gate, independent of the operational `status` pipeline above:
+    # has staff explicitly reviewed and approved this requisition for outside
+    # visibility? Distinct from `published_for_matching` (the recruiter's
+    # publish toggle) — both must hold, alongside an open `status`, for a job
+    # to appear in the public Job Matcher (see routers/public_jobs.py).
+    review_status = Column(String(20), default="Draft")  # Draft | Approved | Rejected
     # Explicit recruiter opt-in to surface this requisition to public JobLens
     # job-seeker accounts in the Job Matcher (see routers/public_jobs.py).
     # Independent of `status` — a job can be "Ready for Match" internally
@@ -297,6 +327,10 @@ class JobRequirement(Base):
 # Statuses that hide a job requirement from the public Job Matcher even if
 # `published_for_matching` is still True — see routers/public_jobs.py.
 PUBLIC_CLOSED_JOB_STATUSES = {"Closed", "Rejected", "Duplicate", "Spam", "On Hold"}
+
+# Editorial review gate for JobRequirement.review_status (see the field's
+# docstring). Only "Approved" jobs are eligible for public matching.
+JOB_REVIEW_STATUSES = ("Draft", "Approved", "Rejected")
 
 
 class CRMOrganization(Base):
@@ -605,6 +639,9 @@ class JobApplicationCreate(BaseModel):
     follow_up_date: Optional[datetime] = None
     reminder_type: Optional[str] = None
     date_applied: Optional[datetime] = None
+    source_job_requirement_id: Optional[int] = None
+    application_source: Optional[str] = None
+    application_method: Optional[str] = None
 
 
 class JobApplicationUpdate(BaseModel):
@@ -637,6 +674,18 @@ class JobApplicationResponse(BaseModel):
     recruiter_email: Optional[str]
     follow_up_date: Optional[datetime]
     reminder_type: Optional[str]
+    source_job_requirement_id: Optional[int] = None
+    application_source: Optional[str] = None
+    application_method: Optional[str] = None
+    application_opened_at: Optional[datetime] = None
+    applied_at: Optional[datetime] = None
+    recruiter_contacted_at: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
+    # Raw JSON string (same shape as the public JobRequirementResponse
+    # projection) — parse client-side. Kept as the raw column rather than a
+    # parsed dict so FastAPI's from_attributes can populate it automatically
+    # across every endpoint that returns JobApplicationResponse.
+    job_snapshot_json: Optional[str] = None
     created_at: datetime
 
     model_config = {"from_attributes": True}
@@ -645,6 +694,17 @@ class JobApplicationResponse(BaseModel):
 class FollowUpEmailResponse(BaseModel):
     subject: str
     body: str
+
+
+class SaveExternalJobRequest(BaseModel):
+    """Save Job / Add to Tracker / Apply Now / Mark as Contacted, from a
+    published CRM/ATS job — see routers/jobs.py's from-external endpoint.
+    Idempotent: re-saving an already-tracked job updates it instead of
+    creating a duplicate, and never downgrades a protected status."""
+
+    job_requirement_id: int
+    status: str = "Saved"
+    application_method: Optional[str] = None  # employer_website | recruiter_email | manual
 
 
 class MatchRequest(BaseModel):
@@ -930,6 +990,7 @@ class JobRequirementBase(BaseModel):
     education_requirement: Optional[str] = None
     certification_requirement: Optional[str] = None
     job_description: Optional[str] = None
+    application_url: Optional[str] = None
     raw_email_text: Optional[str] = None
     submission_instructions: Optional[str] = None
     submission_deadline: Optional[str] = None
@@ -939,6 +1000,7 @@ class JobRequirementBase(BaseModel):
     notes: Optional[str] = None
     received_at: Optional[datetime] = None
     published_for_matching: bool = False
+    review_status: str = "Draft"
 
 
 class JobRequirementCreate(JobRequirementBase):
@@ -983,6 +1045,7 @@ class PublicJobListing(BaseModel):
 
     id: int
     job_title: str
+    job_reference_number: Optional[str] = None
     client: Optional[str] = None
     vendor: Optional[str] = None
     location: Optional[str] = None
@@ -990,6 +1053,8 @@ class PublicJobListing(BaseModel):
     employment_type: Optional[str] = None
     rate: Optional[str] = None
     required_skills: list[str] = []
+    source: Optional[str] = None
+    received_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -1034,6 +1099,7 @@ class JobRequirementParseResponse(BaseModel):
     submission_deadline: str = ""
     number_of_openings: Optional[int] = None
     submission_instructions: str = ""
+    application_url: str = ""
     summary: str = ""
 
     model_config = {"from_attributes": True}

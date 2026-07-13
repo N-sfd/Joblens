@@ -16,7 +16,8 @@ export type ActivityType =
   | "status_changed"
   | "job_deleted"
   | "negotiation_advice"
-  | "job_imported";
+  | "job_imported"
+  | "application_opened";
 
 export interface ActivityEntry {
   id: number;
@@ -55,11 +56,15 @@ export interface CoverLetterHistoryEntry {
 
 export type ReminderType = "follow_up_email" | "interview" | "thank_you_email" | "application_deadline";
 
+export type JobApplicationStatusValue =
+  | "Saved" | "Application Opened" | "Application In Progress" | "Applied"
+  | "Recruiter Contacted" | "Interviewing" | "Offer" | "Rejected" | "Withdrawn";
+
 export interface JobApplication {
   id: number;
   company: string;
   role: string;
-  status: "Applied" | "Interviewing" | "Offer" | "Rejected" | "Saved";
+  status: JobApplicationStatusValue;
   date_applied: string | null;
   job_url: string | null;
   notes: string | null;
@@ -70,6 +75,20 @@ export interface JobApplication {
   recruiter_email: string | null;
   follow_up_date: string | null;
   reminder_type: ReminderType | null;
+  // Set when this row was saved from a published CRM/ATS job (Discover Jobs
+  // / Job Details) rather than added manually — links back to the full job.
+  source_job_requirement_id: number | null;
+  // Apply Options workflow (Apply Now / Contact Recruiter) — see api.ts.
+  application_source: string | null;
+  application_method: "employer_website" | "recruiter_email" | "manual" | null;
+  application_opened_at: string | null;
+  applied_at: string | null;
+  recruiter_contacted_at: string | null;
+  last_activity_at: string | null;
+  // Raw JSON string (JobRequirement-shaped) captured at save time — parse
+  // with JSON.parse when the source job is no longer live. See Job Details'
+  // historical-snapshot fallback.
+  job_snapshot_json: string | null;
   created_at: string;
 }
 
@@ -451,6 +470,8 @@ export const JOB_REQUIREMENT_STATUSES = [
 export type JobRequirementStatus = typeof JOB_REQUIREMENT_STATUSES[number];
 export const JOB_REQUIREMENT_PRIORITIES = ["Low", "Medium", "High", "Urgent"] as const;
 export type JobRequirementPriority = typeof JOB_REQUIREMENT_PRIORITIES[number];
+export const JOB_REVIEW_STATUSES = ["Draft", "Approved", "Rejected"] as const;
+export type JobReviewStatus = typeof JOB_REVIEW_STATUSES[number];
 export const JOB_REQUIREMENT_SOURCES = [
   "Manual", "Email Copy/Paste", "Zoho Mail", "Chrome Extension", "Referral", "Other",
 ] as const;
@@ -492,6 +513,9 @@ export interface JobRequirement {
   education_requirement: string | null;
   certification_requirement: string | null;
   job_description: string | null;
+  // Direct employer application link, when provided — powers "Apply on
+  // Employer Website" in the Apply Options modal.
+  application_url: string | null;
   raw_email_text: string | null;
   submission_instructions: string | null;
   submission_deadline: string | null;
@@ -511,6 +535,10 @@ export interface JobRequirement {
   // Recruiter opt-in to surface this requisition in the public Job Matcher —
   // see PublicJobListing/getPublicJob and types below.
   published_for_matching: boolean;
+  // Editorial gate: "Draft" | "Approved" | "Rejected". Independent of
+  // `status` (the operational pipeline) and `published_for_matching` (the
+  // publish toggle) — all three must align for public visibility.
+  review_status: string;
 }
 
 export type JobRequirementCreate = Omit<
@@ -550,6 +578,7 @@ export interface JobRequirementListResponse {
 export interface PublicJobListing {
   id: number;
   job_title: string;
+  job_reference_number: string | null;
   client: string | null;
   vendor: string | null;
   location: string | null;
@@ -557,13 +586,18 @@ export interface PublicJobListing {
   employment_type: string | null;
   rate: string | null;
   required_skills: string[];
+  source: string | null;
+  received_at: string | null;
 }
 
 export interface PublicJobListParams {
   q?: string;
   location?: string;
   work_type?: string;
+  employment_type?: string;
+  client?: string;
   skills?: string;
+  since?: string;
   page?: number;
   page_size?: number;
 }
@@ -604,6 +638,7 @@ export interface JobRequirementParseResult {
   submission_deadline: string;
   number_of_openings: number | null;
   submission_instructions: string;
+  application_url: string;
   summary: string;
 }
 

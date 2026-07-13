@@ -7,12 +7,20 @@ from models import (
     JobApplicationUpdate,
     JobApplicationResponse,
     FollowUpEmailResponse,
+    JobRequirement,
+    SaveExternalJobRequest,
 )
 from services.claude_service import generate_follow_up_email, parse_job_posting, generate_negotiation_advice
+from services.ai_errors import raise_clean_ai_error
+from routers.public_jobs import _to_public_detail
 from auth import Owner, get_owner, owned, log_activity
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 
 class BulkDeleteRequest(BaseModel):
@@ -24,7 +32,23 @@ class JobPostingParseRequest(BaseModel):
 
 router = APIRouter()
 
-VALID_STATUSES = {"Applied", "Interviewing", "Offer", "Rejected", "Saved"}
+VALID_STATUSES = {
+    "Saved", "Application Opened", "Application In Progress", "Applied",
+    "Recruiter Contacted", "Interviewing", "Offer", "Rejected", "Withdrawn",
+}
+
+# Statuses that automatic/semi-automatic actions (Save Job, Apply Now, Contact
+# Recruiter) must never overwrite — they only change via an explicit user
+# action (the tracker's status dropdown, or the dedicated mark-applied
+# endpoint below). Applied is included so reopening an employer URL can't
+# silently downgrade a job back to "Application Opened".
+AUTO_GUARD_STATUSES = {"Interviewing", "Offer", "Rejected", "Withdrawn", "Applied"}
+
+
+def _resolve_auto_status(current: str, desired: str) -> str:
+    if current in AUTO_GUARD_STATUSES:
+        return current
+    return desired
 
 
 def jobs_for_owner(db: Session, owner: Owner):
@@ -149,7 +173,7 @@ async def parse_job_posting_text(
     try:
         parsed = await parse_job_posting(body.raw_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Job posting parsing", e)
     return parsed
 
 
@@ -188,6 +212,128 @@ async def create_job(
     db.refresh(db_job)
     log_activity(db, owner, "job_added", f"Added {job.company} — {job.role}", job.status)
     return db_job
+
+
+@router.post("/from-external", response_model=JobApplicationResponse, status_code=201)
+async def save_external_job(
+    body: SaveExternalJobRequest,
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
+    """Save Job / Add to Tracker / Apply Now / Contact Recruiter from a
+    published CRM/ATS job (Discover Jobs / Job Details page). Idempotent on
+    source_job_requirement_id — re-saving the same job updates the existing
+    tracker row instead of creating a duplicate, and never overwrites a
+    protected status (see AUTO_GUARD_STATUSES)."""
+    if body.status not in VALID_STATUSES:
+        raise HTTPException(status_code=422, detail=f"Invalid status. Must be one of: {', '.join(sorted(VALID_STATUSES))}")
+
+    job_req = db.query(JobRequirement).filter(JobRequirement.id == body.job_requirement_id).first()
+    if not job_req:
+        raise HTTPException(status_code=404, detail="This job is no longer available.")
+
+    now = datetime.utcnow()
+    snapshot_json = json.dumps(_to_public_detail(job_req).model_dump(mode="json"))
+    is_apply_open = body.application_method == "employer_website"
+    is_contact = body.status == "Recruiter Contacted"
+
+    existing = (
+        jobs_for_owner(db, owner)
+        .filter(JobApplication.source_job_requirement_id == job_req.id)
+        .first()
+    )
+
+    if existing:
+        resolved = _resolve_auto_status(existing.status, body.status)
+        status_changed = resolved != existing.status
+        existing.status = resolved
+        existing.job_snapshot_json = snapshot_json  # keep the snapshot fresh while the source is still live
+        existing.last_activity_at = now
+        if is_apply_open:
+            existing.application_method = "employer_website"
+            if job_req.application_url:
+                existing.job_url = job_req.application_url
+            if not existing.application_opened_at:
+                existing.application_opened_at = now
+        if is_contact and not existing.recruiter_contacted_at:
+            existing.recruiter_contacted_at = now
+            if not existing.follow_up_date:
+                existing.follow_up_date = now + timedelta(days=3)
+                existing.reminder_type = "follow_up_email"
+        existing.updated_at = now
+        db.commit()
+        db.refresh(existing)
+        if status_changed:
+            log_activity(db, owner, "status_changed", f"{existing.company} — {existing.role} → {existing.status}")
+        elif is_apply_open:
+            log_activity(db, owner, "application_opened", f"Reopened application page for {existing.company} — {existing.role}")
+        return existing
+
+    fields = {
+        "company": job_req.client or job_req.vendor or job_req.job_title,
+        "role": job_req.job_title,
+        "status": body.status,
+        "location": job_req.location,
+        "work_type": job_req.work_type,
+        "salary_range": job_req.rate,
+        "recruiter_name": job_req.recruiter_name,
+        "recruiter_email": job_req.recruiter_email,
+        "notes": f"Ref #{job_req.job_reference_number}" if job_req.job_reference_number else None,
+        "source_job_requirement_id": job_req.id,
+        "job_snapshot_json": snapshot_json,
+        "application_source": job_req.source,
+        "last_activity_at": now,
+    }
+    if is_apply_open:
+        fields["application_method"] = "employer_website"
+        fields["job_url"] = job_req.application_url
+        fields["application_opened_at"] = now
+    if is_contact:
+        fields["recruiter_contacted_at"] = now
+        fields["follow_up_date"] = now + timedelta(days=3)
+        fields["reminder_type"] = "follow_up_email"
+
+    db_job = JobApplication(**fields, guest_id=owner.guest_id, user_id=owner.user_id)
+    db.add(db_job)
+    db.commit()
+    db.refresh(db_job)
+    log_activity(db, owner, "job_added", f"Added {db_job.company} — {db_job.role}", db_job.status)
+    return db_job
+
+
+@router.post("/{job_id}/mark-applied", response_model=JobApplicationResponse)
+async def mark_applied(
+    job_id: int,
+    owner: Owner = Depends(get_owner),
+    db: Session = Depends(get_db),
+):
+    """Explicit, user-confirmed transition to Applied — the frontend gates
+    this behind a confirmation dialog. Idempotent: repeat calls after
+    applied_at is already set touch last_activity_at only, and never
+    downgrade a protected status (Interviewing/Offer/Rejected/Withdrawn)."""
+    job = get_owned_job(db, owner, job_id)
+    now = datetime.utcnow()
+
+    if job.status in AUTO_GUARD_STATUSES - {"Applied"}:
+        job.last_activity_at = now
+        db.commit()
+        db.refresh(job)
+        return job
+
+    status_changed = job.status != "Applied"
+    job.status = "Applied"
+    if not job.applied_at:
+        job.applied_at = now
+        if not job.follow_up_date:
+            job.follow_up_date = now + timedelta(days=7)
+            job.reminder_type = "follow_up_email"
+    job.last_activity_at = now
+    job.updated_at = now
+    db.commit()
+    db.refresh(job)
+    if status_changed:
+        log_activity(db, owner, "status_changed", f"{job.company} — {job.role} → Applied")
+    return job
 
 
 @router.get("/{job_id}", response_model=JobApplicationResponse)
@@ -235,7 +381,7 @@ async def follow_up_email(
             notes=job.notes or "",
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Follow-up email generation", e)
     log_activity(db, owner, "cover_letter_generated", f"Drafted follow-up email for {job.company} — {job.role}")
     return email
 
@@ -255,7 +401,7 @@ async def negotiate_offer(
             notes=job.notes or "",
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Negotiation advice generation", e)
     log_activity(db, owner, "negotiation_advice", f"Generated negotiation advice for {job.company} — {job.role}")
     return advice
 

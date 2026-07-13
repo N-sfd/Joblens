@@ -591,6 +591,7 @@ Return this exact JSON structure (never omit a key):
   "submission_deadline": "<deadline as stated>",
   "number_of_openings": <integer count or null>,
   "submission_instructions": "<how to submit candidates>",
+  "application_url": "<direct employer/job-posting application URL, ONLY if an actual link is present in the text>",
   "summary": "<2-3 sentence summary useful for matching against employee profiles>"
 }}"""
 
@@ -633,7 +634,8 @@ async def parse_job_requirement(raw_text: str) -> dict:
         "required_skills": [], "preferred_skills": [],
         "minimum_experience": "", "education_requirement": "",
         "certification_requirement": "", "submission_deadline": "",
-        "number_of_openings": None, "submission_instructions": "", "summary": "",
+        "number_of_openings": None, "submission_instructions": "",
+        "application_url": "", "summary": "",
     }
     defaults.update(data)
     # Legacy alias for callers expecting a single rate string.

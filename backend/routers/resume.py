@@ -8,11 +8,15 @@ from services.claude_service import (
     generate_resume_bullets_generic,
     create_interview_questions_generic,
 )
+from services.ai_errors import raise_clean_ai_error
 from auth import Owner, get_owner, owned, log_activity
 from pydantic import BaseModel
 import pypdf
 import io
 import json
+import logging
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -78,7 +82,7 @@ async def analyze_resume_file(
     try:
         analysis = await analyze_resume(text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Resume analysis", e)
 
     db.add(
         ResumeAnalysis(
@@ -136,7 +140,7 @@ async def analyze_resume_text(body: dict):
     try:
         analysis = await analyze_resume(text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Resume analysis", e)
     return {"analysis": analysis}
 
 
@@ -151,7 +155,7 @@ async def get_resume_bullets(
     try:
         bullets = await generate_resume_bullets_generic(request.resume_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Bullet generation", e)
     log_activity(db, owner, "bullets_generated", f"Generated {len(bullets)} improved resume bullets")
     return {"bullets": bullets}
 
@@ -167,6 +171,6 @@ async def get_interview_questions(
     try:
         questions = await create_interview_questions_generic(request.resume_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Interview question generation", e)
     log_activity(db, owner, "questions_generated", f"Generated {len(questions)} interview questions")
     return {"questions": questions}

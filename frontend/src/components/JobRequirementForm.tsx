@@ -4,6 +4,7 @@ import { useEffect, useState } from "react";
 import { api } from "@/lib/api";
 import {
   JOB_REQUIREMENT_STATUSES, JOB_REQUIREMENT_PRIORITIES, JOB_REQUIREMENT_SOURCES,
+  JOB_REVIEW_STATUSES,
 } from "@/types";
 import type { CRMOrganization, CRMContact } from "@/types";
 
@@ -43,6 +44,7 @@ export interface JobFormState {
   education_requirement: string;
   certification_requirement: string;
   job_description: string;
+  application_url: string;
   submission_instructions: string;
   submission_deadline: string;
   number_of_openings: string;
@@ -51,6 +53,7 @@ export interface JobFormState {
   source: string;
   notes: string;
   published_for_matching: boolean;
+  review_status: string;
 }
 
 export const emptyJobForm = (): JobFormState => ({
@@ -60,9 +63,9 @@ export const emptyJobForm = (): JobFormState => ({
   work_type: "", employment_type: "", contract_type: "", rate: "", rate_min: "", rate_max: "",
   rate_currency: "USD", rate_type: "", duration: "", visa_requirement: "", clearance_requirement: "",
   required_skills: "", preferred_skills: "", minimum_experience: "", education_requirement: "",
-  certification_requirement: "", job_description: "", submission_instructions: "",
+  certification_requirement: "", job_description: "", application_url: "", submission_instructions: "",
   submission_deadline: "", number_of_openings: "", status: "New", priority: "Medium",
-  source: "Manual", notes: "", published_for_matching: false,
+  source: "Manual", notes: "", published_for_matching: false, review_status: "Draft",
 });
 
 export const splitSkills = (s: string) => s.split(",").map((x) => x.trim()).filter(Boolean);
@@ -108,6 +111,7 @@ export function applyParsedToForm(prev: JobFormState, parsed: import("@/types").
     submission_instructions: parsed.submission_instructions || prev.submission_instructions,
     number_of_openings: parsed.number_of_openings != null ? String(parsed.number_of_openings) : prev.number_of_openings,
     job_description: parsed.summary ? `${parsed.summary}\n\n` : prev.job_description,
+    application_url: parsed.application_url || prev.application_url,
     status: "Parsed",
     source: "Email Copy/Paste",
   };
@@ -148,6 +152,7 @@ export function jobToForm(job: import("@/types").JobRequirement): JobFormState {
     education_requirement: job.education_requirement ?? "",
     certification_requirement: job.certification_requirement ?? "",
     job_description: job.job_description ?? "",
+    application_url: job.application_url ?? "",
     submission_instructions: job.submission_instructions ?? "",
     submission_deadline: job.submission_deadline ?? "",
     number_of_openings: job.number_of_openings != null ? String(job.number_of_openings) : "",
@@ -156,6 +161,7 @@ export function jobToForm(job: import("@/types").JobRequirement): JobFormState {
     source: job.source,
     notes: job.notes ?? "",
     published_for_matching: job.published_for_matching ?? false,
+    review_status: job.review_status || "Draft",
   };
 }
 
@@ -194,6 +200,7 @@ export function formToPayload(form: JobFormState, rawEmail?: string | null): imp
     education_requirement: form.education_requirement || null,
     certification_requirement: form.certification_requirement || null,
     job_description: form.job_description || null,
+    application_url: form.application_url || null,
     raw_email_text: rawEmail || null,
     submission_instructions: form.submission_instructions || null,
     submission_deadline: form.submission_deadline || null,
@@ -203,6 +210,7 @@ export function formToPayload(form: JobFormState, rawEmail?: string | null): imp
     source: form.source,
     notes: form.notes || null,
     published_for_matching: form.published_for_matching,
+    review_status: form.review_status,
     external_job_id: null,
     received_at: null,
   };
@@ -354,6 +362,9 @@ export default function JobRequirementForm({ form, onChange }: Props) {
       <Field label="Education Requirement"><input title="Education" className="input" value={form.education_requirement} onChange={set("education_requirement")} /></Field>
       <Field label="Certification Requirement"><input title="Certifications" className="input" value={form.certification_requirement} onChange={set("certification_requirement")} /></Field>
       <Field label="Job Description"><textarea title="Job Description" className="textarea" rows={5} value={form.job_description} onChange={set("job_description")} /></Field>
+      <Field label="Application URL">
+        <input title="Application URL" type="url" className="input" placeholder="https://company.com/careers/apply/..." value={form.application_url} onChange={set("application_url")} />
+      </Field>
       <Field label="Submission Instructions"><textarea title="Submission Instructions" className="textarea" rows={3} value={form.submission_instructions} onChange={set("submission_instructions")} /></Field>
 
       <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
@@ -376,20 +387,47 @@ export default function JobRequirementForm({ form, onChange }: Props) {
         </Field>
       </div>
 
-      <label className="flex items-start gap-2.5 bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl px-4 py-3 cursor-pointer">
-        <input
-          type="checkbox"
-          className="mt-0.5 accent-indigo-600"
-          checked={form.published_for_matching}
-          onChange={(e) => onChange("published_for_matching", e.target.checked)}
-        />
-        <span>
-          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Publish to JobLens candidates</span>
-          <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-            Makes this job (title, description, skills, rate, and recruiter contact info) selectable in the public Job Matcher. Closing or rejecting the job automatically hides it again.
+      <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl px-4 py-3.5 space-y-3">
+        <div>
+          <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1.5">JobLens review</span>
+          <div className="flex gap-1.5">
+            {JOB_REVIEW_STATUSES.map((s) => (
+              <button
+                key={s}
+                type="button"
+                onClick={() => onChange("review_status", s)}
+                className={
+                  "px-3 py-1 rounded-full text-xs font-semibold border transition-colors " +
+                  (form.review_status === s
+                    ? s === "Approved"
+                      ? "bg-emerald-600 border-emerald-600 text-white"
+                      : s === "Rejected"
+                        ? "bg-red-600 border-red-600 text-white"
+                        : "bg-slate-600 border-slate-600 text-white"
+                    : "bg-white dark:bg-slate-900 border-slate-200 dark:border-slate-700 text-slate-600 dark:text-slate-400 hover:border-indigo-300")
+                }
+              >
+                {s}
+              </button>
+            ))}
+          </div>
+        </div>
+
+        <label className="flex items-start gap-2.5 cursor-pointer pt-1 border-t border-indigo-100 dark:border-indigo-900/50">
+          <input
+            type="checkbox"
+            className="mt-1.5 accent-indigo-600"
+            checked={form.published_for_matching}
+            onChange={(e) => onChange("published_for_matching", e.target.checked)}
+          />
+          <span className="pt-1">
+            <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Publish to JobLens candidates</span>
+            <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
+              Makes this job (title, description, skills, rate, and recruiter contact info) selectable in the public Job Matcher — but only once review is <strong>Approved</strong> and the job status isn't closed. Either one changing hides it again automatically.
+            </span>
           </span>
-        </span>
-      </label>
+        </label>
+      </div>
 
       <Field label="Notes"><textarea title="Notes" className="textarea" rows={3} value={form.notes} onChange={set("notes")} /></Field>
     </div>

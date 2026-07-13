@@ -2,6 +2,7 @@
 
 from __future__ import annotations
 
+import logging
 import re
 from datetime import datetime, timedelta, timezone
 
@@ -30,6 +31,7 @@ from models import (
 from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
 from routers.job_requirements import _auto_link_crm, _prepare_create_data, _to_response
 from services.audit import log_audit
+from services.ai_errors import log_ai_error, raise_clean_ai_error
 from services.claude_service import parse_job_requirement
 from services.email_classifier import classify_email
 from services.html_sanitize import sanitize_email_html
@@ -420,10 +422,11 @@ async def classify_unclassified_emails(
             email.needs_review = result["classification"] == "job_req"
             results.append(_classification_response(email, result["reason"]))
         except Exception as e:
+            log_ai_error(logger, "Batch email classification", e)
             results.append(EmailClassificationResponse(
                 id=email.id,
                 classification=email.classification,
-                reason=f"Classification failed: {e}",
+                reason="Classification could not be completed for this email.",
                 needs_review=email.needs_review,
             ))
 
@@ -460,7 +463,7 @@ async def classify_imported_email(
             body_text=_email_body_text(email),
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI classification failed: {e}")
+        raise_clean_ai_error(logger, "Email classification", e)
 
     email.classification = result["classification"]
     email.needs_review = result["classification"] == "job_req"
@@ -484,7 +487,7 @@ async def parse_imported_email(
     try:
         parsed = await parse_job_requirement(raw_text)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {e}")
+        raise_clean_ai_error(logger, "Job details parsing", e)
 
     if not parsed.get("recruiter_email") and email.from_address:
         parsed["recruiter_email"] = email.from_address

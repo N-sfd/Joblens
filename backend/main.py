@@ -90,9 +90,9 @@ app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
 app.include_router(account.router, prefix="/api/account", tags=["Account"])
-# Public read of ATS jobs a recruiter has explicitly published for candidate
-# matching (routers/public_jobs.py) — guest_id/user pattern, not Clerk-gated.
-app.include_router(public_jobs.router, prefix="/api/public-jobs", tags=["Public Jobs"])
+# CRM/ATS → JobLens job publishing surface (routers/public_jobs.py). Public —
+# guest_id/user pattern, not Clerk-gated — since JobLens calls it directly.
+app.include_router(public_jobs.router, prefix="/api/integrations/joblens/jobs", tags=["JobLens Integration"])
 # Private ATS data — Clerk JWT verification via ats_auth.py (set ATS_AUTH_ENFORCE=true in production).
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])

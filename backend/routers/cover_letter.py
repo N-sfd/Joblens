@@ -1,11 +1,15 @@
 from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
+import logging
 
 from database import get_db
 from models import CoverLetterRequest, CoverLetter
 from services.claude_service import generate_cover_letter
+from services.ai_errors import raise_clean_ai_error
 from auth import Owner, get_owner, owned, log_activity
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -30,7 +34,7 @@ async def create_cover_letter(
             tone=tone,
         )
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Cover letter generation", e)
 
     db.add(CoverLetter(
         resume_text=request.resume_text,

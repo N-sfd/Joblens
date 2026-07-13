@@ -1,7 +1,7 @@
 "use client";
 
-import { useState, useEffect } from "react";
-import { useRouter } from "next/navigation";
+import { useState, useEffect, Suspense } from "react";
+import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
 import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement, ResumeHistoryEntry } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
@@ -58,8 +58,9 @@ const recommendationStyle: Record<string, string> = {
 
 const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
 
-export default function MatchPage() {
+function MatchPageContent() {
   const router = useRouter();
+  const searchParams = useSearchParams();
 
   const [resumeText, setResumeText] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem(RESUME_KEY) ?? "" : ""
@@ -79,6 +80,8 @@ export default function MatchPage() {
   const [atsSearch, setAtsSearch] = useState("");
   const [atsLocation, setAtsLocation] = useState("");
   const [atsWorkType, setAtsWorkType] = useState("");
+  const [atsEmploymentType, setAtsEmploymentType] = useState("");
+  const [atsClient, setAtsClient] = useState("");
   const [atsSkills, setAtsSkills] = useState("");
   const [selectedJobId, setSelectedJobId] = useState<number | "">("");
   const [selectedJob, setSelectedJob] = useState<JobRequirement | null>(null);
@@ -159,7 +162,7 @@ export default function MatchPage() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadAtsJobs = async (overrides?: { search?: string; location?: string; work_type?: string; skills?: string }) => {
+  const loadAtsJobs = async (overrides?: { search?: string; location?: string; work_type?: string; employment_type?: string; client?: string; skills?: string }) => {
     setAtsJobsLoading(true);
     setAtsJobsError(null);
     try {
@@ -167,6 +170,8 @@ export default function MatchPage() {
         q: (overrides?.search ?? atsSearch) || undefined,
         location: (overrides?.location ?? atsLocation) || undefined,
         work_type: (overrides?.work_type ?? atsWorkType) || undefined,
+        employment_type: (overrides?.employment_type ?? atsEmploymentType) || undefined,
+        client: (overrides?.client ?? atsClient) || undefined,
         skills: (overrides?.skills ?? atsSkills) || undefined,
         page_size: 50,
       });
@@ -214,6 +219,16 @@ export default function MatchPage() {
       setSelectedJobLoading(false);
     }
   };
+
+  // Deep link from Discover Jobs / Job Details ("Analyze Match" → /match?atsJob=123).
+  useEffect(() => {
+    const atsJob = searchParams.get("atsJob");
+    if (atsJob) {
+      setMode("ats");
+      selectJob(Number(atsJob));
+    }
+    // eslint-disable-next-line react-hooks/exhaustive-deps
+  }, [searchParams]);
 
   // Builds the text actually sent to the matcher: the full structured job
   // context, with any "Edit for this analysis" overrides applied locally —
@@ -309,6 +324,10 @@ export default function MatchPage() {
         job_url: null, salary_range: null, location: null,
         work_type: null, recruiter_name: null, recruiter_email: null,
         follow_up_date: null, date_applied: null, reminder_type: null,
+        source_job_requirement_id: mode === "ats" ? selectedJob?.id ?? null : null,
+        application_source: null, application_method: null, application_opened_at: null,
+        applied_at: null, recruiter_contacted_at: null, last_activity_at: null,
+        job_snapshot_json: null,
       });
       setShowSave(false);
       showToast("Saved to Job Tracker!");
@@ -482,17 +501,25 @@ export default function MatchPage() {
                   <option value="Hybrid">Hybrid</option>
                   <option value="Onsite">Onsite</option>
                 </select>
-                <input className="input text-sm" placeholder="Skills (comma-separated)" value={atsSkills}
+                <input className="input text-sm" placeholder="Employment type" value={atsEmploymentType}
+                  onChange={(e) => setAtsEmploymentType(e.target.value)}
+                  onBlur={() => loadAtsJobs()}
+                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
+                <input className="input text-sm" placeholder="Client" value={atsClient}
+                  onChange={(e) => setAtsClient(e.target.value)}
+                  onBlur={() => loadAtsJobs()}
+                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
+                <input className="input text-sm sm:col-span-2" placeholder="Skills (comma-separated)" value={atsSkills}
                   onChange={(e) => setAtsSkills(e.target.value)}
                   onBlur={() => loadAtsJobs()}
                   onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
               </div>
-              {(atsSearch || atsLocation || atsWorkType || atsSkills) && (
+              {(atsSearch || atsLocation || atsWorkType || atsEmploymentType || atsClient || atsSkills) && (
                 <button
                   type="button"
                   onClick={() => {
-                    setAtsSearch(""); setAtsLocation(""); setAtsWorkType(""); setAtsSkills("");
-                    loadAtsJobs({ search: "", location: "", work_type: "", skills: "" });
+                    setAtsSearch(""); setAtsLocation(""); setAtsWorkType(""); setAtsEmploymentType(""); setAtsClient(""); setAtsSkills("");
+                    loadAtsJobs({ search: "", location: "", work_type: "", employment_type: "", client: "", skills: "" });
                   }}
                   className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
                 >
@@ -1101,5 +1128,13 @@ export default function MatchPage() {
         </div>
       )}
     </div>
+  );
+}
+
+export default function MatchPage() {
+  return (
+    <Suspense fallback={<div className="p-8 flex items-center gap-2 text-slate-500 dark:text-slate-400"><Loader2 size={18} className="animate-spin" /> Loading…</div>}>
+      <MatchPageContent />
+    </Suspense>
   );
 }

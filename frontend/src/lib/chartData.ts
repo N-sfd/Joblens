@@ -105,6 +105,7 @@ export const ACTIVITY_LABELS: Record<ActivityType, string> = {
   job_deleted: "Jobs Deleted",
   negotiation_advice: "Negotiation Advice",
   job_imported: "ATS Jobs Imported",
+  application_opened: "Applications Opened",
 };
 
 export const ACTIVITY_COLORS: Record<ActivityType, string> = {
@@ -119,6 +120,7 @@ export const ACTIVITY_COLORS: Record<ActivityType, string> = {
   job_deleted: "#ef4444",
   negotiation_advice: "#14b8a6",
   job_imported: "#6366f1",
+  application_opened: "#3b82f6",
 };
 
 export interface ActivitySlice {

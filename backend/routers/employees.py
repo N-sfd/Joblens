@@ -20,6 +20,7 @@ from routers.employee_resumes import _read_and_validate, _extract_text
 from services.audit import log_audit
 from services.claude_service import parse_employee_resume
 from services.rate_limit import rate_limit_ai
+from services.ai_errors import raise_clean_ai_error
 
 logger = logging.getLogger(__name__)
 
@@ -197,9 +198,8 @@ async def parse_resume_for_employee(
         raise HTTPException(status_code=422, detail="Could not extract readable text from the resume.")
     try:
         return await parse_employee_resume(resume_text)
-    except Exception:
-        logger.exception("Resume AI parsing failed for user=%s", principal.user_id)
-        raise HTTPException(status_code=500, detail="Resume could not be parsed. Please try again.")
+    except Exception as e:
+        raise_clean_ai_error(logger, "Resume parsing", e)
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)

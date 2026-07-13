@@ -27,6 +27,7 @@ from services.audit import log_audit
 from services.claude_service import parse_job_requirement
 from services.job_employee_match import match_employees_to_job
 from services.rate_limit import rate_limit_ai
+from services.ai_errors import raise_clean_ai_error
 
 router = APIRouter()
 
@@ -78,6 +79,7 @@ def _to_response(job: JobRequirement) -> JobRequirementResponse:
         education_requirement=job.education_requirement,
         certification_requirement=job.certification_requirement,
         job_description=job.job_description,
+        application_url=job.application_url,
         raw_email_text=job.raw_email_text,
         submission_instructions=job.submission_instructions,
         submission_deadline=job.submission_deadline,
@@ -87,6 +89,7 @@ def _to_response(job: JobRequirement) -> JobRequirementResponse:
         source=job.source,
         notes=job.notes,
         published_for_matching=bool(job.published_for_matching),
+        review_status=job.review_status or "Draft",
         vendor_name=job.vendor_org.organization_name if job.vendor_org else None,
         client_name=job.client_org.organization_name if job.client_org else None,
         end_client_name=job.end_client_org.organization_name if job.end_client_org else None,
@@ -190,9 +193,8 @@ async def parse_job_requirement_text(
         raise HTTPException(status_code=422, detail="Paste more of the job email/description to parse.")
     try:
         parsed = await parse_job_requirement(body.raw_text)
-    except Exception:
-        logger.exception("Job requirement AI parsing failed for user=%s", principal.user_id)
-        raise HTTPException(status_code=500, detail="Job details could not be parsed. Please try again.")
+    except Exception as e:
+        raise_clean_ai_error(logger, "Job details parsing", e)
     return JobRequirementParseResponse(**{k: v for k, v in parsed.items() if k != "rate"})
 
 

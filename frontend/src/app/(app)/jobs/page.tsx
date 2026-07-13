@@ -16,7 +16,10 @@ import { REMINDER_TYPES } from "@/lib/reminderTypes";
 import UpcomingReminders from "@/components/UpcomingReminders";
 import { downloadJobsCsv } from "@/lib/export";
 
-const STATUSES = ["Saved", "Applied", "Interviewing", "Offer", "Rejected"] as const;
+const STATUSES = [
+  "Saved", "Application Opened", "Application In Progress", "Recruiter Contacted",
+  "Applied", "Interviewing", "Offer", "Rejected", "Withdrawn",
+] as const;
 const FILTERS = ["All", ...STATUSES] as const;
 const WORK_TYPES = ["Remote", "Hybrid", "Onsite"] as const;
 const RESUME_KEY = "aijob_resume_text";
@@ -26,7 +29,11 @@ const STATUS_COLORS: Record<string, string> = {
   Interviewing: "bg-purple-100 text-purple-700",
   Offer: "bg-green-100 text-green-700",
   Rejected: "bg-red-100 text-red-700",
+  Withdrawn: "bg-slate-200 dark:bg-slate-700 text-slate-600 dark:text-slate-300",
   Saved: "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400",
+  "Recruiter Contacted": "bg-teal-100 dark:bg-teal-950/40 text-teal-700 dark:text-teal-400",
+  "Application Opened": "bg-cyan-100 dark:bg-cyan-950/40 text-cyan-700 dark:text-cyan-400",
+  "Application In Progress": "bg-amber-100 dark:bg-amber-950/40 text-amber-700 dark:text-amber-400",
 };
 
 const WORK_TYPE_COLORS: Record<string, string> = {

@@ -1,15 +1,26 @@
-"""Candidate-facing browse of published internal ATS job requirements.
+"""The CRM/ATS's job-publishing surface for JobLens (mounted at
+/api/integrations/joblens/jobs — see main.py).
 
-Unlike routers/job_requirements.py (Clerk-gated, full internal fields), this
-router is public — same `get_owner` guest/user pattern as routers/jobs.py and
-routers/match.py — and only ever returns requisitions a recruiter has
-explicitly opted into showing candidates (`published_for_matching=True`) and
-that are still open (see PUBLIC_CLOSED_JOB_STATUSES). Internal-only fields
-(raw email text, recruiter notes, submission instructions, CRM linkage ids)
-are never included in the response.
+This is the CRM/ATS's side of the JobLens integration: it stays inside the
+same backend and database as the rest of the ATS (see the architecture note
+in routers/job_requirements.py's module docstring for why), but is public —
+same `get_owner` guest/user pattern as routers/jobs.py and routers/match.py,
+not Clerk-gated — since JobLens calls it directly from the browser like every
+other public route in this app.
+
+A job is only returned once all three publishing gates align:
+  1. `published_for_matching=True` — the recruiter's publish toggle.
+  2. `review_status="Approved"` — staff has reviewed and approved it.
+  3. `status not in PUBLIC_CLOSED_JOB_STATUSES` — the requisition is still open.
+
+Internal-only fields (raw email text, recruiter notes, submission
+instructions, CRM linkage ids, other candidates/submissions/offers — none of
+which this router ever queries in the first place) are never included in the
+response.
 """
 
 import json
+from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import or_
@@ -44,6 +55,7 @@ def _loads(value) -> list:
 def _visible_query(db: Session):
     return db.query(JobRequirement).filter(
         JobRequirement.published_for_matching.is_(True),
+        JobRequirement.review_status == "Approved",
         JobRequirement.status.notin_(PUBLIC_CLOSED_JOB_STATUSES),
     )
 
@@ -56,6 +68,7 @@ def _to_listing(job: JobRequirement) -> PublicJobListing:
     return PublicJobListing(
         id=job.id,
         job_title=job.job_title,
+        job_reference_number=job.job_reference_number,
         client=job.client,
         vendor=job.vendor,
         location=job.location,
@@ -63,6 +76,8 @@ def _to_listing(job: JobRequirement) -> PublicJobListing:
         employment_type=job.employment_type,
         rate=job.rate,
         required_skills=_loads(job.required_skills),
+        source=job.source,
+        received_at=job.received_at,
     )
 
 
@@ -100,6 +115,7 @@ def _to_public_detail(job: JobRequirement) -> JobRequirementResponse:
         education_requirement=job.education_requirement,
         certification_requirement=job.certification_requirement,
         job_description=job.job_description,
+        application_url=job.application_url,
         number_of_openings=job.number_of_openings,
         status=job.status,
         received_at=job.received_at,
@@ -115,7 +131,10 @@ async def list_public_jobs(
     q: str | None = Query(None),
     location: str | None = Query(None),
     work_type: str | None = Query(None),
+    employment_type: str | None = Query(None),
+    client: str | None = Query(None),
     skills: str | None = Query(None, description="Comma-separated skills to filter by"),
+    since: datetime | None = Query(None, description="Only jobs received on/after this timestamp"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     owner: Owner = Depends(get_owner),
@@ -136,6 +155,10 @@ async def list_public_jobs(
         query = query.filter(JobRequirement.location.ilike(f"%{location.strip()}%"))
     if work_type:
         query = query.filter(JobRequirement.work_type == work_type)
+    if employment_type:
+        query = query.filter(JobRequirement.employment_type == employment_type)
+    if client:
+        query = query.filter(JobRequirement.client.ilike(f"%{client.strip()}%"))
     if skills:
         for skill in [s.strip() for s in skills.split(",") if s.strip()]:
             term = f"%{skill}%"
@@ -143,6 +166,8 @@ async def list_public_jobs(
                 JobRequirement.required_skills.ilike(term),
                 JobRequirement.preferred_skills.ilike(term),
             ))
+    if since:
+        query = query.filter(JobRequirement.received_at >= since)
 
     total = query.count()
     total_pages = max(1, (total + page_size - 1) // page_size) if total else 1

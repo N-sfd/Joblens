@@ -18,7 +18,7 @@ function getApiBase(): string {
   return normalizeOrigin(serverBackend);
 }
 
-const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/public-jobs"];
+const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/integrations/joblens/jobs"];
 
 /** Build a query string (with leading `?`) from defined params; empty → "". */
 function formatApiErrorDetail(detail: unknown, fallback: string): string {
@@ -158,6 +158,19 @@ export const api = {
     }),
   generateNegotiationAdvice: (id: number) =>
     request<import("@/types").NegotiationAdvice>(`/api/jobs/${id}/negotiate`, { method: "POST" }),
+  // Save Job / Add to Tracker / Mark as Contacted from a published CRM/ATS
+  // job — idempotent, updates the existing tracker row if already saved.
+  saveExternalJob: (jobRequirementId: number, status?: string, applicationMethod?: string) =>
+    request<import("@/types").JobApplication>("/api/jobs/from-external", {
+      method: "POST", headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({
+        job_requirement_id: jobRequirementId,
+        status: status || "Saved",
+        application_method: applicationMethod,
+      }),
+    }),
+  markApplied: (jobApplicationId: number) =>
+    request<import("@/types").JobApplication>(`/api/jobs/${jobApplicationId}/mark-applied`, { method: "POST" }),
   loadDemoJobs: () => request<{ message: string; companies: string[] }>("/api/jobs/demo", { method: "POST" }),
   clearAllJobs: () => request<{ message: string }>("/api/jobs/all", { method: "DELETE" }),
   bulkDeleteJobs: (ids: number[]) =>
@@ -177,13 +190,14 @@ export const api = {
       method: "POST", headers: { "Content-Type": "application/json" },
       body: JSON.stringify({ resume_text, job_description, ...opts }),
     }),
-  // Public (candidate-facing) browse of published ATS jobs — no Clerk token.
+  // CRM/ATS → JobLens job publishing surface — no Clerk token, same
+  // guest/user auth as the rest of the public app.
   listPublicJobs: (params?: import("@/types").PublicJobListParams) =>
     request<import("@/types").PublicJobListResponse>(
-      `/api/public-jobs/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+      `/api/integrations/joblens/jobs/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
     ),
   getPublicJob: (id: number) =>
-    request<import("@/types").JobRequirement>(`/api/public-jobs/${id}`),
+    request<import("@/types").JobRequirement>(`/api/integrations/joblens/jobs/${id}`),
   generateResumeBullets: (resume_text: string, job_description: string) =>
     request<{ bullets: string[] }>("/api/match/resume-bullets", {
       method: "POST", headers: { "Content-Type": "application/json" },

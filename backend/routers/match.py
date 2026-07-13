@@ -2,13 +2,17 @@ from fastapi import APIRouter, Depends, HTTPException
 from sqlalchemy.orm import Session
 from typing import List
 import json
+import logging
 
 from database import get_db
 from models import MatchRequest, JobMatch, JobRequirement
 from services.claude_service import match_job, generate_resume_bullets, create_interview_questions
+from services.ai_errors import raise_clean_ai_error
 from auth import Owner, get_owner, owned, log_activity
 from routers.public_jobs import _to_public_detail
 from pydantic import BaseModel
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -31,7 +35,7 @@ async def match_resume_to_job(
     try:
         result = await match_job(request.resume_text, request.job_description)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Match analysis", e)
 
     # If this match was run against a job selected from the internal ATS,
     # store a point-in-time snapshot so this historical result stays intact
@@ -104,7 +108,7 @@ async def get_resume_bullets(
     try:
         bullets = await generate_resume_bullets(request.resume_text, request.job_description)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Bullet generation", e)
     log_activity(db, owner, "bullets_generated", f"Generated {len(bullets)} improved resume bullets")
     return {"bullets": bullets}
 
@@ -122,6 +126,6 @@ async def get_interview_questions(
     try:
         questions = await create_interview_questions(request.resume_text, request.job_description)
     except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+        raise_clean_ai_error(logger, "Interview question generation", e)
     log_activity(db, owner, "questions_generated", f"Generated {len(questions)} interview questions")
     return {"questions": questions}
