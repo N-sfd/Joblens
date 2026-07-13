@@ -1,49 +1,65 @@
-import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 import { NextResponse } from "next/server";
+import type { NextRequest } from "next/server";
+import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
 // PROTECTED (requires Clerk sign-in): ATS/admin routes only.
-// Everything else — /, /resume, /match, /cover-letter, /jobs, /dashboard,
-// /reminders, /sign-in, /sign-up, legal pages, etc. — stays public.
-// All private Consult America CRM/ATS pages live under /ats/*. Everything else
-// (/, /dashboard, /resume, /match, /jobs, /cover-letter, /reminders, legal, auth)
-// stays public.
-const isProtectedAtsRoute = createRouteMatcher([
-  "/ats",
-  "/ats/(.*)",
-]);
+// Everything else stays public for job seekers.
+const isAtsPath = (pathname: string) => pathname === "/ats" || pathname.startsWith("/ats/");
 
 const LEGACY_ATS_REDIRECTS: Record<string, string> = {
   "/job-requirements": "/ats/jobs",
   "/employees": "/ats/employees",
 };
 
-export default clerkMiddleware(async (auth, req) => {
+function applyLegacyRedirects(req: NextRequest) {
   const { pathname } = req.nextUrl;
-
   for (const [legacyPrefix, targetPrefix] of Object.entries(LEGACY_ATS_REDIRECTS)) {
     if (pathname === legacyPrefix || pathname.startsWith(`${legacyPrefix}/`)) {
       const target = pathname.replace(legacyPrefix, targetPrefix);
       return NextResponse.redirect(new URL(target, req.url));
     }
   }
+  return null;
+}
 
-  if (isProtectedAtsRoute(req)) {
-    const { userId } = await auth();
-    if (!userId) {
-      // Redirect unauthenticated visitors to /sign-in and, after sign-in,
-      // send them back to the exact ATS page they originally requested.
-      const signInUrl = new URL("/sign-in", req.url);
-      signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
-      return NextResponse.redirect(signInUrl);
-    }
+const hasClerk =
+  Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim()) &&
+  Boolean(process.env.CLERK_SECRET_KEY?.trim());
+
+function publicMiddleware(req: NextRequest) {
+  const redirected = applyLegacyRedirects(req);
+  if (redirected) return redirected;
+  if (isAtsPath(req.nextUrl.pathname)) {
+    const signInUrl = new URL("/sign-in", req.url);
+    signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
+    return NextResponse.redirect(signInUrl);
   }
   return NextResponse.next();
-});
+}
+
+// Only construct clerkMiddleware when keys exist — calling it without
+// CLERK_SECRET_KEY fails Vercel production builds and leaves prod stale.
+const isProtectedAtsRoute = createRouteMatcher(["/ats", "/ats/(.*)"]);
+
+export default hasClerk
+  ? clerkMiddleware(async (auth, req) => {
+      const redirected = applyLegacyRedirects(req);
+      if (redirected) return redirected;
+
+      if (isProtectedAtsRoute(req)) {
+        const { userId } = await auth();
+        if (!userId) {
+          const signInUrl = new URL("/sign-in", req.url);
+          signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
+          return NextResponse.redirect(signInUrl);
+        }
+      }
+      return NextResponse.next();
+    })
+  : publicMiddleware;
 
 export const config = {
   matcher: [
-    // Run on every route except static assets, so the matcher above can decide
-    // which paths actually require auth — public job-seeker pages pass through.
     "/((?!_next|.*\\..*).*)",
     "/(api|trpc)(.*)",
   ],

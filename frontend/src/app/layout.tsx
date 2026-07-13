@@ -19,16 +19,22 @@ export default function RootLayout({ children }: { children: React.ReactNode }) 
   // (/, /resume, /match, /cover-letter, /jobs, /dashboard, /reminders) renders
   // for signed-out visitors exactly as before. AuthProvider (email/password +
   // guestId) is the unrelated, pre-existing auth system for those public tools.
-  return (
-    <ClerkProvider>
-      <html lang="en">
-        <body>
-          <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
-          <ThemeProvider>
-            <AuthProvider>{children}</AuthProvider>
-          </ThemeProvider>
-        </body>
-      </html>
-    </ClerkProvider>
+  // Skip ClerkProvider when the publishable key is missing so Vercel builds
+  // do not fail before env vars are configured.
+  const body = (
+    <html lang="en">
+      <body>
+        <script dangerouslySetInnerHTML={{ __html: THEME_INIT_SCRIPT }} />
+        <ThemeProvider>
+          <AuthProvider>{children}</AuthProvider>
+        </ThemeProvider>
+      </body>
+    </html>
   );
+
+  if (!process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim()) {
+    return body;
+  }
+
+  return <ClerkProvider>{body}</ClerkProvider>;
 }
