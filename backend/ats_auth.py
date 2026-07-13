@@ -156,7 +156,7 @@ def _verify_token(token: str) -> dict:
         )
     except Exception:
         # Do not leak crypto/validation internals to clients.
-        raise HTTPException(status_code=401, detail="Invalid or expired session.")
+        raise HTTPException(status_code=401, detail="Your session has expired. Please sign in again.")
     return claims
 
 
@@ -186,7 +186,7 @@ def get_current_ats_user(request: Request) -> AtsPrincipal:
         return AtsPrincipal(user_id=None, claims={})
 
     if not token:
-        raise HTTPException(status_code=401, detail="Authentication required.")
+        raise HTTPException(status_code=401, detail="Your session has expired. Please sign in again.")
     claims = _verify_token(token)
     return AtsPrincipal(user_id=claims.get("sub"), claims=claims)
 
@@ -199,7 +199,10 @@ def require_role(*allowed_roles: str):
     def _dep(request: Request) -> AtsPrincipal:
         principal = get_current_ats_user(request)
         if ENFORCE and normalized and principal.role not in normalized:
-            raise HTTPException(status_code=403, detail="You do not have permission to perform this action.")
+            raise HTTPException(
+                status_code=403,
+                detail="Your account does not have permission to do this. Ask an admin to grant you recruiter or admin access.",
+            )
         return principal
 
     return _dep

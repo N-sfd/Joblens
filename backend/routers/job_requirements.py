@@ -1,8 +1,11 @@
 import json
+import logging
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
+
+logger = logging.getLogger(__name__)
 
 from database import get_db
 from models import (
