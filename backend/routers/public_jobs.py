@@ -1,28 +1,24 @@
 """The CRM/ATS's job-publishing surface for JobLens (mounted at
 /api/integrations/joblens/jobs — see main.py).
 
-This is the CRM/ATS's side of the JobLens integration: it stays inside the
-same backend and database as the rest of the ATS (see the architecture note
-in routers/job_requirements.py's module docstring for why), but is public —
-same `get_owner` guest/user pattern as routers/jobs.py and routers/match.py,
-not Clerk-gated — since JobLens calls it directly from the browser like every
-other public route in this app.
-
 A job is only returned once all three publishing gates align:
   1. `published_for_matching=True` — the recruiter's publish toggle.
   2. `review_status="Approved"` — staff has reviewed and approved it.
   3. `status not in PUBLIC_CLOSED_JOB_STATUSES` — the requisition is still open.
 
-Internal-only fields (raw email text, recruiter notes, submission
-instructions, CRM linkage ids, other candidates/submissions/offers — none of
-which this router ever queries in the first place) are never included in the
-response.
+Zoho / recruiter-email jobs without an application_url are included when the
+gates pass — JobLens uses Contact Recruiter as the apply method.
 """
 
+from __future__ import annotations
+
 import json
+import logging
+import os
 from datetime import datetime
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
+from fastapi.responses import Response
 from sqlalchemy import or_
 from sqlalchemy.orm import Session
 
@@ -36,10 +32,13 @@ from models import (
 )
 from auth import Owner, get_owner, log_activity
 from services.rate_limit import check_rate_limit
+from services.job_publish import exclusion_reason, log_publish_decision
+
+logger = logging.getLogger("joblens.public_jobs")
 
 router = APIRouter()
 
-PUBLIC_JOBS_RATE_LIMIT = 60  # browse-only reads; generous vs. the AI-call limits
+PUBLIC_JOBS_RATE_LIMIT = 60
 
 
 def _loads(value) -> list:
@@ -64,6 +63,18 @@ def _rate_limit_key(owner: Owner) -> str | None:
     return str(owner.user_id) if owner.user_id else owner.guest_id
 
 
+def _source_label(source: str | None, platform: str | None) -> str | None:
+    raw = (source or "").strip()
+    plat = (platform or "").strip().lower()
+    if plat == "recruiter_email" or raw.lower() in ("zoho mail", "email copy/paste"):
+        return "Email Imported"
+    if plat == "greenhouse" or "greenhouse" in raw.lower():
+        return "Published Job"
+    if raw:
+        return raw
+    return "Published Job"
+
+
 def _to_listing(job: JobRequirement) -> PublicJobListing:
     return PublicJobListing(
         id=job.id,
@@ -76,18 +87,21 @@ def _to_listing(job: JobRequirement) -> PublicJobListing:
         employment_type=job.employment_type,
         rate=job.rate,
         required_skills=_loads(job.required_skills),
-        source=job.source,
+        # Candidate-facing badge (Email Imported / Published Job / …).
+        source=_source_label(job.source, getattr(job, "application_platform", None)),
+        application_platform=getattr(job, "application_platform", None),
+        application_url=job.application_url,
+        recruiter_name=job.recruiter_name,
         received_at=job.received_at,
     )
 
 
 def _to_public_detail(job: JobRequirement) -> JobRequirementResponse:
-    """Candidate-safe projection — deliberately omits raw_email_text, notes,
-    submission_instructions, CRM link ids/names, created_by, priority, and
-    source, none of which belong in front of a public JobLens user."""
+    """Candidate-safe projection — omits raw_email_text, notes, submission_instructions."""
     return JobRequirementResponse(
         id=job.id,
         job_title=job.job_title,
+        external_job_id=job.external_job_id,
         job_reference_number=job.job_reference_number,
         vendor=job.vendor,
         recruiter_name=job.recruiter_name,
@@ -119,28 +133,36 @@ def _to_public_detail(job: JobRequirement) -> JobRequirementResponse:
         application_platform=getattr(job, "application_platform", None),
         number_of_openings=job.number_of_openings,
         status=job.status,
+        source=_source_label(job.source, getattr(job, "application_platform", None)) or job.source,
         received_at=job.received_at,
         published_for_matching=True,
+        review_status=job.review_status or "Approved",
         created_at=job.created_at,
         updated_at=job.updated_at,
     )
 
 
-@router.get("/", response_model=PublicJobListResponse)
+@router.get("/")
 async def list_public_jobs(
     request: Request,
+    response: Response,
     q: str | None = Query(None),
     location: str | None = Query(None),
     work_type: str | None = Query(None),
     employment_type: str | None = Query(None),
     client: str | None = Query(None),
+    source: str | None = Query(None, description="Filter: zoho|email|greenhouse|manual"),
     skills: str | None = Query(None, description="Comma-separated skills to filter by"),
     since: datetime | None = Query(None, description="Only jobs received on/after this timestamp"),
+    debug: bool = Query(False, description="Dev-only: include exclusion diagnostics"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
     owner: Owner = Depends(get_owner),
     db: Session = Depends(get_db),
 ):
+    # Never serve a stale empty list after a job is newly published.
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
     check_rate_limit(request, bucket="public_jobs", limit=PUBLIC_JOBS_RATE_LIMIT, user_id=_rate_limit_key(owner))
 
     query = _visible_query(db)
@@ -160,6 +182,21 @@ async def list_public_jobs(
         query = query.filter(JobRequirement.employment_type == employment_type)
     if client:
         query = query.filter(JobRequirement.client.ilike(f"%{client.strip()}%"))
+    if source:
+        s = source.strip().lower()
+        if s in ("zoho", "email", "zoho_mail", "email_imported"):
+            query = query.filter(or_(
+                JobRequirement.source.ilike("%zoho%"),
+                JobRequirement.source.ilike("%email%"),
+                JobRequirement.application_platform == "recruiter_email",
+            ))
+        elif s == "greenhouse":
+            query = query.filter(or_(
+                JobRequirement.application_platform == "greenhouse",
+                JobRequirement.source.ilike("%greenhouse%"),
+            ))
+        elif s in ("manual", "other"):
+            query = query.filter(~JobRequirement.source.ilike("%zoho%"))
     if skills:
         for skill in [s.strip() for s in skills.split(",") if s.strip()]:
             term = f"%{skill}%"
@@ -178,7 +215,18 @@ async def list_public_jobs(
         .limit(page_size)
         .all()
     )
-    return PublicJobListResponse(
+
+    for j in jobs:
+        log_publish_decision(
+            job_id=j.id,
+            review_status=j.review_status,
+            status=j.status,
+            published=bool(j.published_for_matching),
+            source=j.source,
+            included=True,
+        )
+
+    payload = PublicJobListResponse(
         items=[_to_listing(j) for j in jobs],
         total=total,
         page=page,
@@ -186,18 +234,56 @@ async def list_public_jobs(
         total_pages=total_pages,
     )
 
+    # Optional diagnostics for local/dev only — never in production responses.
+    if debug and os.getenv("ENV", "development").strip().lower() not in ("production", "prod"):
+        excluded = []
+        for row in db.query(JobRequirement).order_by(JobRequirement.id.desc()).limit(50).all():
+            reason = exclusion_reason(row)
+            if reason:
+                excluded.append({"id": row.id, "title": row.job_title, "reason": reason, "source": row.source})
+                log_publish_decision(
+                    job_id=row.id,
+                    review_status=row.review_status,
+                    status=row.status,
+                    published=bool(row.published_for_matching),
+                    source=row.source,
+                    included=False,
+                    reason=reason,
+                )
+        body = payload.model_dump(mode="json")
+        body["diagnostics"] = {"excluded_sample": excluded, "note": "dev-only"}
+        return body
+
+    return payload
+
 
 @router.get("/{job_id}", response_model=JobRequirementResponse)
 async def get_public_job(
     job_id: int,
     request: Request,
+    response: Response,
     owner: Owner = Depends(get_owner),
     db: Session = Depends(get_db),
 ):
+    response.headers["Cache-Control"] = "no-store, no-cache, must-revalidate"
+    response.headers["Pragma"] = "no-cache"
     check_rate_limit(request, bucket="public_jobs", limit=PUBLIC_JOBS_RATE_LIMIT, user_id=_rate_limit_key(owner))
 
     job = _visible_query(db).filter(JobRequirement.id == job_id).first()
     if not job:
+        # Log why this id is missing (safe fields only).
+        row = db.query(JobRequirement).filter(JobRequirement.id == job_id).first()
+        if row:
+            reason = exclusion_reason(row) or "filtered_out"
+            log_publish_decision(
+                job_id=row.id,
+                review_status=row.review_status,
+                status=row.status,
+                published=bool(row.published_for_matching),
+                source=row.source,
+                included=False,
+                reason=reason,
+            )
         raise HTTPException(status_code=404, detail="This job is no longer available.")
 
     log_activity(

@@ -3,22 +3,35 @@
 import { useState, useEffect, Suspense } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import { api } from "@/lib/api";
-import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement, ResumeHistoryEntry } from "@/types";
+import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement, ResumeHistoryEntry, JobApplication } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
 import HistoryPanel from "@/components/HistoryPanel";
 import PrivacyNote from "@/components/PrivacyNote";
+import ApplyOptionsModal from "@/components/ApplyOptionsModal";
 import {
   Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
   Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
   ChevronUp, Copy, X, GraduationCap, Search, RefreshCw, MapPin,
-  Mail, Phone, Pencil, Info, Inbox, WifiOff, Briefcase,
+  Mail, Phone, Pencil, Info, Inbox, WifiOff, Briefcase, Send,
 } from "lucide-react";
 import clsx from "clsx";
 
 const RESUME_KEY = "aijob_resume_text";
 const JD_KEY = "aijob_jd_text";
+
+function isEmailImported(j: PublicJobListing | JobRequirement) {
+  const src = (j.source || "").toLowerCase();
+  const plat = ("application_platform" in j ? j.application_platform : null) || "";
+  return src.includes("email") || src.includes("zoho") || plat === "recruiter_email";
+}
+
+function sourceBadge(j: PublicJobListing | JobRequirement) {
+  if (isEmailImported(j)) return "Email Imported";
+  if ((j.source || "").toLowerCase().includes("manual")) return "Manually Added";
+  return j.source || "Published Job";
+}
 
 const MATCH_STEPS = [
   "Parsing resume",
@@ -72,21 +85,26 @@ function MatchPageContent() {
   const [jobDescription, setJobDescription] = useState("");
   const [loading, setLoading] = useState(false);
 
-  // Select ATS Job vs. Paste Manually
-  const [mode, setMode] = useState<"ats" | "manual">("ats");
+  // Select Published Job / Select Saved Job / Paste Manually
+  const [mode, setMode] = useState<"published" | "saved" | "manual">("published");
   const [atsJobs, setAtsJobs] = useState<PublicJobListing[]>([]);
   const [atsJobsLoading, setAtsJobsLoading] = useState(true);
   const [atsJobsError, setAtsJobsError] = useState<string | null>(null);
+  const [atsJobsTotal, setAtsJobsTotal] = useState(0);
+  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
   const [atsSearch, setAtsSearch] = useState("");
   const [atsLocation, setAtsLocation] = useState("");
   const [atsWorkType, setAtsWorkType] = useState("");
   const [atsEmploymentType, setAtsEmploymentType] = useState("");
   const [atsClient, setAtsClient] = useState("");
   const [atsSkills, setAtsSkills] = useState("");
+  const [atsSource, setAtsSource] = useState("");
+  const [savedTrackerJobs, setSavedTrackerJobs] = useState<JobApplication[]>([]);
   const [selectedJobId, setSelectedJobId] = useState<number | "">("");
   const [selectedJob, setSelectedJob] = useState<JobRequirement | null>(null);
   const [selectedJobLoading, setSelectedJobLoading] = useState(false);
   const [selectedJobError, setSelectedJobError] = useState<string | null>(null);
+  const [applyJobId, setApplyJobId] = useState<number | null>(null);
   const [editOverride, setEditOverride] = useState(false);
   const [overrideFields, setOverrideFields] = useState({
     job_description: "", required_skills: "", preferred_skills: "",
@@ -162,7 +180,10 @@ function MatchPageContent() {
     setTimeout(() => setToast(null), 3000);
   };
 
-  const loadAtsJobs = async (overrides?: { search?: string; location?: string; work_type?: string; employment_type?: string; client?: string; skills?: string }) => {
+  const loadAtsJobs = async (overrides?: {
+    search?: string; location?: string; work_type?: string; employment_type?: string;
+    client?: string; skills?: string; source?: string;
+  }) => {
     setAtsJobsLoading(true);
     setAtsJobsError(null);
     try {
@@ -173,9 +194,12 @@ function MatchPageContent() {
         employment_type: (overrides?.employment_type ?? atsEmploymentType) || undefined,
         client: (overrides?.client ?? atsClient) || undefined,
         skills: (overrides?.skills ?? atsSkills) || undefined,
+        source: (overrides?.source ?? atsSource) || undefined,
         page_size: 50,
       });
       setAtsJobs(res.items);
+      setAtsJobsTotal(res.total);
+      setLastRefreshed(new Date());
     } catch (e) {
       setAtsJobsError(e instanceof Error ? e.message : "Couldn't reach the job source.");
     } finally {
@@ -183,10 +207,28 @@ function MatchPageContent() {
     }
   };
 
+  const loadSavedJobs = async () => {
+    try {
+      const rows = await api.listJobs();
+      setSavedTrackerJobs(rows.filter((r) => r.source_job_requirement_id != null || (r.notes && r.notes.length > 40)));
+    } catch {
+      setSavedTrackerJobs([]);
+    }
+  };
+
   useEffect(() => {
-    if (mode === "ats") loadAtsJobs();
+    if (mode === "published") loadAtsJobs();
+    if (mode === "saved") loadSavedJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  const filtersActive = !!(atsSearch || atsLocation || atsWorkType || atsEmploymentType || atsClient || atsSkills || atsSource);
+
+  const clearFilters = () => {
+    setAtsSearch(""); setAtsLocation(""); setAtsWorkType(""); setAtsEmploymentType("");
+    setAtsClient(""); setAtsSkills(""); setAtsSource("");
+    loadAtsJobs({ search: "", location: "", work_type: "", employment_type: "", client: "", skills: "", source: "" });
+  };
 
   const resetOverride = (job: JobRequirement | null) => {
     setEditOverride(false);
@@ -224,7 +266,7 @@ function MatchPageContent() {
   useEffect(() => {
     const atsJob = searchParams.get("atsJob");
     if (atsJob) {
-      setMode("ats");
+      setMode("published");
       selectJob(Number(atsJob));
     }
     // eslint-disable-next-line react-hooks/exhaustive-deps
@@ -256,7 +298,7 @@ function MatchPageContent() {
   };
 
   const effectiveCompanyName = () =>
-    mode === "ats" && selectedJob ? (selectedJob.client || selectedJob.vendor || undefined) : undefined;
+    mode !== "manual" && selectedJob ? (selectedJob.client || selectedJob.vendor || undefined) : undefined;
 
   const run = async () => {
     const effectiveJD = effectiveJobDescription();
@@ -270,7 +312,7 @@ function MatchPageContent() {
     try {
       const data = await api.matchJob(resumeText, effectiveJD, {
         company_name: effectiveCompanyName(),
-        job_requirement_id: mode === "ats" ? selectedJob?.id : undefined,
+        job_requirement_id: mode !== "manual" ? selectedJob?.id : undefined,
       });
       setDone(true);
       setResult(data);
@@ -315,7 +357,7 @@ function MatchPageContent() {
     if (!saveForm.company || !saveForm.role) return;
     setSaving(true);
     try {
-      const matchNote = result ? `AI Match Score: ${result.match_score}% · Likelihood: ${result.likelihood}${result.missing_skills.length ? ` · Add keywords: ${result.missing_skills.slice(0, 4).join(", ")}` : ""}` : undefined;
+      const matchNote = result ? `Match Score: ${result.match_score}% · Likelihood: ${result.likelihood}${result.missing_skills.length ? ` · Add keywords: ${result.missing_skills.slice(0, 4).join(", ")}` : ""}` : undefined;
       await api.createJob({
         company: saveForm.company,
         role: saveForm.role,
@@ -324,7 +366,7 @@ function MatchPageContent() {
         job_url: null, salary_range: null, location: null,
         work_type: null, recruiter_name: null, recruiter_email: null,
         follow_up_date: null, date_applied: null, reminder_type: null,
-        source_job_requirement_id: mode === "ats" ? selectedJob?.id ?? null : null,
+        source_job_requirement_id: mode !== "manual" ? selectedJob?.id ?? null : null,
         application_source: null, application_method: null, application_opened_at: null,
         applied_at: null, recruiter_contacted_at: null, last_activity_at: null,
         job_snapshot_json: null,
@@ -368,7 +410,7 @@ function MatchPageContent() {
       )}
 
       <div className="mb-8">
-        <p className="page-kicker">AI Tool</p>
+        <p className="page-kicker">Tools</p>
         <h1 className="page-title">Job Matcher</h1>
         <p className="page-subtitle">Paste your resume and job description to get a fit score, tailored bullets, and interview prep.</p>
       </div>
@@ -439,10 +481,14 @@ function MatchPageContent() {
           )}
         </div>
 
-        {/* Right: job — Select ATS Job / Paste Manually */}
+        {/* Right: job — Published / Saved / Manual */}
         <div className="card p-5">
-          <div className="flex gap-1 mb-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
-            {([{ key: "ats", label: "Select ATS Job" }, { key: "manual", label: "Paste Manually" }] as const).map((t) => (
+          <div className="flex flex-wrap gap-1 mb-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
+            {([
+              { key: "published", label: "Select Published Job" },
+              { key: "saved", label: "Select Saved Job" },
+              { key: "manual", label: "Paste Manually" },
+            ] as const).map((t) => (
               <button
                 key={t.key}
                 type="button"
@@ -466,9 +512,47 @@ function MatchPageContent() {
               value={jobDescription}
               onChange={(e) => setJobDescription(e.target.value)}
             />
+          ) : mode === "saved" ? (
+            <div className="space-y-3">
+              {savedTrackerJobs.length === 0 ? (
+                <div className="text-center py-6">
+                  <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
+                  <p className="text-sm text-slate-600 dark:text-slate-400">No saved jobs in your tracker yet.</p>
+                  <button type="button" onClick={() => setMode("published")} className="text-xs text-indigo-600 hover:underline mt-2">
+                    Select a published job instead
+                  </button>
+                </div>
+              ) : (
+                <select
+                  className="input"
+                  aria-label="Select a saved job"
+                  value={selectedJobId}
+                  onChange={(e) => {
+                    const id = e.target.value ? Number(e.target.value) : "";
+                    if (id === "") { setSelectedJobId(""); setSelectedJob(null); return; }
+                    const row = savedTrackerJobs.find((r) => r.id === id);
+                    if (row?.source_job_requirement_id) {
+                      selectJob(row.source_job_requirement_id);
+                    } else if (row) {
+                      setSelectedJobId(row.id);
+                      setSelectedJob(null);
+                      setJobDescription([row.role, row.company, row.location, row.notes].filter(Boolean).join("\n"));
+                      setMode("manual");
+                      showToast(`Loaded "${row.role}" from tracker (manual paste).`);
+                    }
+                  }}
+                >
+                  <option value="">— Choose a saved job —</option>
+                  {savedTrackerJobs.map((j) => (
+                    <option key={j.id} value={j.id}>
+                      {j.role} — {j.company}{j.location ? ` · ${j.location}` : ""}
+                    </option>
+                  ))}
+                </select>
+              )}
+            </div>
           ) : (
             <div className="space-y-3">
-              {/* Search + refresh */}
               <div className="flex gap-2">
                 <div className="relative flex-1">
                   <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
@@ -480,54 +564,81 @@ function MatchPageContent() {
                     onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()}
                   />
                 </div>
-                <button type="button" onClick={() => loadAtsJobs()} disabled={atsJobsLoading} title="Refresh"
+                <button type="button" onClick={() => loadAtsJobs()} disabled={atsJobsLoading} title="Refresh Jobs"
                   className="btn-secondary px-3">
                   <RefreshCw size={14} className={atsJobsLoading ? "animate-spin" : ""} />
                 </button>
               </div>
+              {lastRefreshed && (
+                <p className="text-[11px] text-slate-400">
+                  Last refreshed {lastRefreshed.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+                </p>
+              )}
               <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input className="input text-sm" placeholder="Location" value={atsLocation}
+                <input
+                  className="input text-sm"
+                  placeholder="All Locations"
+                  aria-label="Location filter"
+                  value={atsLocation}
                   onChange={(e) => setAtsLocation(e.target.value)}
                   onBlur={() => loadAtsJobs()}
-                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
+                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()}
+                />
                 <select
                   className="input text-sm"
                   aria-label="Work arrangement filter"
                   value={atsWorkType}
                   onChange={(e) => { setAtsWorkType(e.target.value); loadAtsJobs({ work_type: e.target.value }); }}
                 >
-                  <option value="">Any arrangement</option>
+                  <option value="">All</option>
                   <option value="Remote">Remote</option>
                   <option value="Hybrid">Hybrid</option>
                   <option value="Onsite">Onsite</option>
                 </select>
-                <input className="input text-sm" placeholder="Employment type" value={atsEmploymentType}
-                  onChange={(e) => setAtsEmploymentType(e.target.value)}
-                  onBlur={() => loadAtsJobs()}
-                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
+                <select
+                  className="input text-sm"
+                  aria-label="Employment type filter"
+                  value={atsEmploymentType}
+                  onChange={(e) => { setAtsEmploymentType(e.target.value); loadAtsJobs({ employment_type: e.target.value }); }}
+                >
+                  <option value="">All</option>
+                  <option value="Contract">Contract</option>
+                  <option value="Full-time">Full-time</option>
+                  <option value="Part-time">Part-time</option>
+                  <option value="C2C">C2C</option>
+                </select>
+                <select
+                  className="input text-sm"
+                  aria-label="Source filter"
+                  value={atsSource}
+                  onChange={(e) => { setAtsSource(e.target.value); loadAtsJobs({ source: e.target.value }); }}
+                >
+                  <option value="">All Sources</option>
+                  <option value="email">Email Imported</option>
+                  <option value="greenhouse">Published Job</option>
+                  <option value="manual">Manually Added</option>
+                </select>
                 <input className="input text-sm" placeholder="Client" value={atsClient}
                   onChange={(e) => setAtsClient(e.target.value)}
                   onBlur={() => loadAtsJobs()}
                   onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
-                <input className="input text-sm sm:col-span-2" placeholder="Skills (comma-separated)" value={atsSkills}
+                <input className="input text-sm" placeholder="Skills (empty = all)" value={atsSkills}
                   onChange={(e) => setAtsSkills(e.target.value)}
                   onBlur={() => loadAtsJobs()}
                   onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
               </div>
-              {(atsSearch || atsLocation || atsWorkType || atsEmploymentType || atsClient || atsSkills) && (
-                <button
-                  type="button"
-                  onClick={() => {
-                    setAtsSearch(""); setAtsLocation(""); setAtsWorkType(""); setAtsEmploymentType(""); setAtsClient(""); setAtsSkills("");
-                    loadAtsJobs({ search: "", location: "", work_type: "", employment_type: "", client: "", skills: "" });
-                  }}
-                  className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
-                >
+              <div className="flex flex-wrap items-center gap-3">
+                <button type="button" onClick={clearFilters} className="text-xs text-slate-500 hover:text-indigo-600 transition-colors">
                   Clear Filters
                 </button>
-              )}
+                <button type="button" onClick={() => loadAtsJobs()} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                  <RefreshCw size={11} /> Refresh Jobs
+                </button>
+                <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                  <Pencil size={11} /> Paste Job Manually
+                </button>
+              </div>
 
-              {/* Job picker states */}
               {atsJobsLoading ? (
                 <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-8">
                   <Loader2 size={16} className="animate-spin" /> Loading published jobs…
@@ -544,8 +655,15 @@ function MatchPageContent() {
               ) : atsJobs.length === 0 ? (
                 <div className="text-center py-6">
                   <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm text-slate-600 dark:text-slate-400">No approved open jobs are currently available.</p>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">
+                    {filtersActive ? "No jobs match the current filters." : "No approved open jobs are currently available."}
+                  </p>
                   <div className="flex items-center justify-center gap-3 mt-2">
+                    {filtersActive && (
+                      <button type="button" onClick={clearFilters} className="text-xs text-indigo-600 hover:underline">
+                        Clear Filters
+                      </button>
+                    )}
                     <button type="button" onClick={() => loadAtsJobs()} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
                       <RefreshCw size={11} /> Refresh Jobs
                     </button>
@@ -557,20 +675,21 @@ function MatchPageContent() {
               ) : (
                 <select
                   className="input"
-                  aria-label="Select a published ATS job"
+                  aria-label="Select a published job"
                   value={selectedJobId}
                   onChange={(e) => selectJob(e.target.value ? Number(e.target.value) : "")}
                 >
-                  <option value="">— Choose a published job —</option>
+                  <option value="">— Choose a published job ({atsJobsTotal}) —</option>
                   {atsJobs.map((j) => (
                     <option key={j.id} value={j.id}>
-                      {j.job_title}{j.client ? ` — ${j.client}` : j.vendor ? ` — ${j.vendor}` : ""}{j.location ? ` · ${j.location}` : ""}
+                      [{sourceBadge(j)}] {j.job_title}{j.client ? ` — ${j.client}` : j.vendor ? ` — ${j.vendor}` : ""}
+                      {j.location ? ` · ${j.location}` : ""}{j.work_type ? ` · ${j.work_type}` : ""}
+                      {j.recruiter_name ? ` · ${j.recruiter_name}` : ""}
                     </option>
                   ))}
                 </select>
               )}
 
-              {/* Selected job */}
               {selectedJobLoading && (
                 <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-6">
                   <Loader2 size={16} className="animate-spin" /> Importing job details…
@@ -592,7 +711,7 @@ function MatchPageContent() {
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 max-h-[420px] overflow-y-auto">
                   <div className="flex items-center justify-between gap-2">
                     <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-2.5 py-1 rounded-full">
-                      <Info size={11} /> Imported from ATS
+                      <Info size={11} /> {sourceBadge(selectedJob)}
                     </span>
                     <button
                       type="button"
@@ -607,7 +726,9 @@ function MatchPageContent() {
                     <p className="font-semibold text-slate-900 dark:text-white">{selectedJob.job_title}</p>
                     <p className="text-xs text-slate-400 mt-0.5">
                       {selectedJob.job_reference_number && <>Ref #{selectedJob.job_reference_number} · </>}
-                      Received {selectedJob.received_at ? new Date(selectedJob.received_at).toLocaleDateString() : "—"}
+                      Job ID {selectedJob.id}
+                      {selectedJob.external_job_id && <> · Ext {selectedJob.external_job_id}</>}
+                      {" · "}Received {selectedJob.received_at ? new Date(selectedJob.received_at).toLocaleDateString() : "—"}
                     </p>
                   </div>
 
@@ -633,6 +754,10 @@ function MatchPageContent() {
                         onChange={(e) => setOverrideFields((f) => ({ ...f, rate: e.target.value }))} />
                     ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.rate || "—"}</span>}
                     <span className="text-slate-400">Work Authorization</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.visa_requirement || "—"}</span>
+                    <span className="text-slate-400">Apply method</span>
+                    <span className="text-slate-700 dark:text-slate-300">
+                      {selectedJob.application_url ? "Employer website" : "Contact Recruiter"}
+                    </span>
                   </div>
 
                   <div>
@@ -642,13 +767,14 @@ function MatchPageContent() {
                         onChange={(e) => setOverrideFields((f) => ({ ...f, required_skills: e.target.value }))} />
                     ) : (
                       <div className="flex flex-wrap gap-1.5">
-                        {selectedJob.required_skills.map((s, i) => (
+                        {(selectedJob.required_skills || []).map((s, i) => (
                           <span key={i} className="px-2 py-0.5 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 rounded-full text-[11px] font-medium">{s}</span>
                         ))}
+                        {!(selectedJob.required_skills || []).length && <span className="text-slate-400">—</span>}
                       </div>
                     )}
                   </div>
-                  {(selectedJob.preferred_skills.length > 0 || editOverride) && (
+                  {((selectedJob.preferred_skills || []).length > 0 || editOverride) && (
                     <div>
                       <p className="text-xs text-slate-400 mb-1">Preferred Skills</p>
                       {editOverride ? (
@@ -683,6 +809,14 @@ function MatchPageContent() {
                       <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> Phone</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.recruiter_phone || "—"}</span>
                     </div>
                   </div>
+
+                  <button
+                    type="button"
+                    onClick={() => setApplyJobId(selectedJob.id)}
+                    className="w-full text-xs px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center justify-center gap-1.5"
+                  >
+                    <Send size={12} /> {selectedJob.application_url ? "Apply Now" : "Contact Recruiter"}
+                  </button>
                 </div>
               )}
             </div>
@@ -702,7 +836,7 @@ function MatchPageContent() {
         const missing: string[] = [];
         if (resumeText.length < 50) missing.push("a resume (paste, upload, or select a saved one)");
         if (effectiveJobDescription().length < 50) {
-          missing.push(mode === "ats" ? "a selected ATS job" : "a job description");
+          missing.push(mode !== "manual" ? "a selected published job" : "a job description");
         }
         const canRun = missing.length === 0;
         return (
@@ -803,9 +937,9 @@ function MatchPageContent() {
             <div className="space-y-3">
               {[
                 { label: "Keyword Match", score: result.keyword_match_score, hint: "exact JD keyword coverage" },
-                { label: "Skills Fit", score: result.skills_match_score, hint: "AI-judged skills alignment" },
-                { label: "Experience Fit", score: result.experience_match_score, hint: "AI-judged experience alignment" },
-                { label: "Education Fit", score: result.education_match_score, hint: "AI-judged education alignment" },
+                { label: "Skills Fit", score: result.skills_match_score, hint: "Skills alignment" },
+                { label: "Experience Fit", score: result.experience_match_score, hint: "Experience alignment" },
+                { label: "Education Fit", score: result.education_match_score, hint: "Education alignment" },
                 { label: "Formatting Compliance", score: result.formatting_score, hint: "ATS parsability" },
               ].map((row) => (
                 <div key={row.label}>
@@ -1018,7 +1152,7 @@ function MatchPageContent() {
             <div className="card p-5 animate-slide-up">
               <div className="flex items-center justify-between mb-3">
                 <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                  <Zap size={15} className="text-purple-500" /> AI-Improved Resume Bullets
+                  <Zap size={15} className="text-purple-500" /> Improved Resume Bullets
                 </h3>
                 <button
                   type="button"
@@ -1126,6 +1260,12 @@ function MatchPageContent() {
             </div>
           </div>
         </div>
+      )}
+      {applyJobId != null && (
+        <ApplyOptionsModal
+          jobId={applyJobId}
+          onClose={() => setApplyJobId(null)}
+        />
       )}
     </div>
   );

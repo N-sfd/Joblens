@@ -3,26 +3,56 @@ interface Props {
   className?: string;
 }
 
-/** JobLens mark — a briefcase viewed through a lens. */
+/**
+ * JobLens mark — a focused lens over a career path.
+ * Brand mark only (no "AI" motif).
+ */
 export default function LogoMark({ size = 18, className }: Props) {
   return (
     <svg
       width={size}
       height={size}
-      viewBox="0 0 24 24"
+      viewBox="0 0 32 32"
       fill="none"
-      stroke="currentColor"
-      strokeWidth="1.8"
-      strokeLinecap="round"
-      strokeLinejoin="round"
+      xmlns="http://www.w3.org/2000/svg"
       className={className}
       aria-hidden="true"
     >
-      <rect x="2" y="9" width="10" height="8" rx="1.5" />
-      <path d="M5.5 9V7a1.5 1.5 0 0 1 1.5-1.5h2A1.5 1.5 0 0 1 10.5 7v2" />
-      <line x1="2" y1="12.5" x2="12" y2="12.5" />
-      <circle cx="15.6" cy="9.4" r="5.1" />
-      <line x1="19.2" y1="13" x2="22" y2="15.8" />
+      {/* Lens ring */}
+      <circle cx="14" cy="14" r="9.5" stroke="currentColor" strokeWidth="2.2" />
+      {/* Inner aperture */}
+      <circle cx="14" cy="14" r="4.2" stroke="currentColor" strokeWidth="1.6" opacity="0.85" />
+      {/* Focus tick */}
+      <path
+        d="M14 6.5V9.2M14 18.8V21.5M6.5 14H9.2M18.8 14H21.5"
+        stroke="currentColor"
+        strokeWidth="1.6"
+        strokeLinecap="round"
+        opacity="0.7"
+      />
+      {/* Magnifier handle */}
+      <path
+        d="M20.8 20.8L27.2 27.2"
+        stroke="currentColor"
+        strokeWidth="2.4"
+        strokeLinecap="round"
+      />
+      {/* Briefcase cue inside lens */}
+      <rect
+        x="10.2"
+        y="12.2"
+        width="7.6"
+        height="5.2"
+        rx="1"
+        stroke="currentColor"
+        strokeWidth="1.4"
+      />
+      <path
+        d="M12.4 12.2V11.2a1.2 1.2 0 0 1 1.2-1.2h2.8a1.2 1.2 0 0 1 1.2 1.2v1"
+        stroke="currentColor"
+        strokeWidth="1.3"
+        strokeLinecap="round"
+      />
     </svg>
   );
 }

@@ -23,7 +23,7 @@ export default function PrivacyPolicyPage() {
           <li><strong>Resume content</strong> you upload or paste into the Resume Analyzer, Job Matcher, or Cover Letter Generator.</li>
           <li><strong>Job descriptions</strong> you paste into the Job Matcher or Cover Letter Generator.</li>
           <li><strong>Job application details</strong> you enter into the Job Tracker (company, role, status, notes, dates, links).</li>
-          <li><strong>AI activity history</strong> — a record of which AI tools you've run (e.g. "Resume Analyzed"), so your Dashboard can show progress over time.</li>
+          <li><strong>Activity history</strong> — a record of which tools you've run (e.g. "Resume Analyzed"), so your Dashboard can show progress over time.</li>
           <li><strong>Account details</strong> — only if you sign up: your email, name (optional), and a securely hashed password. We never store your password in plain text.</li>
         </ul>
       </LegalSection>
@@ -37,9 +37,9 @@ export default function PrivacyPolicyPage() {
       </LegalSection>
 
       <LegalSection title="3. How your data is used">
-        <p>Your resume and job description text is sent to a third-party AI language model provider solely to generate the
-          analysis, match score, interview prep, or cover letter you requested. We do not use your data to train AI
-          models, and the AI provider is contractually a data processor, not an owner, of what you submit.</p>
+        <p>Your resume and job description text is sent to a third-party language model provider solely to generate the
+          analysis, match score, interview prep, or cover letter you requested. We do not use your data to train
+          models, and the provider is contractually a data processor, not an owner, of what you submit.</p>
         <p>We never sell, rent, or share your resume, job descriptions, or application data with advertisers, recruiters, or
           data brokers.</p>
       </LegalSection>
@@ -64,7 +64,7 @@ export default function PrivacyPolicyPage() {
         <p>You're in control of your data at any time, whether you're a guest or have an account:</p>
         <ul>
           <li>Use <strong>Clear All</strong> on the Job Tracker to delete every saved application.</li>
-          <li>Use <strong>Clear</strong> on the Dashboard's AI Activity panel to wipe your activity history.</li>
+          <li>Use <strong>Clear</strong> on the Dashboard's Activity panel to wipe your activity history.</li>
           <li>Visit our <Link href="/data-deletion">Data Deletion Request</Link> page for a one-click option that deletes
             every record JobLens has stored for your session — resumes, matches, cover letters, jobs, and activity — and,
             if you have an account, to delete the account itself.</li>

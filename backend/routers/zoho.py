@@ -523,6 +523,11 @@ async def create_job_from_email(
     if principal.user_id:
         data["created_by"] = principal.user_id
 
+    # Never auto-publish from inbox create — staff must Approve + Publish explicitly.
+    data["published_for_matching"] = False
+    if not data.get("review_status"):
+        data["review_status"] = "Draft"
+
     job = JobRequirement(**data)
     db.add(job)
     db.flush()

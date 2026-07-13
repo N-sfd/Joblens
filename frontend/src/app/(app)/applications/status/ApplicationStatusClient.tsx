@@ -714,7 +714,7 @@ export default function ApplicationStatusPage() {
       {/* Header */}
       <div className="flex flex-col gap-4 sm:flex-row sm:items-start sm:justify-between mb-6">
         <div>
-          <p className="page-kicker">Pipeline</p>
+          <p className="page-kicker">Applications</p>
           <h1 className="page-title">Application Status</h1>
           <p className="page-subtitle">
             Detailed progress, reminders, and history for every application you track.

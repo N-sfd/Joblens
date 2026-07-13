@@ -149,7 +149,7 @@ function NewJobRequirementPageInner() {
         <h1 className="page-title">{emailId ? "Create Job from Email" : "Add Job Requirement"}</h1>
         <p className="page-subtitle">
           {emailId
-            ? "Review AI-parsed fields from the Zoho email, then save."
+            ? "Review parsed fields from the Zoho email, then save."
             : "Paste a recruiter email or enter job details manually."}
         </p>
       </div>
@@ -181,7 +181,7 @@ function NewJobRequirementPageInner() {
             {emailId ? "Source Email" : "Paste Job Email / Job Description"}
           </h2>
           <p className="text-sm text-slate-500 mb-3">
-            {emailId ? "Re-parse if you need to refresh AI-extracted fields." : "Parse with AI, then review and edit before saving."}
+            {emailId ? "Re-parse if you need to refresh extracted fields." : "Parse the text, then review and edit before saving."}
           </p>
           {parseError && <ErrorBanner message={parseError} onDismiss={() => setParseError(null)} className="mb-3" />}
           <textarea

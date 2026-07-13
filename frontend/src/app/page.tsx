@@ -45,7 +45,7 @@ const FEATURES = [
     icon: LayoutDashboard,
     color: "bg-rose-50 text-rose-600",
     title: "Dashboard Insights",
-    desc: "Track interview and offer rates, weekly application volume, and AI activity at a glance.",
+    desc: "Track interview and offer rates, weekly application volume, and recent activity at a glance.",
   },
 ];
 
@@ -63,7 +63,7 @@ const STEPS = [
   {
     icon: Sparkles,
     title: "Get tailored guidance",
-    desc: "Receive specific suggestions, missing keywords, and an AI-written cover letter for the role.",
+    desc: "Receive specific suggestions, missing keywords, and a tailored cover letter for the role.",
   },
   {
     icon: BarChart3,
@@ -100,7 +100,7 @@ export default function LandingPage() {
             <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-lg flex items-center justify-center shadow-sm">
               <LogoMark size={16} className="text-white" />
             </div>
-            <span className="font-bold text-slate-900">JobLens</span>
+            <span className="font-bold text-slate-900 tracking-tight">JobLens</span>
           </div>
           <nav className="hidden sm:flex items-center gap-7 text-sm font-medium text-slate-500">
             <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
@@ -123,10 +123,10 @@ export default function LandingPage() {
         <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-16 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
           <div>
             <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full mb-5">
-              <Sparkles size={12} /> AI-powered job search toolkit
+              <Sparkles size={12} /> Job search toolkit for serious applicants
             </span>
             <h1 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-5">
-              Land your next role,<br /> backed by <span className="text-indigo-600">AI</span> that explains itself
+              Land your next role,<br /> with <span className="text-indigo-600">JobLens</span> that explains every score
             </h1>
             <p className="text-slate-500 text-base sm:text-lg leading-relaxed mb-8 max-w-lg">
               JobLens helps job seekers analyze resumes, match jobs, track applications, and generate tailored cover letters — all in one place.
@@ -228,7 +228,7 @@ export default function LandingPage() {
         <div className="text-center max-w-xl mx-auto mb-12">
           <p className="page-kicker">See it in action</p>
           <h2 className="text-2xl sm:text-3xl font-bold mb-3">A dashboard built for momentum</h2>
-          <p className="text-slate-500">Every tool feeds into one place — your applications, scores, and AI activity.</p>
+          <p className="text-slate-500">Every tool feeds into one place — your applications, scores, and recent activity.</p>
         </div>
 
         <div className="rounded-2xl border border-slate-200 shadow-xl overflow-hidden max-w-4xl mx-auto">
@@ -311,7 +311,7 @@ export default function LandingPage() {
             </div>
             <span className="font-bold text-slate-900 text-sm">JobLens</span>
           </div>
-          <p className="text-xs text-slate-400">AI-powered resume analyzer, job matcher, and application tracker.</p>
+          <p className="text-xs text-slate-400">Resume analyzer, job matcher, and application tracker.</p>
           <nav className="flex flex-wrap items-center gap-x-4 gap-y-2 text-xs text-slate-400">
             {LEGAL_LINKS.map((l) => (
               <Link key={l.href} href={l.href} className="hover:text-slate-700 transition-colors">{l.label}</Link>

@@ -15,7 +15,7 @@ import AiActivityChart from "@/components/charts/AiActivityChart";
 import { getStatusBreakdown, getWeeklyApplications, getPipelineRates, getActivityBreakdown } from "@/lib/chartData";
 import {
   Briefcase, FileText, Target, PenTool, TrendingUp, ArrowRight,
-  CheckCircle, Clock, Trophy, XCircle, Plus, Bot, Trash2,
+  CheckCircle, Clock, Trophy, XCircle, Plus, Activity, Trash2,
   MessagesSquare, Award, ThumbsDown, HandCoins, Import, ExternalLink,
 } from "lucide-react";
 
@@ -31,7 +31,7 @@ const quickActions = [
   { href: "/resume",       label: "Analyze Resume",  desc: "Get ATS score & feedback",  icon: FileText, color: "bg-indigo-600" },
   { href: "/jobs",         label: "Add Application", desc: "Track a new job",           icon: Plus,     color: "bg-blue-600" },
   { href: "/match",        label: "Match to Job",    desc: "Check fit score",           icon: Target,   color: "bg-purple-600" },
-  { href: "/cover-letter", label: "Cover Letter",    desc: "AI-generated letter",       icon: PenTool,  color: "bg-emerald-600" },
+  { href: "/cover-letter", label: "Cover Letter",    desc: "Tailored letter draft",     icon: PenTool,  color: "bg-emerald-600" },
 ];
 
 const activityIcons: Record<string, React.ReactNode> = {
@@ -39,7 +39,7 @@ const activityIcons: Record<string, React.ReactNode> = {
   job_matched:             <Target size={13} className="text-purple-500" />,
   job_saved:               <Briefcase size={13} className="text-blue-500" />,
   bullets_generated:       <CheckCircle size={13} className="text-emerald-500" />,
-  questions_generated:     <Bot size={13} className="text-amber-500" />,
+  questions_generated:     <MessagesSquare size={13} className="text-amber-500" />,
   cover_letter_generated:  <PenTool size={13} className="text-pink-500" />,
   job_added:               <Plus size={13} className="text-green-500" />,
   status_changed:          <TrendingUp size={13} className="text-slate-500" />,
@@ -115,7 +115,7 @@ export default function DashboardPage() {
       <div className="mb-6">
         <p className="page-kicker">Overview</p>
         <h1 className="page-title">Dashboard</h1>
-        <p className="page-subtitle">Track your job search progress and use AI tools to stand out.</p>
+        <p className="page-subtitle">Track your job search progress and use JobLens tools to stand out.</p>
       </div>
 
       <DashboardHero />
@@ -243,12 +243,12 @@ export default function DashboardPage() {
             </div>
           </div>
 
-          {/* AI Activity History */}
+          {/* Activity History */}
           <div className="card">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <div className="flex items-center gap-2">
-                <Bot size={15} className="text-indigo-500" />
-                <h2 className="font-semibold text-slate-800 dark:text-slate-100">AI Activity</h2>
+                <Activity size={15} className="text-indigo-500" />
+                <h2 className="font-semibold text-slate-800 dark:text-slate-100">Activity</h2>
               </div>
               {activity.length > 0 && (
                 <button
@@ -263,7 +263,7 @@ export default function DashboardPage() {
             {activity.length === 0 ? (
               <div className="px-5 py-8 text-center">
                 <EmptyActivityIllustration size={72} className="mx-auto mb-2" />
-                <p className="text-slate-400 text-sm">No AI activity yet.</p>
+                <p className="text-slate-400 text-sm">No activity yet.</p>
                 <p className="text-slate-400 text-xs mt-1">Analyze a resume or match a job to see history here.</p>
               </div>
             ) : (
@@ -271,7 +271,7 @@ export default function DashboardPage() {
                 {activity.slice(0, 8).map((entry) => (
                   <div key={entry.id} className="px-5 py-3 flex items-start gap-3 hover:bg-slate-50 dark:hover:bg-slate-800/60 transition-colors">
                     <div className="w-6 h-6 rounded-lg bg-slate-100 dark:bg-slate-800 flex items-center justify-center shrink-0 mt-0.5">
-                      {activityIcons[entry.activity_type] ?? <Bot size={13} className="text-slate-400" />}
+                      {activityIcons[entry.activity_type] ?? <Activity size={13} className="text-slate-400" />}
                     </div>
                     <div className="flex-1 min-w-0">
                       <p className="text-sm font-medium text-slate-700 dark:text-slate-300">{entry.summary}</p>

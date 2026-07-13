@@ -108,7 +108,7 @@ function CoverLetterContent() {
     setCompanyName(job.company);
     setJobTitle(job.role);
 
-    const matchNote = job.notes?.includes("AI Match Score")
+    const matchNote = job.notes?.includes("Match Score") || job.notes?.includes("AI Match Score")
       ? `\n\n--- From Job Matcher ---\n${job.notes}`
       : "";
     const locationLine = job.location ? `Location: ${job.location}` : "";
@@ -182,9 +182,9 @@ function CoverLetterContent() {
   return (
     <div className="p-4 sm:p-8 max-w-6xl mx-auto">
       <div className="mb-6">
-        <p className="page-kicker">AI Tool</p>
+        <p className="page-kicker">Tools</p>
         <h1 className="page-title">Cover Letter Generator</h1>
-        <p className="page-subtitle">AI-written, tailored to your resume and the job description.</p>
+        <p className="page-subtitle">Tailored to your resume and the job description.</p>
       </div>
 
       <HistoryPanel

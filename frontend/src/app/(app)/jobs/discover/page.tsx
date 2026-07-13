@@ -124,12 +124,17 @@ export default function DiscoverJobsPage() {
     }).catch(() => {});
   };
 
-  const publishedCount = jobs.filter((j) => j.source !== "Zoho Mail").length;
-  const emailCount = jobs.filter((j) => j.source === "Zoho Mail").length;
+  const isEmailImported = (j: PublicJobListing) =>
+    j.source === "Email Imported" ||
+    j.source === "Zoho Mail" ||
+    j.application_platform === "recruiter_email";
+
+  const publishedCount = jobs.filter((j) => !isEmailImported(j)).length;
+  const emailCount = jobs.filter(isEmailImported).length;
 
   let visible = jobs.filter((j) => {
-    if (sourceFilter === "published") return j.source !== "Zoho Mail";
-    if (sourceFilter === "email") return j.source === "Zoho Mail";
+    if (sourceFilter === "published") return !isEmailImported(j);
+    if (sourceFilter === "email") return isEmailImported(j);
     return true;
   });
   if (sort === "best_match") {
@@ -248,9 +253,29 @@ export default function DiscoverJobsPage() {
       ) : visible.length === 0 ? (
         <div className="card p-10 text-center">
           <Inbox size={32} className="mx-auto mb-3 text-slate-300" />
-          <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">No approved open jobs are currently available.</p>
-          <p className="text-sm text-slate-400 mb-4">Recruiters publish new jobs regularly — check back soon.</p>
+          <p className="font-semibold text-slate-700 dark:text-slate-300 mb-1">
+            {activeFilters || sourceFilter !== "all"
+              ? "No jobs match the current filters."
+              : "No approved open jobs are currently available."}
+          </p>
+          <p className="text-sm text-slate-400 mb-4">
+            {activeFilters || sourceFilter !== "all"
+              ? "Clear filters or refresh to see newly published jobs."
+              : "Recruiters publish new jobs regularly — check back soon."}
+          </p>
           <div className="flex items-center justify-center gap-2">
+            {(activeFilters || sourceFilter !== "all") && (
+              <button
+                type="button"
+                onClick={() => {
+                  setSearch(""); setLocation(""); setWorkType(""); setEmploymentType("");
+                  setClient(""); setSkills(""); setSourceFilter("all"); load();
+                }}
+                className="btn-secondary text-sm"
+              >
+                Clear Filters
+              </button>
+            )}
             <button type="button" onClick={load} className="btn-secondary text-sm flex items-center gap-1.5"><RefreshCw size={13} /> Refresh Jobs</button>
             <Link href="/match" className="btn-primary text-sm">Paste Job Manually</Link>
           </div>
@@ -274,8 +299,13 @@ export default function DiscoverJobsPage() {
                       {job.job_title}
                     </Link>
                   </div>
-                  <span className={clsx("text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0", job.source === "Zoho Mail" ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400" : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400")}>
-                    {job.source === "Zoho Mail" ? "Email-Imported" : "Published"}
+                  <span className={clsx(
+                    "text-[10px] font-semibold px-2 py-0.5 rounded-full shrink-0",
+                    isEmailImported(job)
+                      ? "bg-blue-50 dark:bg-blue-950/40 text-blue-600 dark:text-blue-400"
+                      : "bg-emerald-50 dark:bg-emerald-950/40 text-emerald-600 dark:text-emerald-400",
+                  )}>
+                    {isEmailImported(job) ? "Email Imported" : (job.source || "Published Job")}
                   </span>
                 </div>
 

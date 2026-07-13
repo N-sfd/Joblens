@@ -128,7 +128,7 @@ export default function NewEmployeeFromResumePage() {
       <div className="mb-6">
         <p className="page-kicker">ATS</p>
         <h1 className="page-title">Add Employee from Resume</h1>
-        <p className="page-subtitle">Upload a resume, parse with AI, review the profile, then save.</p>
+        <p className="page-subtitle">Upload a resume, parse fields, review the profile, then save.</p>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}

@@ -2,7 +2,7 @@
 
 import Link from "next/link";
 import { BarChart, Bar, XAxis, YAxis, CartesianGrid, Tooltip, Cell, ResponsiveContainer } from "recharts";
-import { Bot } from "lucide-react";
+import { Activity } from "lucide-react";
 import ChartCard from "./ChartCard";
 import type { ActivitySlice } from "@/lib/chartData";
 import { useTheme } from "@/lib/ThemeContext";
@@ -18,12 +18,12 @@ export default function AiActivityChart({ data, loading }: Props) {
   const isDark = theme === "dark";
 
   return (
-    <ChartCard title="AI Activity" icon={Bot} iconColor="text-purple-500" subtitle="What you've used AI for, all-time">
+    <ChartCard title="Activity" icon={Activity} iconColor="text-indigo-500" subtitle="Tools you've used, all-time">
       {loading ? (
         <div className="h-52 flex items-center justify-center text-slate-400 text-sm">Loading...</div>
       ) : total === 0 ? (
         <div className="h-52 flex flex-col items-center justify-center text-center">
-          <p className="text-slate-400 text-sm">No AI activity yet.</p>
+          <p className="text-slate-400 text-sm">No activity yet.</p>
           <p className="text-slate-400 text-xs mt-1">
             Try the <Link href="/resume" className="text-indigo-600 hover:underline">Resume Analyzer</Link> or{" "}
             <Link href="/match" className="text-indigo-600 hover:underline">Job Matcher</Link> to see this chart fill in.

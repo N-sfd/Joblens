@@ -106,7 +106,7 @@ export default function EmployeeResumeManager({ employeeId, onEmployeeUpdated }:
       setSuggestions(res.suggestions);
       reset();
       if (res.parsing_status === "failed") {
-        setSuccess("Resume uploaded, but AI parsing failed. Use Retry Parsing below.");
+        setSuccess("Resume uploaded, but parsing failed. Use Retry Parsing below.");
       } else {
         const n = Object.keys(res.applied_fields).length;
         setSuccess(

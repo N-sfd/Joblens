@@ -26,10 +26,53 @@ from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_
 from services.audit import log_audit
 from services.claude_service import parse_job_requirement
 from services.job_employee_match import match_employees_to_job
+from services.job_publish import publish_blockers, log_publish_decision
 from services.rate_limit import rate_limit_ai
 from services.ai_errors import raise_clean_ai_error
 
 router = APIRouter()
+
+
+def _snapshot_for_publish(job: JobRequirement | None = None, data: dict | None = None) -> dict:
+    base = {}
+    if job is not None:
+        base = {
+            "review_status": job.review_status,
+            "status": job.status,
+            "job_description": job.job_description,
+            "recruiter_name": job.recruiter_name,
+            "recruiter_email": job.recruiter_email,
+            "published_for_matching": bool(job.published_for_matching),
+            "source": job.source,
+        }
+    if data:
+        base.update({k: v for k, v in data.items() if v is not None or k in data})
+    return base
+
+
+def _enforce_publish_rules(snapshot: dict, *, job_id: int | None = None) -> None:
+    if not snapshot.get("published_for_matching"):
+        return
+    blockers = publish_blockers(snapshot)
+    if blockers:
+        log_publish_decision(
+            job_id=job_id or 0,
+            review_status=snapshot.get("review_status"),
+            status=snapshot.get("status"),
+            published=True,
+            source=snapshot.get("source"),
+            included=False,
+            reason="; ".join(blockers),
+        )
+        raise HTTPException(status_code=422, detail=" ".join(blockers))
+    log_publish_decision(
+        job_id=job_id or 0,
+        review_status=snapshot.get("review_status"),
+        status=snapshot.get("status"),
+        published=True,
+        source=snapshot.get("source"),
+        included=True,
+    )
 
 
 def _loads(value) -> list:
@@ -242,6 +285,7 @@ async def create_job_requirement(
     data = _auto_link_crm(db, data)
     if principal.user_id:
         data["created_by"] = principal.user_id
+    _enforce_publish_rules(data)
     job = JobRequirement(**data)
     db.add(job)
     db.commit()
@@ -393,6 +437,8 @@ async def update_job_requirement(
     job.client_id = resolved.get("client_id")
     job.end_client_id = resolved.get("end_client_id")
     job.recruiter_contact_id = resolved.get("recruiter_contact_id")
+
+    _enforce_publish_rules(_snapshot_for_publish(job), job_id=job.id)
 
     db.commit()
     db.refresh(job)

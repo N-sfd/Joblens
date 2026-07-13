@@ -16,6 +16,7 @@ import type {
   CertificationEntry,
 } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import AuthModal from "@/components/AuthModal";
 import {
   Loader2, CheckCircle, AlertCircle, Save, UserRound, Briefcase,
   GraduationCap, Link2, Shield, SlidersHorizontal, MessageSquareText,
@@ -60,6 +61,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [showAuth, setShowAuth] = useState(false);
   const [section, setSection] = useState<SectionKey>("personal");
   const [saveState, setSaveState] = useState<SaveState>("idle");
   const [saveError, setSaveError] = useState<string | null>(null);
@@ -264,12 +266,22 @@ export default function ProfilePage() {
 
   if (loadError) {
     return (
-      <div className="max-w-2xl mx-auto py-10 px-4">
+      <div className="max-w-2xl mx-auto py-10 px-4 space-y-4">
         <ErrorBanner message={loadError} onRetry={load} />
-        <p className="text-sm text-slate-500 mt-4">
-          Sign in to view and edit your JobLens profile.{" "}
-          <Link href="/login" className="text-indigo-600 hover:underline">Log in</Link>
-        </p>
+        <div className="card p-5 space-y-3">
+          <p className="text-sm text-slate-600 dark:text-slate-300">
+            Sign in with your JobLens account (email/password) to view and edit your profile.
+            This is separate from Clerk sign-in used for the ATS.
+          </p>
+          <button
+            type="button"
+            onClick={() => setShowAuth(true)}
+            className="btn-primary"
+          >
+            Log in
+          </button>
+        </div>
+        {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       </div>
     );
   }

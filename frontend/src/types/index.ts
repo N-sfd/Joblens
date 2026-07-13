@@ -675,7 +675,7 @@ export const RESUME_AUTOFILL_FIELDS = Object.keys(EMPLOYEE_FIELD_LABELS);
 // the public job-seeker tools above.
 export type JobRequirementWorkType = "Remote" | "Hybrid" | "Onsite";
 export const JOB_REQUIREMENT_STATUSES = [
-  "New", "Needs Review", "Parsed", "Ready for Match", "Matched", "Sent to Employee",
+  "Open", "New", "Needs Review", "Parsed", "Ready for Match", "Matched", "Sent to Employee",
   "Employee Interested", "Submitted", "Interview", "Selected", "Rejected",
   "On Hold", "Closed", "Duplicate", "Spam",
 ] as const;
@@ -800,7 +800,11 @@ export interface PublicJobListing {
   employment_type: string | null;
   rate: string | null;
   required_skills: string[];
+  /** Candidate-facing badge: Email Imported | Published Job | Manually Added */
   source: string | null;
+  application_platform?: string | null;
+  application_url?: string | null;
+  recruiter_name?: string | null;
   received_at: string | null;
 }
 
@@ -810,6 +814,7 @@ export interface PublicJobListParams {
   work_type?: string;
   employment_type?: string;
   client?: string;
+  source?: string;
   skills?: string;
   since?: string;
   page?: number;

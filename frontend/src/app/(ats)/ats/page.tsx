@@ -9,6 +9,7 @@ import {
 import { api } from "@/lib/api";
 import type { AtsDashboardStats } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import { useAtsRole } from "@/lib/atsRole";
 
 function Card({ label, value, href, icon: Icon, tone }: {
   label: string; value: number; href: string; icon: React.ElementType; tone: string;
@@ -34,6 +35,7 @@ function formatDate(iso: string | null | undefined) {
 }
 
 export default function AtsDashboardPage() {
+  const { loading: roleLoading, hasAtsAccess, error: roleError } = useAtsRole();
   const [stats, setStats] = useState<AtsDashboardStats | null>(null);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
@@ -50,16 +52,21 @@ export default function AtsDashboardPage() {
     }
   };
 
-  useEffect(() => { load(); }, []);
+  useEffect(() => {
+    if (roleLoading || !hasAtsAccess) return;
+    void load();
+  }, [roleLoading, hasAtsAccess]);
 
-  if (loading) {
+  if (roleLoading || loading) {
     return <div className="flex items-center justify-center py-32"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>;
   }
 
   if (!stats) {
     return (
       <div className="p-8 max-w-6xl mx-auto">
-        {error && <ErrorBanner message={error} onRetry={load} />}
+        {(error || roleError) && (
+          <ErrorBanner message={error || roleError || "Failed to load dashboard."} onRetry={load} />
+        )}
       </div>
     );
   }
@@ -69,7 +76,7 @@ export default function AtsDashboardPage() {
       <div className="mb-6">
         <p className="page-kicker">Consult America</p>
         <h1 className="page-title">ATS Dashboard</h1>
-        <p className="page-subtitle">Overview of your staffing pipeline.</p>
+        <p className="page-subtitle">Overview of your staffing operations.</p>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={load} className="mb-4" />}

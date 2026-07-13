@@ -185,7 +185,7 @@ export default function ResumePage() {
   return (
     <div className="p-4 sm:p-8 max-w-5xl mx-auto">
       <div className="mb-8">
-        <p className="page-kicker">AI Tool</p>
+        <p className="page-kicker">Tools</p>
         <h1 className="page-title">Resume Analyzer</h1>
         <p className="page-subtitle">Upload your resume to get an ATS score, skill analysis, and improvement tips.</p>
       </div>

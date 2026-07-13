@@ -118,7 +118,7 @@ export default function EmailDetailPage() {
           {" · "}{formatDate(email.received_at)}
         </p>
         {classifyReason && (
-          <p className="text-sm text-slate-600 mt-2 italic">AI: {classifyReason}</p>
+          <p className="text-sm text-slate-600 mt-2 italic">Reason: {classifyReason}</p>
         )}
       </div>
 

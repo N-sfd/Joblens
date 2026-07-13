@@ -22,7 +22,7 @@ export function EmptyJobsIllustration({ size = 96, className }: Props) {
   );
 }
 
-/** Bot + sparkle illustration for empty AI activity states. */
+/** Illustration for empty activity history states. */
 export function EmptyActivityIllustration({ size = 96, className }: Props) {
   return (
     <svg width={size} height={size} viewBox="0 0 96 96" className={className} aria-hidden="true">

@@ -1610,6 +1610,9 @@ class PublicJobListing(BaseModel):
     rate: Optional[str] = None
     required_skills: list[str] = []
     source: Optional[str] = None
+    application_platform: Optional[str] = None
+    application_url: Optional[str] = None
+    recruiter_name: Optional[str] = None
     received_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}

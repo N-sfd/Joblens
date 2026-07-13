@@ -3,7 +3,7 @@
 // Resolves ATS role from the backend (`/api/ats/me`) — source of truth —
 // and falls back to Clerk publicMetadata only while loading.
 
-import { useEffect, useState } from "react";
+import { useCallback, useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 
@@ -41,7 +41,7 @@ export type AtsMeState = {
 
 export function useAtsRole(): AtsMeState {
   const { user, isLoaded: userLoaded } = useUser();
-  const { isSignedIn } = useAuth();
+  const { isSignedIn, isLoaded: authLoaded } = useAuth();
   const clerkFallback = normalizeRole(user?.publicMetadata?.role);
   const [role, setRole] = useState<AtsRole>(clerkFallback);
   const [displayName, setDisplayName] = useState<string | null>(null);
@@ -51,10 +51,12 @@ export function useAtsRole(): AtsMeState {
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
 
-  const refresh = async () => {
+  const refresh = useCallback(async () => {
+    if (!authLoaded || !userLoaded) return;
     if (!isSignedIn) {
       setRole("viewer");
       setLoading(false);
+      setError(null);
       return;
     }
     setLoading(true);
@@ -68,17 +70,38 @@ export function useAtsRole(): AtsMeState {
       setRoleSource(me.role_source);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load ATS permissions.");
+      // Prefer elevated Clerk metadata if present so a transient API blip
+      // does not lock the whole ATS shell behind the access gate.
       setRole(clerkFallback);
     } finally {
       setLoading(false);
     }
-  };
+  }, [
+    authLoaded,
+    userLoaded,
+    isSignedIn,
+    user?.fullName,
+    user?.primaryEmailAddress?.emailAddress,
+    clerkFallback,
+  ]);
 
   useEffect(() => {
-    if (!userLoaded) return;
+    if (!authLoaded || !userLoaded) return;
     void refresh();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [userLoaded, isSignedIn, user?.id]);
+  }, [authLoaded, userLoaded, isSignedIn, user?.id, refresh]);
+
+  // Hard stop so "Checking ATS permissions…" cannot spin forever.
+  useEffect(() => {
+    if (!loading) return;
+    const t = window.setTimeout(() => {
+      setLoading(false);
+      setError((prev) => prev || "Timed out checking ATS permissions. Try again or sign out and sign back in.");
+      if (clerkFallback === "admin" || clerkFallback === "recruiter") {
+        setRole(clerkFallback);
+      }
+    }, 12000);
+    return () => window.clearTimeout(t);
+  }, [loading, clerkFallback]);
 
   return {
     role,
@@ -94,7 +117,7 @@ export function useAtsRole(): AtsMeState {
     email: email || user?.primaryEmailAddress?.emailAddress || null,
     organizationName,
     roleSource,
-    loading,
+    loading: loading && !(authLoaded && userLoaded && !isSignedIn),
     error,
     refresh,
   };

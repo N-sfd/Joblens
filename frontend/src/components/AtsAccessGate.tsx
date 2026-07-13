@@ -2,17 +2,19 @@
 
 import Link from "next/link";
 import { SignOutButton } from "@clerk/nextjs";
-import { ShieldAlert } from "lucide-react";
+import { Loader2, ShieldAlert } from "lucide-react";
 import { useAtsRole } from "@/lib/atsRole";
 
 /** Blocks ATS write/parse UI until backend confirms recruiter/admin access. */
 export default function AtsAccessGate({ children }: { children: React.ReactNode }) {
-  const { loading, hasAtsAccess, error, displayName, email, role } = useAtsRole();
+  const { loading, hasAtsAccess, error, displayName, email, role, refresh } = useAtsRole();
 
   if (loading) {
     return (
-      <div className="min-h-[50vh] flex items-center justify-center text-sm text-slate-500">
-        Checking ATS permissions…
+      <div className="min-h-[50vh] flex flex-col items-center justify-center gap-3 text-sm text-slate-500">
+        <Loader2 size={22} className="animate-spin text-indigo-500" />
+        <p>Checking ATS permissions…</p>
+        {error ? <p className="text-xs text-red-600 max-w-md text-center px-4">{error}</p> : null}
       </div>
     );
   }
@@ -41,6 +43,13 @@ export default function AtsAccessGate({ children }: { children: React.ReactNode 
               </p>
               {error ? <p className="mt-2 text-xs text-red-600">{error}</p> : null}
               <div className="mt-5 flex flex-wrap gap-3">
+                <button
+                  type="button"
+                  onClick={() => void refresh()}
+                  className="inline-flex items-center rounded-lg border border-slate-300 bg-white px-3 py-2 text-sm font-medium text-slate-800"
+                >
+                  Try again
+                </button>
                 <Link
                   href="/"
                   className="inline-flex items-center rounded-lg bg-slate-900 px-3 py-2 text-sm font-medium text-white"

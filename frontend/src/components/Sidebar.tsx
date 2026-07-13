@@ -46,7 +46,8 @@ export default function Sidebar({ onClose }: Props) {
             <LogoMark size={17} className="text-white" />
           </div>
           <div className="leading-none">
-            <p className="text-white font-bold text-base">JobLens</p>
+            <p className="text-white font-bold text-base tracking-tight">JobLens</p>
+            <p className="text-[10px] text-slate-400 mt-0.5">Career toolkit</p>
           </div>
         </div>
         {/* Close button — mobile only */}

@@ -201,6 +201,7 @@ export function formToPayload(form: JobFormState, rawEmail?: string | null): imp
     certification_requirement: form.certification_requirement || null,
     job_description: form.job_description || null,
     application_url: form.application_url || null,
+    application_platform: form.source === "Zoho Mail" || form.source === "Email Copy/Paste" ? "recruiter_email" : null,
     raw_email_text: rawEmail || null,
     submission_instructions: form.submission_instructions || null,
     submission_deadline: form.submission_deadline || null,
@@ -390,6 +391,45 @@ export default function JobRequirementForm({ form, onChange }: Props) {
       <div className="bg-indigo-50 dark:bg-indigo-950/30 border border-indigo-100 dark:border-indigo-900/50 rounded-xl px-4 py-3.5 space-y-3">
         <div>
           <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100 mb-1.5">JobLens review</span>
+          <p className="text-xs text-slate-500 dark:text-slate-400 mb-2">
+            Save as draft first. Approve, set status to Open (or another non-closed status), then publish — jobs are never published automatically from Zoho.
+          </p>
+          <div className="flex flex-wrap gap-1.5 mb-2">
+            <button
+              type="button"
+              onClick={() => { onChange("review_status", "Draft"); onChange("published_for_matching", false); }}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-slate-200 dark:border-slate-700 bg-white dark:bg-slate-900 text-slate-600 hover:border-indigo-300"
+            >
+              Save Draft
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange("review_status", "Approved")}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-emerald-200 bg-emerald-50 text-emerald-800 hover:bg-emerald-100"
+            >
+              Approve Job
+            </button>
+            <button
+              type="button"
+              onClick={() => onChange("status", "Open")}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-indigo-200 bg-indigo-50 text-indigo-800 hover:bg-indigo-100"
+            >
+              Set Status to Open
+            </button>
+            <button
+              type="button"
+              onClick={() => {
+                onChange("review_status", "Approved");
+                if (["Closed", "Rejected", "Duplicate", "Spam", "On Hold"].includes(form.status)) {
+                  onChange("status", "Open");
+                }
+                onChange("published_for_matching", true);
+              }}
+              className="px-2.5 py-1 rounded-lg text-xs font-semibold border border-violet-200 bg-violet-50 text-violet-800 hover:bg-violet-100"
+            >
+              Publish to JobLens
+            </button>
+          </div>
           <div className="flex gap-1.5">
             {JOB_REVIEW_STATUSES.map((s) => (
               <button
@@ -421,12 +461,29 @@ export default function JobRequirementForm({ form, onChange }: Props) {
             onChange={(e) => onChange("published_for_matching", e.target.checked)}
           />
           <span className="pt-1">
-            <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Publish to JobLens candidates</span>
+            <span className="block text-sm font-semibold text-slate-800 dark:text-slate-100">Publish to JobLens</span>
             <span className="block text-xs text-slate-500 dark:text-slate-400 mt-0.5">
-              Makes this job (title, description, skills, rate, and recruiter contact info) selectable in the public Job Matcher — but only once review is <strong>Approved</strong> and the job status isn't closed. Either one changing hides it again automatically.
+              Requires Approved review, an open (non-closed) status, a job description, and recruiter contact. Jobs without an employer application URL still appear — candidates use Contact Recruiter.
             </span>
           </span>
         </label>
+        {form.published_for_matching && (() => {
+          const blockers: string[] = [];
+          if (form.review_status !== "Approved") blockers.push("Approve this job before publishing.");
+          if (["Closed", "Rejected", "Duplicate", "Spam", "On Hold"].includes(form.status)) {
+            blockers.push("Only open jobs can be published.");
+          }
+          if ((form.job_description || "").trim().length < 20) blockers.push("A job description is required.");
+          if (!(form.recruiter_name || "").trim() && !(form.recruiter_email || "").trim()) {
+            blockers.push("Recruiter information is incomplete.");
+          }
+          if (!blockers.length) return null;
+          return (
+            <ul className="text-xs text-amber-800 dark:text-amber-200 bg-amber-50 dark:bg-amber-950/40 border border-amber-200 dark:border-amber-900/50 rounded-lg px-3 py-2 space-y-1 list-disc list-inside">
+              {blockers.map((b) => <li key={b}>{b}</li>)}
+            </ul>
+          );
+        })()}
       </div>
 
       <Field label="Notes"><textarea title="Notes" className="textarea" rows={3} value={form.notes} onChange={set("notes")} /></Field>

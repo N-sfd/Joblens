@@ -1,8 +1,9 @@
 "use client";
 
 import { useState } from "react";
+import Link from "next/link";
 import { useRouter } from "next/navigation";
-import { Loader2 } from "lucide-react";
+import { FileUp, Loader2 } from "lucide-react";
 import { api } from "@/lib/api";
 import type { EmployeeCreate } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
@@ -58,10 +59,26 @@ export default function NewEmployeePage() {
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl mx-auto">
-      <div className="mb-6">
-        <p className="page-kicker">ATS</p>
-        <h1 className="page-title">Add Employee</h1>
-        <p className="page-subtitle">Create a new employee/consultant profile.</p>
+      <div className="mb-6 flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+        <div>
+          <p className="page-kicker">ATS</p>
+          <h1 className="page-title">Add Employee</h1>
+          <p className="page-subtitle">Create a new employee/consultant profile.</p>
+        </div>
+        <Link
+          href="/ats/employees/new-from-resume"
+          className="btn-secondary flex items-center gap-2 shrink-0 self-start"
+        >
+          <FileUp size={16} /> Fill from Resume
+        </Link>
+      </div>
+
+      <div className="mb-4 rounded-lg border border-indigo-100 bg-indigo-50/70 px-4 py-3 text-sm text-slate-700">
+        Prefer auto-fill? Use{" "}
+        <Link href="/ats/employees/new-from-resume" className="font-medium text-indigo-700 hover:underline">
+          Fill from Resume
+        </Link>{" "}
+        to parse a PDF/DOCX and pre-populate this profile.
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}

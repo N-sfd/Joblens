@@ -396,7 +396,7 @@ export default function JobsPage() {
 
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
-          <p className="page-kicker">Pipeline</p>
+          <p className="page-kicker">Applications</p>
           <h1 className="page-title">Job Tracker</h1>
           <p className="page-subtitle">Manage and track all your job applications.</p>
         </div>

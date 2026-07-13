@@ -10,25 +10,61 @@ import type { Employee, EmployeeUpdate, EmployeeResume } from "@/types";
 import { EMPLOYEE_STATUSES, EMPLOYMENT_TYPES, EMPLOYEE_AVAILABILITIES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 
-// employee field -> parsed_data key (for "Filled from resume" detection)
-const RESUME_FIELD_MAP: Record<string, string> = {
-  first_name: "first_name",
-  middle_name: "middle_name",
-  last_name: "last_name",
-  personal_email: "email",
-  phone: "phone",
-  current_location: "current_location",
-  current_job_title: "current_job_title",
-  primary_skill: "primary_skill",
-  secondary_skills: "secondary_skills",
-  total_experience: "total_experience_years",
-  relevant_experience_years: "relevant_experience_years",
-  linkedin_url: "linkedin_url",
-  notes: "professional_summary",
+// employee field -> resume parsed keys (any match marks "Filled from resume")
+const RESUME_FIELD_KEYS: Record<string, string[]> = {
+  name: ["full_name", "name"],
+  first_name: ["first_name"],
+  middle_name: ["middle_name"],
+  last_name: ["last_name"],
+  email: ["email"],
+  personal_email: ["email"],
+  phone: ["phone"],
+  current_location: ["current_location", "location"],
+  location: ["current_location", "location"],
+  current_job_title: ["current_job_title"],
+  primary_skill: ["primary_skill"],
+  secondary_skills: ["secondary_skills", "skills"],
+  total_experience: ["total_experience_years", "total_experience"],
+  relevant_experience_years: ["relevant_experience_years"],
+  linkedin_url: ["linkedin_url"],
+  notes: ["professional_summary", "summary"],
 };
 
 function norm(v: unknown): string {
-  return String(v ?? "").trim().toLowerCase();
+  return String(v ?? "").trim().toLowerCase().replace(/\s+/g, " ");
+}
+
+function resumeCandidates(pd: Record<string, unknown>, resume: EmployeeResume, keys: string[]): string[] {
+  const out: string[] = [];
+  for (const key of keys) {
+    let val = pd[key];
+    if (Array.isArray(val)) val = val.join(", ");
+    if (val != null && String(val).trim()) out.push(String(val));
+  }
+  // Flat parsed_* columns as fallback when parsed_data is sparse
+  if (keys.includes("email") && resume.parsed_email) out.push(resume.parsed_email);
+  if (keys.includes("phone") && resume.parsed_phone) out.push(resume.parsed_phone);
+  if (keys.includes("primary_skill") && resume.parsed_primary_skill) out.push(resume.parsed_primary_skill);
+  if (keys.includes("full_name") || keys.includes("name")) {
+    if (resume.parsed_name) out.push(resume.parsed_name);
+  }
+  if (keys.includes("total_experience_years") || keys.includes("total_experience")) {
+    if (resume.parsed_total_experience) out.push(resume.parsed_total_experience);
+  }
+  if (keys.includes("secondary_skills") || keys.includes("skills")) {
+    const skills = resume.parsed_skills as unknown;
+    if (Array.isArray(skills) && skills.length) out.push(skills.join(", "));
+    else if (typeof skills === "string" && skills.trim()) {
+      try {
+        const arr = JSON.parse(skills);
+        if (Array.isArray(arr)) out.push(arr.join(", "));
+        else out.push(skills);
+      } catch {
+        out.push(skills);
+      }
+    }
+  }
+  return out;
 }
 
 export default function EditEmployeePage() {
@@ -64,13 +100,16 @@ export default function EditEmployeePage() {
   // Fields whose current value matches the latest parsed resume value.
   const filledFromResume = useMemo(() => {
     const set = new Set<string>();
-    if (!form || !resume?.parsed_data) return set;
-    const pd = resume.parsed_data as Record<string, unknown>;
-    for (const [field, key] of Object.entries(RESUME_FIELD_MAP)) {
-      let resumeVal = pd[key];
-      if (key === "secondary_skills" && Array.isArray(resumeVal)) resumeVal = resumeVal.join(", ");
+    if (!form || !resume) return set;
+    const pd = (resume.parsed_data && typeof resume.parsed_data === "object"
+      ? resume.parsed_data
+      : {}) as Record<string, unknown>;
+    for (const [field, keys] of Object.entries(RESUME_FIELD_KEYS)) {
       const current = (form as unknown as Record<string, unknown>)[field];
-      if (norm(current) && norm(current) === norm(resumeVal)) set.add(field);
+      const currentN = norm(current);
+      if (!currentN) continue;
+      const candidates = resumeCandidates(pd, resume, keys).map(norm).filter(Boolean);
+      if (candidates.some((c) => c === currentN)) set.add(field);
     }
     return set;
   }, [form, resume]);
@@ -141,7 +180,24 @@ export default function EditEmployeePage() {
       <div className="mb-6">
         <p className="page-kicker">ATS</p>
         <h1 className="page-title">Edit Employee</h1>
-        <p className="page-subtitle">Fields marked <span className="text-indigo-600 font-medium">Filled from resume</span> were populated automatically — edit anything before saving.</p>
+        <p className="page-subtitle">
+          Fields marked <span className="text-indigo-600 font-medium">Filled from resume</span> match
+          the latest uploaded resume parse — you can edit anything before saving.
+          {!resume && (
+            <span className="block mt-1 text-amber-700">
+              No resume on file yet.{" "}
+              <Link href={`/ats/employees/${employeeId}`} className="underline font-medium">
+                Upload a resume
+              </Link>{" "}
+              on the employee page to enable these markers.
+            </span>
+          )}
+          {resume && resume.parsing_status === "failed" && (
+            <span className="block mt-1 text-amber-700">
+              Latest resume parse failed — reparse from the employee detail page to refresh markers.
+            </span>
+          )}
+        </p>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}
@@ -149,7 +205,7 @@ export default function EditEmployeePage() {
       <div className="card p-6 space-y-4">
         <h3 className="font-semibold text-slate-800 text-sm">Identity</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field text="Name *"><input title="Name" className="input" value={form.name} onChange={update("name")} /></Field>
+          <Field text="Name *" field="name"><input title="Name" className="input" value={form.name} onChange={update("name")} /></Field>
           <Field text="Employee Code"><input title="Employee Code" className="input" value={form.employee_code ?? ""} onChange={update("employee_code")} /></Field>
           <Field text="First Name" field="first_name"><input title="First Name" className="input" value={form.first_name ?? ""} onChange={update("first_name")} /></Field>
           <Field text="Middle Name" field="middle_name"><input title="Middle Name" className="input" value={form.middle_name ?? ""} onChange={update("middle_name")} /></Field>
@@ -158,13 +214,13 @@ export default function EditEmployeePage() {
 
         <h3 className="font-semibold text-slate-800 text-sm pt-2">Contact</h3>
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-          <Field text="Email *"><input title="Email" className="input" type="email" value={form.email} onChange={update("email")} /></Field>
+          <Field text="Email *" field="email"><input title="Email" className="input" type="email" value={form.email} onChange={update("email")} /></Field>
           <Field text="Personal Email" field="personal_email"><input title="Personal Email" className="input" type="email" value={form.personal_email ?? ""} onChange={update("personal_email")} /></Field>
           <Field text="Company Email"><input title="Company Email" className="input" type="email" value={form.company_email ?? ""} onChange={update("company_email")} /></Field>
           <Field text="Phone" field="phone"><input title="Phone" className="input" value={form.phone ?? ""} onChange={update("phone")} /></Field>
           <Field text="Alternate Phone"><input title="Alternate Phone" className="input" value={form.alternate_phone ?? ""} onChange={update("alternate_phone")} /></Field>
           <Field text="Current Location" field="current_location"><input title="Current Location" className="input" value={form.current_location ?? ""} onChange={update("current_location")} /></Field>
-          <Field text="Location"><input title="Location" className="input" value={form.location ?? ""} onChange={update("location")} /></Field>
+          <Field text="Location" field="location"><input title="Location" className="input" value={form.location ?? ""} onChange={update("location")} /></Field>
           <Field text="LinkedIn URL" field="linkedin_url"><input title="LinkedIn URL" className="input" value={form.linkedin_url ?? ""} onChange={update("linkedin_url")} /></Field>
         </div>
 

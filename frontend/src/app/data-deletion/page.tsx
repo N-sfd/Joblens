@@ -75,7 +75,7 @@ export default function DataDeletionPage() {
 
       <LegalSection title="Delete all my data">
         <p>
-          This permanently removes every resume analysis, job match, cover letter, tracked job application, and AI
+          This permanently removes every resume analysis, job match, cover letter, tracked job application, and
           activity entry tied to your current {user ? "account" : "guest session"}. This works whether or not you
           have an account.
         </p>
@@ -139,8 +139,8 @@ export default function DataDeletionPage() {
       <LegalSection title="What this does not delete">
         <p>
           Deleting your data removes it from JobLens's database immediately. It does not retract anything you've already
-          sent to an employer (cover letters, applications) or copies you've downloaded locally. If you've asked our AI
-          provider to process a request, that request is not retained by them beyond what's needed to return the
+          sent to an employer (cover letters, applications) or copies you've downloaded locally. If you've asked our
+          language-model provider to process a request, that request is not retained by them beyond what's needed to return the
           response — see our <Link href="/privacy">Privacy Policy</Link> for details.
         </p>
       </LegalSection>

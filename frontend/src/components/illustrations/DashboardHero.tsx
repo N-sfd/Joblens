@@ -8,7 +8,7 @@ export default function DashboardHero() {
       <div className="absolute right-32 top-14 w-1.5 h-1.5 rounded-full bg-white/15" />
 
       <div className="relative z-10 max-w-lg">
-        <h2 className="text-xl sm:text-2xl font-bold mb-2">Your job search, accelerated by AI</h2>
+        <h2 className="text-xl sm:text-2xl font-bold mb-2">Your job search, focused and organized</h2>
         <p className="text-indigo-100/90 text-sm leading-relaxed">
           JobLens helps job seekers analyze resumes, match jobs, track applications, and generate tailored cover letters — all in one place.
         </p>

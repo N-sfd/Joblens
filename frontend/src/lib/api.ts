@@ -1,5 +1,5 @@
 import { getGuestId } from "./guestId";
-import { getClerkToken } from "./clerkToken";
+import { getClerkToken, waitForClerkToken } from "./clerkToken";
 
 /** Origin only (no /api). Avoids https://host/api + /api/jobs → /api/api/jobs (404). */
 function normalizeOrigin(url: string): string {
@@ -60,8 +60,13 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     headers.set("X-Guest-Id", getGuestId());
   }
   if (typeof window !== "undefined" && ATS_PREFIXES.some((p) => path.startsWith(p))) {
-    const token = await getClerkToken();
-    if (token) headers.set("Authorization", `Bearer ${token}`);
+    // Wait for AtsAuthBridge + Clerk getToken (avoids infinite "Checking ATS permissions…").
+    const token = (await getClerkToken(2000)) || (await waitForClerkToken({ attempts: 15, delayMs: 100, timeoutMs: 2000 }));
+    if (token) {
+      headers.set("Authorization", `Bearer ${token}`);
+    } else {
+      throw new Error("Your session has expired. Please sign in again.");
+    }
   }
   let res: Response;
   try {

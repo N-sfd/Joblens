@@ -151,7 +151,7 @@ function SubmissionsPageInner() {
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {["Job", "Employee", "Vendor", "Rate", "Submitted", "Status", "Update", "Pipeline"].map((h) => (
+                {["Job", "Employee", "Vendor", "Rate", "Submitted", "Status", "Update", "Stage"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 font-semibold text-slate-600">{h}</th>
                 ))}
               </tr>
