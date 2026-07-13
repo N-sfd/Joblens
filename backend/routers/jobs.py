@@ -17,6 +17,7 @@ from auth import Owner, get_owner, owned, log_activity
 from typing import List, Optional
 from datetime import datetime, timedelta
 from pydantic import BaseModel
+from urllib.parse import urlparse
 import json
 import logging
 
@@ -44,11 +45,85 @@ VALID_STATUSES = {
 # silently downgrade a job back to "Application Opened".
 AUTO_GUARD_STATUSES = {"Interviewing", "Offer", "Rejected", "Withdrawn", "Applied"}
 
+REMINDER_FAIL_CODE = "REMINDER_CREATION_FAILED"
+REMINDER_FAIL_MESSAGE = (
+    "Your application was updated, but the follow-up reminder could not be created."
+)
+
 
 def _resolve_auto_status(current: str, desired: str) -> str:
     if current in AUTO_GUARD_STATUSES:
         return current
     return desired
+
+
+def _is_valid_http_url(value: Optional[str]) -> bool:
+    if not value or not str(value).strip():
+        return False
+    try:
+        parsed = urlparse(str(value).strip())
+        return parsed.scheme in ("http", "https") and bool(parsed.netloc)
+    except Exception:
+        return False
+
+
+def _validate_employer_application_url(job_req: JobRequirement) -> None:
+    """Reject invalid / missing employer application URLs before opening Apply Now."""
+    if not job_req.application_url or not str(job_req.application_url).strip():
+        raise HTTPException(
+            status_code=422,
+            detail="This job doesn't have an application link yet. Use Contact Recruiter instead.",
+        )
+    if not _is_valid_http_url(job_req.application_url):
+        raise HTTPException(
+            status_code=422,
+            detail="This application URL doesn't look valid.",
+        )
+
+
+def _to_job_response(job: JobApplication, **warnings) -> JobApplicationResponse:
+    data = JobApplicationResponse.model_validate(job).model_dump()
+    data.update(warnings)
+    return JobApplicationResponse(**data)
+
+
+def _attach_reminder_safely(
+    db: Session,
+    job_id: int,
+    *,
+    days: int,
+    reminder_type: str = "follow_up_email",
+) -> dict:
+    """Set follow_up_date after the status write has already committed.
+
+    Returns reminder_created / optional warning fields. Never raises — status
+    updates must stay persisted even when reminder creation fails.
+    """
+    try:
+        job = db.query(JobApplication).filter(JobApplication.id == job_id).first()
+        if not job:
+            return {
+                "reminder_created": False,
+                "warning_code": REMINDER_FAIL_CODE,
+                "warning_message": REMINDER_FAIL_MESSAGE,
+            }
+        if job.follow_up_date:
+            return {"reminder_created": False}
+        job.follow_up_date = datetime.utcnow() + timedelta(days=days)
+        job.reminder_type = reminder_type
+        db.commit()
+        return {"reminder_created": True}
+    except Exception:
+        logger.exception("Reminder creation failed for job_application_id=%s", job_id)
+        try:
+            db.rollback()
+        except Exception:
+            pass
+        return {
+            "reminder_created": False,
+            "warning_code": REMINDER_FAIL_CODE,
+            "warning_message": REMINDER_FAIL_MESSAGE,
+        }
 
 
 def jobs_for_owner(db: Session, owner: Owner):
@@ -237,11 +312,16 @@ async def save_external_job(
     is_apply_open = body.application_method == "employer_website"
     is_contact = body.status == "Recruiter Contacted"
 
+    if is_apply_open:
+        _validate_employer_application_url(job_req)
+
     existing = (
         jobs_for_owner(db, owner)
         .filter(JobApplication.source_job_requirement_id == job_req.id)
         .first()
     )
+
+    reminder_meta: dict = {}
 
     if existing:
         resolved = _resolve_auto_status(existing.status, body.status)
@@ -255,19 +335,21 @@ async def save_external_job(
                 existing.job_url = job_req.application_url
             if not existing.application_opened_at:
                 existing.application_opened_at = now
+        needs_contact_reminder = False
         if is_contact and not existing.recruiter_contacted_at:
             existing.recruiter_contacted_at = now
-            if not existing.follow_up_date:
-                existing.follow_up_date = now + timedelta(days=3)
-                existing.reminder_type = "follow_up_email"
+            needs_contact_reminder = not existing.follow_up_date
         existing.updated_at = now
         db.commit()
         db.refresh(existing)
+        if needs_contact_reminder:
+            reminder_meta = _attach_reminder_safely(db, existing.id, days=3)
+            db.refresh(existing)
         if status_changed:
             log_activity(db, owner, "status_changed", f"{existing.company} — {existing.role} → {existing.status}")
         elif is_apply_open:
             log_activity(db, owner, "application_opened", f"Reopened application page for {existing.company} — {existing.role}")
-        return existing
+        return _to_job_response(existing, **reminder_meta)
 
     fields = {
         "company": job_req.client or job_req.vendor or job_req.job_title,
@@ -290,15 +372,16 @@ async def save_external_job(
         fields["application_opened_at"] = now
     if is_contact:
         fields["recruiter_contacted_at"] = now
-        fields["follow_up_date"] = now + timedelta(days=3)
-        fields["reminder_type"] = "follow_up_email"
 
     db_job = JobApplication(**fields, guest_id=owner.guest_id, user_id=owner.user_id)
     db.add(db_job)
     db.commit()
     db.refresh(db_job)
+    if is_contact:
+        reminder_meta = _attach_reminder_safely(db, db_job.id, days=3)
+        db.refresh(db_job)
     log_activity(db, owner, "job_added", f"Added {db_job.company} — {db_job.role}", db_job.status)
-    return db_job
+    return _to_job_response(db_job, **reminder_meta)
 
 
 @router.post("/{job_id}/mark-applied", response_model=JobApplicationResponse)
@@ -318,22 +401,26 @@ async def mark_applied(
         job.last_activity_at = now
         db.commit()
         db.refresh(job)
-        return job
+        return _to_job_response(job)
 
     status_changed = job.status != "Applied"
+    first_apply = not job.applied_at
     job.status = "Applied"
-    if not job.applied_at:
+    if first_apply:
         job.applied_at = now
-        if not job.follow_up_date:
-            job.follow_up_date = now + timedelta(days=7)
-            job.reminder_type = "follow_up_email"
     job.last_activity_at = now
     job.updated_at = now
     db.commit()
     db.refresh(job)
+
+    reminder_meta: dict = {}
+    if first_apply and not job.follow_up_date:
+        reminder_meta = _attach_reminder_safely(db, job.id, days=7)
+        db.refresh(job)
+
     if status_changed:
         log_activity(db, owner, "status_changed", f"{job.company} — {job.role} → Applied")
-    return job
+    return _to_job_response(job, **reminder_meta)
 
 
 @router.get("/{job_id}", response_model=JobApplicationResponse)

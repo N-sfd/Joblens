@@ -8,7 +8,7 @@ import os
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho, applications
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
 import logging
@@ -86,6 +86,7 @@ app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
 app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+app.include_router(applications.router, prefix="/api/applications", tags=["Application Status"])
 app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])

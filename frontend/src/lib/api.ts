@@ -18,7 +18,7 @@ function getApiBase(): string {
   return normalizeOrigin(serverBackend);
 }
 
-const OWNED_PREFIXES = ["/api/jobs", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/integrations/joblens/jobs"];
+const OWNED_PREFIXES = ["/api/jobs", "/api/applications", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/integrations/joblens/jobs"];
 
 /** Build a query string (with leading `?`) from defined params; empty → "". */
 function formatApiErrorDetail(detail: unknown, fallback: string): string {
@@ -100,6 +100,43 @@ export const api = {
   logout: () => request<{ message: string }>("/api/auth/logout", { method: "POST" }),
   me: () => request<import("@/types").User>("/api/auth/me"),
   deleteAccount: () => request<{ message: string }>("/api/auth/me", { method: "DELETE" }),
+
+  // Profile
+  getProfile: () => request<import("@/types").Profile>("/api/profile/"),
+  updateProfile: (data: import("@/types").ProfileUpdate) =>
+    request<import("@/types").Profile>("/api/profile/", {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  getProfileCompleteness: () =>
+    request<import("@/types").ProfileCompleteness>("/api/profile/completeness"),
+  getApplicationReadiness: () =>
+    request<import("@/types").ApplicationReadiness>("/api/profile/readiness"),
+  listApplicationAnswers: () =>
+    request<import("@/types").ApplicationAnswer[]>("/api/profile/answers"),
+  createApplicationAnswer: (data: {
+    normalized_question_key: string;
+    display_question: string;
+    answer: string;
+    answer_type?: string;
+    is_sensitive?: boolean;
+    approval_status?: string;
+    reuse_policy?: string;
+  }) =>
+    request<import("@/types").ApplicationAnswer>("/api/profile/answers", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  updateApplicationAnswer: (id: number, data: Partial<import("@/types").ApplicationAnswer>) =>
+    request<import("@/types").ApplicationAnswer>(`/api/profile/answers/${id}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  deleteApplicationAnswer: (id: number) =>
+    request<{ message: string }>(`/api/profile/answers/${id}`, { method: "DELETE" }),
   deleteMyData: () => request<{ message: string }>("/api/account/data", { method: "DELETE" }),
 
   // Activity
@@ -172,6 +209,53 @@ export const api = {
   markApplied: (jobApplicationId: number) =>
     request<import("@/types").JobApplication>(`/api/jobs/${jobApplicationId}/mark-applied`, { method: "POST" }),
   loadDemoJobs: () => request<{ message: string; companies: string[] }>("/api/jobs/demo", { method: "POST" }),
+
+  // Application Status
+  listApplicationStatus: (params?: Record<string, string | number | boolean | undefined | null>) =>
+    request<import("@/types").ApplicationStatusListResponse>(
+      `/api/applications/status${qs(params)}`,
+    ),
+  getApplicationDetail: (id: number) =>
+    request<import("@/types").ApplicationStatusDetail>(`/api/applications/${id}`),
+  changeApplicationStatus: (
+    id: number,
+    data: { status: string; note?: string; effective_date?: string; confirmed?: boolean },
+  ) =>
+    request<import("@/types").ApplicationStatusDetail>(`/api/applications/${id}/status`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  archiveApplication: (id: number) =>
+    request<{ message: string; id: number }>(`/api/applications/${id}/archive`, { method: "POST" }),
+  createApplicationNote: (id: number, content: string) =>
+    request<import("@/types").ApplicationNote>(`/api/applications/${id}/notes`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
+  updateApplicationNote: (id: number, noteId: number, content: string) =>
+    request<import("@/types").ApplicationNote>(`/api/applications/${id}/notes/${noteId}`, {
+      method: "PUT",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ content }),
+    }),
+  deleteApplicationNote: (id: number, noteId: number) =>
+    request<{ message: string }>(`/api/applications/${id}/notes/${noteId}`, { method: "DELETE" }),
+  updateApplicationReminder: (
+    id: number,
+    data: {
+      follow_up_date?: string | null;
+      reminder_type?: string | null;
+      completed?: boolean;
+      snooze_days?: number;
+    },
+  ) =>
+    request<import("@/types").JobApplication>(`/api/applications/${id}/reminder`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
   clearAllJobs: () => request<{ message: string }>("/api/jobs/all", { method: "DELETE" }),
   bulkDeleteJobs: (ids: number[]) =>
     request<{ message: string }>("/api/jobs/bulk", {

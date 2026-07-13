@@ -58,8 +58,31 @@ class JobApplication(Base):
     applied_at = Column(DateTime, nullable=True)
     recruiter_contacted_at = Column(DateTime, nullable=True)
     last_activity_at = Column(DateTime, nullable=True)
+    # Phase 4 — Application Status history / action indicators
+    archived_at = Column(DateTime, nullable=True)
+    status_changed_at = Column(DateTime, nullable=True)
+    status_changed_by = Column(String(50), nullable=True)  # user | system | auto
+    action_required = Column(Boolean, nullable=True, default=False)
+    action_required_reason = Column(String(255), nullable=True)
+    last_user_activity_at = Column(DateTime, nullable=True)
+    # Reminder completion (inline reminder model — no separate reminders table)
+    reminder_completed_at = Column(DateTime, nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class ApplicationNote(Base):
+    """User-authored notes on a JobApplication (Application Status detail)."""
+
+    __tablename__ = "application_notes"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    job_application_id = Column(Integer, ForeignKey("job_applications.id"), nullable=False, index=True)
+    content = Column(Text, nullable=False)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -123,19 +146,62 @@ class AiActivity(Base):
     created_at = Column(DateTime, default=func.now())
 
 class Profile(Base):
+    """JobLens job-seeker profile — extended for Phase 3 completeness / readiness.
+
+    Identity email stays on `users.email` (auth-managed) and is not editable here.
+    Flexible sections use JSON Text columns.
+    """
+
     __tablename__ = "profiles"
 
     id = Column(Integer, primary_key=True, index=True)
     user_id = Column(Integer, nullable=False, unique=True, index=True)
+    full_name = Column(String(255), nullable=True)
+    preferred_name = Column(String(255), nullable=True)
     phone = Column(String(50), nullable=True)
+    address_line_1 = Column(String(255), nullable=True)
+    address_line_2 = Column(String(255), nullable=True)
+    city = Column(String(120), nullable=True)
+    state = Column(String(120), nullable=True)
+    postal_code = Column(String(30), nullable=True)
+    country = Column(String(120), nullable=True)
     location = Column(String(255), nullable=True)
+    current_location = Column(String(255), nullable=True)
     headline = Column(String(255), nullable=True)
     bio = Column(Text, nullable=True)
-    skills = Column(Text, nullable=True)       # JSON-encoded list[str]
-    experience = Column(Text, nullable=True)   # JSON-encoded list[dict]
-    education = Column(Text, nullable=True)    # JSON-encoded list[dict]
+    skills = Column(Text, nullable=True)
+    experience = Column(Text, nullable=True)
+    education = Column(Text, nullable=True)
+    projects_json = Column(Text, nullable=True)
+    certifications_json = Column(Text, nullable=True)
     linkedin_url = Column(String(500), nullable=True)
     portfolio_url = Column(String(500), nullable=True)
+    professional_links_json = Column(Text, nullable=True)
+    work_authorization_json = Column(Text, nullable=True)
+    job_preferences_json = Column(Text, nullable=True)
+    default_resume_id = Column(Integer, nullable=True)
+    default_cover_letter_id = Column(Integer, nullable=True)
+    profile_completion_percentage = Column(Integer, nullable=True, default=0)
+    profile_completed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class ApplicationAnswer(Base):
+    """Reusable, user-approved answers for common job-application questions."""
+
+    __tablename__ = "application_answers"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=False, index=True)
+    normalized_question_key = Column(String(100), nullable=False, index=True)
+    display_question = Column(String(500), nullable=False)
+    answer = Column(Text, nullable=False)
+    answer_type = Column(String(50), nullable=False, default="text")
+    is_sensitive = Column(Boolean, nullable=False, default=False)
+    approval_status = Column(String(30), nullable=False, default="draft")
+    reuse_policy = Column(String(40), nullable=False, default="always_ask")
+    last_reviewed_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -681,14 +747,141 @@ class JobApplicationResponse(BaseModel):
     applied_at: Optional[datetime] = None
     recruiter_contacted_at: Optional[datetime] = None
     last_activity_at: Optional[datetime] = None
+    archived_at: Optional[datetime] = None
+    status_changed_at: Optional[datetime] = None
+    status_changed_by: Optional[str] = None
+    action_required: Optional[bool] = None
+    action_required_reason: Optional[str] = None
+    last_user_activity_at: Optional[datetime] = None
+    reminder_completed_at: Optional[datetime] = None
     # Raw JSON string (same shape as the public JobRequirementResponse
     # projection) — parse client-side. Kept as the raw column rather than a
     # parsed dict so FastAPI's from_attributes can populate it automatically
     # across every endpoint that returns JobApplicationResponse.
     job_snapshot_json: Optional[str] = None
     created_at: datetime
+    # Optional Apply Options warning fields (e.g. status saved but reminder failed).
+    reminder_created: Optional[bool] = None
+    warning_code: Optional[str] = None
+    warning_message: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class ApplicationNoteCreate(BaseModel):
+    content: str
+
+
+class ApplicationNoteUpdate(BaseModel):
+    content: str
+
+
+class ApplicationNoteResponse(BaseModel):
+    id: int
+    job_application_id: int
+    content: str
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
+
+class ApplicationStatusChangeRequest(BaseModel):
+    status: str
+    note: Optional[str] = None
+    effective_date: Optional[datetime] = None
+    confirmed: bool = False  # required for Withdrawn / Rejected / Archive restores
+
+
+class ApplicationReminderUpdate(BaseModel):
+    follow_up_date: Optional[datetime] = None
+    reminder_type: Optional[str] = None
+    completed: Optional[bool] = None
+    snooze_days: Optional[int] = None
+
+
+class ApplicationStatusSummary(BaseModel):
+    total: int = 0
+    by_status: dict[str, int] = {}
+    applications_opened: int = 0
+    applications_in_progress: int = 0
+    applied: int = 0
+    recruiter_contacts: int = 0
+    interviews: int = 0
+    offers: int = 0
+    follow_ups_due: int = 0
+    action_needed: int = 0
+    opened_this_week: int = 0
+    applied_this_week: int = 0
+    percentages: dict[str, float] = {}
+
+
+class ApplicationStatusListItem(BaseModel):
+    id: int
+    company: str
+    role: str
+    status: str
+    location: Optional[str] = None
+    work_type: Optional[str] = None
+    application_method: Optional[str] = None
+    application_method_label: Optional[str] = None
+    application_source: Optional[str] = None
+    job_url: Optional[str] = None
+    has_application_url: bool = False
+    source_job_requirement_id: Optional[int] = None
+    source_job_available: bool = False
+    source_job_closed: bool = False
+    job_reference_number: Optional[str] = None
+    client: Optional[str] = None
+    end_client: Optional[str] = None
+    recruiter_name: Optional[str] = None
+    recruiter_email: Optional[str] = None
+    application_opened_at: Optional[datetime] = None
+    recruiter_contacted_at: Optional[datetime] = None
+    applied_at: Optional[datetime] = None
+    last_activity_at: Optional[datetime] = None
+    follow_up_date: Optional[datetime] = None
+    reminder_type: Optional[str] = None
+    reminder_completed_at: Optional[datetime] = None
+    reminder_status: Optional[str] = None  # upcoming | due_today | missed | completed | none
+    action_required: bool = False
+    action_required_reason: Optional[str] = None
+    archived_at: Optional[datetime] = None
+    match_score: Optional[float] = None
+    created_at: Optional[datetime] = None
+
+
+class ApplicationStatusListResponse(BaseModel):
+    items: list[ApplicationStatusListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+    summary: ApplicationStatusSummary
+
+
+class ApplicationTimelineEvent(BaseModel):
+    id: Optional[int] = None
+    event_type: str
+    summary: str
+    detail: Optional[str] = None
+    occurred_at: datetime
+    source: str = "activity"  # activity | derived
+
+
+class ApplicationStatusDetailResponse(BaseModel):
+    application: JobApplicationResponse
+    job_snapshot: Optional[dict] = None
+    source_job_available: bool = False
+    source_job_closed: bool = False
+    application_method_label: Optional[str] = None
+    match_score: Optional[float] = None
+    match_summary: Optional[str] = None
+    timeline: list[ApplicationTimelineEvent] = []
+    notes: list[ApplicationNoteResponse] = []
+    reminder_status: Optional[str] = None
+    action_required: bool = False
+    action_required_reason: Optional[str] = None
 
 
 class FollowUpEmailResponse(BaseModel):
@@ -734,28 +927,193 @@ class EducationEntry(BaseModel):
     start: Optional[str] = None
     end: Optional[str] = None
 
+
+class ProjectEntry(BaseModel):
+    name: str
+    description: Optional[str] = None
+    url: Optional[str] = None
+    technologies: Optional[list[str]] = None
+
+
+class CertificationEntry(BaseModel):
+    name: str
+    issuer: Optional[str] = None
+    date_earned: Optional[str] = None
+    expiration: Optional[str] = None
+    credential_url: Optional[str] = None
+
+
+class ProfessionalLinks(BaseModel):
+    linkedin: Optional[str] = None
+    github: Optional[str] = None
+    portfolio: Optional[str] = None
+    personal_website: Optional[str] = None
+    other: Optional[str] = None
+
+
+class WorkAuthorization(BaseModel):
+    applying_country: Optional[str] = None
+    current_authorization: Optional[str] = None
+    visa_type: Optional[str] = None
+    sponsorship_required_now: Optional[bool] = None
+    sponsorship_required_future: Optional[bool] = None
+    authorization_expiration: Optional[str] = None
+    authorized_countries: Optional[list[str]] = None
+    willing_to_relocate: Optional[bool] = None
+    security_clearance: Optional[bool] = None
+    clearance_level: Optional[str] = None
+    # Explicit user confirmation — never infer sensitive answers from resume text.
+    user_confirmed: bool = False
+    confirmed_at: Optional[datetime] = None
+
+
+class JobPreferences(BaseModel):
+    preferred_titles: Optional[list[str]] = None
+    preferred_industries: Optional[list[str]] = None
+    preferred_locations: Optional[list[str]] = None
+    work_arrangement: Optional[str] = None  # remote | hybrid | onsite
+    employment_types: Optional[list[str]] = None
+    contract_preference: Optional[str] = None
+    minimum_salary: Optional[float] = None
+    minimum_hourly_rate: Optional[float] = None
+    preferred_currency: Optional[str] = "USD"
+    willing_to_travel: Optional[bool] = None
+    max_travel_percentage: Optional[int] = None
+    relocation_preference: Optional[str] = None
+    available_start_date: Optional[str] = None
+
+
 class ProfileUpdate(BaseModel):
+    full_name: Optional[str] = None
+    preferred_name: Optional[str] = None
     phone: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
     location: Optional[str] = None
+    current_location: Optional[str] = None
     headline: Optional[str] = None
     bio: Optional[str] = None
     skills: Optional[list[str]] = None
     experience: Optional[list[ExperienceEntry]] = None
     education: Optional[list[EducationEntry]] = None
+    projects: Optional[list[ProjectEntry]] = None
+    certifications: Optional[list[CertificationEntry]] = None
     linkedin_url: Optional[str] = None
     portfolio_url: Optional[str] = None
+    professional_links: Optional[ProfessionalLinks] = None
+    work_authorization: Optional[WorkAuthorization] = None
+    job_preferences: Optional[JobPreferences] = None
+    default_resume_id: Optional[int] = None
+    default_cover_letter_id: Optional[int] = None
+
+
+class ProfileCompletenessSection(BaseModel):
+    key: str
+    label: str
+    weight: int
+    complete: bool
+    missing_fields: list[str] = []
+
+
+class ProfileCompletenessResponse(BaseModel):
+    overall_percentage: int
+    completed_sections: list[str]
+    incomplete_sections: list[str]
+    missing_fields: list[str]
+    recommended_next_action: Optional[str] = None
+    sections: list[ProfileCompletenessSection] = []
+
+
+class ApplicationReadinessResponse(BaseModel):
+    status: str  # Ready | Mostly Ready | Needs Information | Not Ready
+    score: int
+    checks: dict[str, bool]
+    missing: list[str] = []
+
+
+class ProfileDocumentItem(BaseModel):
+    id: int
+    kind: str  # resume | cover_letter
+    label: str
+    created_at: Optional[datetime] = None
+    is_default: bool = False
+
+
+class ApplicationAnswerCreate(BaseModel):
+    normalized_question_key: str
+    display_question: str
+    answer: str
+    answer_type: str = "text"
+    is_sensitive: Optional[bool] = None
+    approval_status: str = "approved"
+    reuse_policy: Optional[str] = None
+
+
+class ApplicationAnswerUpdate(BaseModel):
+    display_question: Optional[str] = None
+    answer: Optional[str] = None
+    answer_type: Optional[str] = None
+    is_sensitive: Optional[bool] = None
+    approval_status: Optional[str] = None
+    reuse_policy: Optional[str] = None
+
+
+class ApplicationAnswerResponse(BaseModel):
+    id: int
+    normalized_question_key: str
+    display_question: str
+    answer: str
+    answer_type: str
+    is_sensitive: bool
+    approval_status: str
+    reuse_policy: str
+    last_reviewed_at: Optional[datetime] = None
+    created_at: datetime
+    updated_at: Optional[datetime] = None
+
+    model_config = {"from_attributes": True}
+
 
 class ProfileResponse(BaseModel):
-    phone: Optional[str]
-    location: Optional[str]
-    headline: Optional[str]
-    bio: Optional[str]
-    skills: list[str]
-    experience: list[ExperienceEntry]
-    education: list[EducationEntry]
-    linkedin_url: Optional[str]
-    portfolio_url: Optional[str]
-    updated_at: datetime
+    # Auth-managed identity (read-only)
+    email: Optional[str] = None
+    email_editable: bool = False
+    full_name: Optional[str] = None
+    preferred_name: Optional[str] = None
+    phone: Optional[str] = None
+    address_line_1: Optional[str] = None
+    address_line_2: Optional[str] = None
+    city: Optional[str] = None
+    state: Optional[str] = None
+    postal_code: Optional[str] = None
+    country: Optional[str] = None
+    location: Optional[str] = None
+    current_location: Optional[str] = None
+    headline: Optional[str] = None
+    bio: Optional[str] = None
+    skills: list[str] = []
+    experience: list[ExperienceEntry] = []
+    education: list[EducationEntry] = []
+    projects: list[ProjectEntry] = []
+    certifications: list[CertificationEntry] = []
+    linkedin_url: Optional[str] = None
+    portfolio_url: Optional[str] = None
+    professional_links: ProfessionalLinks = ProfessionalLinks()
+    work_authorization: WorkAuthorization = WorkAuthorization()
+    job_preferences: JobPreferences = JobPreferences()
+    default_resume_id: Optional[int] = None
+    default_cover_letter_id: Optional[int] = None
+    documents: list[ProfileDocumentItem] = []
+    application_answers: list[ApplicationAnswerResponse] = []
+    completeness: Optional[ProfileCompletenessResponse] = None
+    readiness: Optional[ApplicationReadinessResponse] = None
+    profile_completion_percentage: Optional[int] = None
+    profile_completed_at: Optional[datetime] = None
+    updated_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 

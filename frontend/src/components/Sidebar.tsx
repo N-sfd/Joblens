@@ -10,6 +10,8 @@ import {
   PenTool,
   BellRing,
   Compass,
+  UserRound,
+  ClipboardList,
   X,
 } from "lucide-react";
 import clsx from "clsx";
@@ -17,13 +19,15 @@ import LogoMark from "./Logo";
 import { LEGAL_LINKS } from "./legal/LegalPageShell";
 
 export const nav = [
-  { href: "/dashboard",     label: "Dashboard",       icon: LayoutDashboard },
-  { href: "/jobs/discover", label: "Discover Jobs",   icon: Compass },
-  { href: "/resume",        label: "Resume Analyzer", icon: FileText },
-  { href: "/jobs",          label: "Job Tracker",     icon: Briefcase },
-  { href: "/match",         label: "Job Matcher",     icon: Target },
-  { href: "/cover-letter",  label: "Cover Letter",    icon: PenTool },
-  { href: "/reminders",     label: "Reminders",       icon: BellRing },
+  { href: "/dashboard",     label: "Dashboard",           icon: LayoutDashboard },
+  { href: "/profile",       label: "Profile",             icon: UserRound },
+  { href: "/jobs/discover", label: "Discover Jobs",       icon: Compass },
+  { href: "/applications/status", label: "Application Status", icon: ClipboardList },
+  { href: "/resume",        label: "Resume Analyzer",     icon: FileText },
+  { href: "/jobs",          label: "Job Tracker",         icon: Briefcase },
+  { href: "/match",         label: "Job Matcher",         icon: Target },
+  { href: "/cover-letter",  label: "Cover Letter",        icon: PenTool },
+  { href: "/reminders",     label: "Reminders",           icon: BellRing },
 ];
 
 interface Props {

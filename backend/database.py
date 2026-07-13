@@ -45,6 +45,45 @@ def create_tables():
     _ensure_reminder_type_column()
     _ensure_recruiter_name_email_columns()
     _ensure_ats_columns()
+    _ensure_profile_columns()
+    _ensure_application_status_columns()
+
+
+def _ensure_application_status_columns() -> None:
+    """Phase 4 Application Status columns without wiping existing data."""
+    _ensure_columns("job_applications", {
+        "archived_at": "DATETIME",
+        "status_changed_at": "DATETIME",
+        "status_changed_by": "VARCHAR(50)",
+        "action_required": "BOOLEAN",
+        "action_required_reason": "VARCHAR(255)",
+        "last_user_activity_at": "DATETIME",
+        "reminder_completed_at": "DATETIME",
+    })
+
+
+def _ensure_profile_columns() -> None:
+    """Add Phase 3 profile columns / application_answers without wiping data."""
+    _ensure_columns("profiles", {
+        "full_name": "VARCHAR(255)",
+        "preferred_name": "VARCHAR(255)",
+        "address_line_1": "VARCHAR(255)",
+        "address_line_2": "VARCHAR(255)",
+        "city": "VARCHAR(120)",
+        "state": "VARCHAR(120)",
+        "postal_code": "VARCHAR(30)",
+        "country": "VARCHAR(120)",
+        "current_location": "VARCHAR(255)",
+        "projects_json": "TEXT",
+        "certifications_json": "TEXT",
+        "professional_links_json": "TEXT",
+        "work_authorization_json": "TEXT",
+        "job_preferences_json": "TEXT",
+        "default_resume_id": "INTEGER",
+        "default_cover_letter_id": "INTEGER",
+        "profile_completion_percentage": "INTEGER",
+        "profile_completed_at": "DATETIME",
+    })
 
 
 def _ensure_columns(table: str, columns: dict[str, str]) -> None:

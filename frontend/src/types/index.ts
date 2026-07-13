@@ -90,6 +90,109 @@ export interface JobApplication {
   // historical-snapshot fallback.
   job_snapshot_json: string | null;
   created_at: string;
+  archived_at?: string | null;
+  status_changed_at?: string | null;
+  status_changed_by?: string | null;
+  action_required?: boolean | null;
+  action_required_reason?: string | null;
+  last_user_activity_at?: string | null;
+  reminder_completed_at?: string | null;
+  // Optional Apply Options fields when status saved but reminder creation failed.
+  reminder_created?: boolean | null;
+  warning_code?: string | null;
+  warning_message?: string | null;
+}
+
+export interface ApplicationStatusSummary {
+  total: number;
+  by_status: Record<string, number>;
+  applications_opened: number;
+  applications_in_progress: number;
+  applied: number;
+  recruiter_contacts: number;
+  interviews: number;
+  offers: number;
+  follow_ups_due: number;
+  action_needed: number;
+  opened_this_week: number;
+  applied_this_week: number;
+  percentages: Record<string, number>;
+}
+
+export interface ApplicationStatusListItem {
+  id: number;
+  company: string;
+  role: string;
+  status: string;
+  location: string | null;
+  work_type: string | null;
+  application_method: string | null;
+  application_method_label: string | null;
+  application_source: string | null;
+  job_url: string | null;
+  has_application_url: boolean;
+  source_job_requirement_id: number | null;
+  source_job_available: boolean;
+  source_job_closed: boolean;
+  job_reference_number: string | null;
+  client: string | null;
+  end_client: string | null;
+  recruiter_name: string | null;
+  recruiter_email: string | null;
+  application_opened_at: string | null;
+  recruiter_contacted_at: string | null;
+  applied_at: string | null;
+  last_activity_at: string | null;
+  follow_up_date: string | null;
+  reminder_type: string | null;
+  reminder_completed_at: string | null;
+  reminder_status: string | null;
+  action_required: boolean;
+  action_required_reason: string | null;
+  archived_at: string | null;
+  match_score: number | null;
+  created_at: string | null;
+}
+
+export interface ApplicationStatusListResponse {
+  items: ApplicationStatusListItem[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+  summary: ApplicationStatusSummary;
+}
+
+export interface ApplicationNote {
+  id: number;
+  job_application_id: number;
+  content: string;
+  created_at: string;
+  updated_at?: string | null;
+}
+
+export interface ApplicationTimelineEvent {
+  id?: number | null;
+  event_type: string;
+  summary: string;
+  detail?: string | null;
+  occurred_at: string;
+  source: string;
+}
+
+export interface ApplicationStatusDetail {
+  application: JobApplication;
+  job_snapshot: Record<string, unknown> | null;
+  source_job_available: boolean;
+  source_job_closed: boolean;
+  application_method_label: string | null;
+  match_score: number | null;
+  match_summary: string | null;
+  timeline: ApplicationTimelineEvent[];
+  notes: ApplicationNote[];
+  reminder_status: string | null;
+  action_required: boolean;
+  action_required_reason: string | null;
 }
 
 export type JobApplicationStatus = JobApplication["status"];
@@ -159,18 +262,127 @@ export interface MatchResult {
 
 export interface ExperienceEntry { title: string; company: string; start?: string; end?: string; description?: string }
 export interface EducationEntry { school: string; degree?: string; start?: string; end?: string }
+export interface ProjectEntry { name: string; description?: string; url?: string; technologies?: string[] }
+export interface CertificationEntry {
+  name: string; issuer?: string; date_earned?: string; expiration?: string; credential_url?: string
+}
+export interface ProfessionalLinks {
+  linkedin?: string | null;
+  github?: string | null;
+  portfolio?: string | null;
+  personal_website?: string | null;
+  other?: string | null;
+}
+export interface WorkAuthorization {
+  applying_country?: string | null;
+  current_authorization?: string | null;
+  visa_type?: string | null;
+  sponsorship_required_now?: boolean | null;
+  sponsorship_required_future?: boolean | null;
+  authorization_expiration?: string | null;
+  authorized_countries?: string[] | null;
+  willing_to_relocate?: boolean | null;
+  security_clearance?: boolean | null;
+  clearance_level?: string | null;
+  user_confirmed?: boolean;
+  confirmed_at?: string | null;
+}
+export interface JobPreferences {
+  preferred_titles?: string[] | null;
+  preferred_industries?: string[] | null;
+  preferred_locations?: string[] | null;
+  work_arrangement?: string | null;
+  employment_types?: string[] | null;
+  contract_preference?: string | null;
+  minimum_salary?: number | null;
+  minimum_hourly_rate?: number | null;
+  preferred_currency?: string | null;
+  willing_to_travel?: boolean | null;
+  max_travel_percentage?: number | null;
+  relocation_preference?: string | null;
+  available_start_date?: string | null;
+}
+export interface ProfileCompletenessSection {
+  key: string;
+  label: string;
+  weight: number;
+  complete: boolean;
+  missing_fields: string[];
+}
+export interface ProfileCompleteness {
+  overall_percentage: number;
+  completed_sections: string[];
+  incomplete_sections: string[];
+  missing_fields: string[];
+  recommended_next_action: string | null;
+  sections: ProfileCompletenessSection[];
+}
+export type ApplicationReadinessStatus = "Ready" | "Mostly Ready" | "Needs Information" | "Not Ready";
+export interface ApplicationReadiness {
+  status: ApplicationReadinessStatus;
+  score: number;
+  checks: Record<string, boolean>;
+  missing: string[];
+}
+export interface ProfileDocumentItem {
+  id: number;
+  kind: "resume" | "cover_letter" | string;
+  label: string;
+  created_at: string | null;
+  is_default: boolean;
+}
+export type AnswerReusePolicy = "always_ask" | "reuse_after_review" | "reuse_automatically" | "never_save";
+export interface ApplicationAnswer {
+  id: number;
+  normalized_question_key: string;
+  display_question: string;
+  answer: string;
+  answer_type: string;
+  is_sensitive: boolean;
+  approval_status: string;
+  reuse_policy: AnswerReusePolicy | string;
+  last_reviewed_at: string | null;
+  created_at: string;
+  updated_at?: string | null;
+}
 export interface Profile {
+  email?: string | null;
+  email_editable?: boolean;
+  full_name?: string | null;
+  preferred_name?: string | null;
   phone: string | null;
+  address_line_1?: string | null;
+  address_line_2?: string | null;
+  city?: string | null;
+  state?: string | null;
+  postal_code?: string | null;
+  country?: string | null;
   location: string | null;
+  current_location?: string | null;
   headline: string | null;
   bio: string | null;
   skills: string[];
   experience: ExperienceEntry[];
   education: EducationEntry[];
+  projects?: ProjectEntry[];
+  certifications?: CertificationEntry[];
   linkedin_url: string | null;
   portfolio_url: string | null;
+  professional_links?: ProfessionalLinks;
+  work_authorization?: WorkAuthorization;
+  job_preferences?: JobPreferences;
+  default_resume_id?: number | null;
+  default_cover_letter_id?: number | null;
+  documents?: ProfileDocumentItem[];
+  application_answers?: ApplicationAnswer[];
+  completeness?: ProfileCompleteness | null;
+  readiness?: ApplicationReadiness | null;
+  profile_completion_percentage?: number | null;
+  profile_completed_at?: string | null;
   updated_at: string | null;
 }
+export type ProfileUpdate = Partial<Omit<Profile, "email" | "email_editable" | "documents" | "application_answers" | "completeness" | "readiness" | "updated_at" | "profile_completed_at">>;
+
 
 // ATS-only (private) — employee/consultant records, never exposed to the
 // public job-seeker tools above.

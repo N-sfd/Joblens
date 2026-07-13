@@ -55,9 +55,27 @@ export default function ApplyOptionsModal({ jobId, initialView = "choose", onClo
   const [contacting, setContacting] = useState(false);
   const [contacted, setContacted] = useState(false);
 
-  const showToast = (msg: string) => {
+  const [toastTone, setToastTone] = useState<"ok" | "warn">("ok");
+
+  const showToast = (msg: string, tone: "ok" | "warn" = "ok") => {
+    setToastTone(tone);
     setToast(msg);
-    setTimeout(() => setToast(null), 3000);
+    setTimeout(() => setToast(null), tone === "warn" ? 5000 : 3000);
+  };
+
+  /** Status update succeeded — surface reminder failure as a warning, not a hard error. */
+  const toastFromApplication = (
+    application: { warning_code?: string | null; warning_message?: string | null },
+    successMsg: string,
+  ) => {
+    if (application.warning_code === "REMINDER_CREATION_FAILED") {
+      showToast(
+        "Application updated, but the follow-up reminder could not be created.",
+        "warn",
+      );
+      return;
+    }
+    showToast(successMsg);
   };
 
   useEffect(() => {
@@ -100,7 +118,7 @@ export default function ApplyOptionsModal({ jobId, initialView = "choose", onClo
       const application = await api.saveExternalJob(jobId, "Application Opened", "employer_website");
       setAppId(application.id);
       setOpened(true);
-      showToast("Application opened and added to your Job Tracker.");
+      toastFromApplication(application, "Application opened and added to your Job Tracker.");
       onUpdated?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to update your Job Tracker.");
@@ -113,8 +131,11 @@ export default function ApplyOptionsModal({ jobId, initialView = "choose", onClo
     setStatusSaving(status);
     setActionError(null);
     try {
-      await api.saveExternalJob(jobId, status);
-      showToast(status === "Applied" ? "Marked as Applied." : `Kept as ${status}.`);
+      const application = await api.saveExternalJob(jobId, status);
+      toastFromApplication(
+        application,
+        status === "Applied" ? "Marked as Applied." : `Kept as ${status}.`,
+      );
       onUpdated?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to update your Job Tracker.");
@@ -133,9 +154,12 @@ export default function ApplyOptionsModal({ jobId, initialView = "choose", onClo
         const application = await api.saveExternalJob(jobId, "Application Opened", "employer_website");
         id = application.id;
         setAppId(id);
+        if (application.warning_code === "REMINDER_CREATION_FAILED") {
+          // Continue to mark-applied; toast after that step.
+        }
       }
-      await api.markApplied(id);
-      showToast("Marked as Applied.");
+      const applied = await api.markApplied(id);
+      toastFromApplication(applied, "Marked as Applied.");
       onUpdated?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to update your Job Tracker.");
@@ -180,7 +204,7 @@ export default function ApplyOptionsModal({ jobId, initialView = "choose", onClo
       const application = await api.saveExternalJob(jobId, "Recruiter Contacted");
       setAppId(application.id);
       setContacted(true);
-      showToast("Marked as contacted — follow-up reminder added.");
+      toastFromApplication(application, "Marked as contacted — follow-up reminder added.");
       onUpdated?.();
     } catch (e) {
       setActionError(e instanceof Error ? e.message : "Failed to update your Job Tracker.");
@@ -211,8 +235,14 @@ export default function ApplyOptionsModal({ jobId, initialView = "choose", onClo
     <div className="fixed inset-0 bg-black/40 flex items-end sm:items-center justify-center z-50 sm:p-4">
       <div className="bg-white dark:bg-slate-900 rounded-t-2xl sm:rounded-2xl shadow-2xl w-full sm:max-w-lg max-h-[92vh] sm:max-h-[85vh] overflow-y-auto animate-slide-up flex flex-col">
         {toast && (
-          <div className="fixed top-5 right-5 z-[60] bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium animate-slide-up flex items-center gap-2">
-            <CheckCircle size={14} className="text-emerald-400" /> {toast}
+          <div className={clsx(
+            "fixed top-5 right-5 z-[60] text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium animate-slide-up flex items-center gap-2 max-w-sm",
+            toastTone === "warn" ? "bg-amber-800" : "bg-slate-900",
+          )}>
+            {toastTone === "warn"
+              ? <AlertCircle size={14} className="text-amber-200 shrink-0" />
+              : <CheckCircle size={14} className="text-emerald-400 shrink-0" />}
+            {toast}
           </div>
         )}
 
