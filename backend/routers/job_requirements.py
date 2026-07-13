@@ -190,8 +190,9 @@ async def parse_job_requirement_text(
         raise HTTPException(status_code=422, detail="Paste more of the job email/description to parse.")
     try:
         parsed = await parse_job_requirement(body.raw_text)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI service error: {str(e)}")
+    except Exception:
+        logger.exception("Job requirement AI parsing failed for user=%s", principal.user_id)
+        raise HTTPException(status_code=500, detail="Job details could not be parsed. Please try again.")
     return JobRequirementParseResponse(**{k: v for k, v in parsed.items() if k != "rate"})
 
 

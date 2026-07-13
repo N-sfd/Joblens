@@ -3,7 +3,7 @@
 import { useState, useEffect } from "react";
 import { useRouter } from "next/navigation";
 import { api } from "@/lib/api";
-import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement } from "@/types";
+import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement, ResumeHistoryEntry } from "@/types";
 import ScoreCircle from "@/components/ScoreCircle";
 import AgentActivity from "@/components/AgentActivity";
 import ErrorBanner from "@/components/ErrorBanner";
@@ -64,6 +64,10 @@ export default function MatchPage() {
   const [resumeText, setResumeText] = useState(() =>
     typeof window !== "undefined" ? localStorage.getItem(RESUME_KEY) ?? "" : ""
   );
+  const [resumeSource, setResumeSource] = useState<string | null>(null);
+  const [resumeUploading, setResumeUploading] = useState(false);
+  const [resumeUploadError, setResumeUploadError] = useState<string | null>(null);
+  const [savedResumes, setSavedResumes] = useState<ResumeHistoryEntry[]>([]);
   const [jobDescription, setJobDescription] = useState("");
   const [loading, setLoading] = useState(false);
 
@@ -112,7 +116,32 @@ export default function MatchPage() {
       .then(setHistory)
       .catch(() => {})
       .finally(() => setHistoryLoading(false));
+    api.getResumeHistory().then(setSavedResumes).catch(() => {});
   }, []);
+
+  const selectSavedResume = (id: number | "") => {
+    if (id === "") return;
+    const entry = savedResumes.find((r) => r.id === id);
+    if (!entry) return;
+    setResumeText(entry.resume_text);
+    setResumeSource(entry.filename || "Saved resume");
+    setResumeUploadError(null);
+  };
+
+  const uploadResume = async (file: File) => {
+    setResumeUploading(true);
+    setResumeUploadError(null);
+    try {
+      const data = await api.analyzeResumeFile(file);
+      setResumeText(data.resume_text);
+      setResumeSource(file.name);
+      api.getResumeHistory().then(setSavedResumes).catch(() => {});
+    } catch (e) {
+      setResumeUploadError(e instanceof Error ? e.message : "Couldn't read that file.");
+    } finally {
+      setResumeUploading(false);
+    }
+  };
 
   const loadFromHistory = (entry: MatchHistoryEntry) => {
     setResumeText(entry.resume_text);
@@ -342,15 +371,49 @@ export default function MatchPage() {
       <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
         {/* Left: resume */}
         <div className="card p-5">
-          <label className="label">Your Resume</label>
+          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
+            <label className="label mb-0">Your Resume</label>
+            <div className="flex items-center gap-3">
+              {savedResumes.length > 0 && (
+                <select
+                  className="input text-xs py-1 w-auto"
+                  aria-label="Select a saved resume"
+                  value=""
+                  onChange={(e) => selectSavedResume(e.target.value ? Number(e.target.value) : "")}
+                >
+                  <option value="">Select a saved resume…</option>
+                  {savedResumes.map((r) => (
+                    <option key={r.id} value={r.id}>
+                      {r.filename || "Resume"} — {new Date(r.created_at).toLocaleDateString()}
+                    </option>
+                  ))}
+                </select>
+              )}
+              <label className="text-xs font-medium text-indigo-600 hover:underline cursor-pointer flex items-center gap-1">
+                {resumeUploading ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
+                Upload file
+                <input
+                  type="file"
+                  accept=".pdf,.docx,.txt"
+                  className="hidden"
+                  disabled={resumeUploading}
+                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadResume(f); }}
+                />
+              </label>
+            </div>
+          </div>
           <textarea
-            className="textarea h-64"
-            placeholder="Paste your resume text here…"
+            className="textarea h-56"
+            placeholder="Paste your resume text here, upload a file, or select a saved resume above…"
             value={resumeText}
-            onChange={(e) => setResumeText(e.target.value)}
+            onChange={(e) => { setResumeText(e.target.value); setResumeSource(null); }}
           />
+          {resumeUploadError && <p className="text-xs text-red-600 mt-1.5">{resumeUploadError}</p>}
+          {resumeSource && (
+            <p className="text-xs text-slate-400 mt-1.5">Loaded from <span className="font-medium text-slate-600 dark:text-slate-300">{resumeSource}</span> · {resumeText.trim().split(/\s+/).filter(Boolean).length} words</p>
+          )}
           {typeof window !== "undefined" && localStorage.getItem(RESUME_KEY) && resumeText !== localStorage.getItem(RESUME_KEY) && (
-            <button type="button" onClick={() => setResumeText(localStorage.getItem(RESUME_KEY) ?? "")}
+            <button type="button" onClick={() => { setResumeText(localStorage.getItem(RESUME_KEY) ?? ""); setResumeSource("last analysis"); }}
               className="text-xs text-indigo-600 hover:underline mt-1.5 flex items-center gap-1">
               <ArrowRight size={11} /> Load from last analysis
             </button>
@@ -424,6 +487,18 @@ export default function MatchPage() {
                   onBlur={() => loadAtsJobs()}
                   onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
               </div>
+              {(atsSearch || atsLocation || atsWorkType || atsSkills) && (
+                <button
+                  type="button"
+                  onClick={() => {
+                    setAtsSearch(""); setAtsLocation(""); setAtsWorkType(""); setAtsSkills("");
+                    loadAtsJobs({ search: "", location: "", work_type: "", skills: "" });
+                  }}
+                  className="text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
+                >
+                  Clear Filters
+                </button>
+              )}
 
               {/* Job picker states */}
               {atsJobsLoading ? (
@@ -442,10 +517,15 @@ export default function MatchPage() {
               ) : atsJobs.length === 0 ? (
                 <div className="text-center py-6">
                   <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm text-slate-600 dark:text-slate-400">No published jobs available right now.</p>
-                  <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline mt-1">
-                    Paste a job description manually instead
-                  </button>
+                  <p className="text-sm text-slate-600 dark:text-slate-400">No approved open jobs are currently available.</p>
+                  <div className="flex items-center justify-center gap-3 mt-2">
+                    <button type="button" onClick={() => loadAtsJobs()} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                      <RefreshCw size={11} /> Refresh Jobs
+                    </button>
+                    <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
+                      <Pencil size={11} /> Paste Job Manually
+                    </button>
+                  </div>
                 </div>
               ) : (
                 <select
@@ -470,11 +550,16 @@ export default function MatchPage() {
                 </div>
               )}
               {selectedJobError && (
-                <ErrorBanner
-                  message={selectedJobError}
-                  onDismiss={() => setSelectedJobError(null)}
-                  onRetry={() => selectJob(selectedJobId)}
-                />
+                <div>
+                  <ErrorBanner
+                    message={selectedJobError}
+                    onDismiss={() => setSelectedJobError(null)}
+                    onRetry={() => selectJob(selectedJobId)}
+                  />
+                  <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline mt-2 flex items-center gap-1">
+                    <Pencil size={11} /> Switch to Manual Entry
+                  </button>
+                </div>
               )}
               {selectedJob && !selectedJobLoading && (
                 <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 max-h-[420px] overflow-y-auto">
@@ -586,16 +671,34 @@ export default function MatchPage() {
         <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={run} className="mb-4" />
       )}
 
-      <button
-        type="button"
-        onClick={run}
-        disabled={loading || resumeText.length < 50 || effectiveJobDescription().length < 50}
-        className="btn-primary flex items-center gap-2 w-full justify-center py-3 mb-5"
-      >
-        {loading
-          ? <><Loader2 size={16} className="animate-spin" /> Analyzing…</>
-          : <><Target size={16} /> Analyze Resume Against This Job</>}
-      </button>
+      {(() => {
+        const missing: string[] = [];
+        if (resumeText.length < 50) missing.push("a resume (paste, upload, or select a saved one)");
+        if (effectiveJobDescription().length < 50) {
+          missing.push(mode === "ats" ? "a selected ATS job" : "a job description");
+        }
+        const canRun = missing.length === 0;
+        return (
+          <>
+            <button
+              type="button"
+              onClick={run}
+              disabled={loading || !canRun}
+              className="btn-primary flex items-center gap-2 w-full justify-center py-3"
+            >
+              {loading
+                ? <><Loader2 size={16} className="animate-spin" /> Analyzing…</>
+                : <><Target size={16} /> Analyze Resume Against This Job</>}
+            </button>
+            {!canRun && !loading && (
+              <p className="text-xs text-slate-400 text-center mt-2 mb-5">
+                Add {missing.join(" and ")} to run the analysis.
+              </p>
+            )}
+            {canRun && <div className="mb-5" />}
+          </>
+        );
+      })()}
 
       {/* Main match agent activity */}
       <AgentActivity steps={MATCH_STEPS} isRunning={loading} isDone={done} className="mb-5" />

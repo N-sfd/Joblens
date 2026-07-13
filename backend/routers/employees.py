@@ -1,3 +1,5 @@
+import logging
+
 from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile, File
 from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
@@ -18,6 +20,8 @@ from routers.employee_resumes import _read_and_validate, _extract_text
 from services.audit import log_audit
 from services.claude_service import parse_employee_resume
 from services.rate_limit import rate_limit_ai
+
+logger = logging.getLogger(__name__)
 
 router = APIRouter()
 
@@ -193,8 +197,9 @@ async def parse_resume_for_employee(
         raise HTTPException(status_code=422, detail="Could not extract readable text from the resume.")
     try:
         return await parse_employee_resume(resume_text)
-    except Exception as e:
-        raise HTTPException(status_code=502, detail=f"AI parsing failed: {e}")
+    except Exception:
+        logger.exception("Resume AI parsing failed for user=%s", principal.user_id)
+        raise HTTPException(status_code=500, detail="Resume could not be parsed. Please try again.")
 
 
 @router.get("/{employee_id}", response_model=EmployeeResponse)
