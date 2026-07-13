@@ -591,7 +591,8 @@ Return this exact JSON structure (never omit a key):
   "submission_deadline": "<deadline as stated>",
   "number_of_openings": <integer count or null>,
   "submission_instructions": "<how to submit candidates>",
-  "application_url": "<direct employer/job-posting application URL, ONLY if an actual link is present in the text>",
+  "application_url": "<direct employer/job-posting application URL (http/https), ONLY if an actual link is present in the text — prefer Greenhouse/Lever/Workday/Ashby apply links over generic careers landing pages>",
+  "application_platform": "<leave empty; server classifies>",
   "summary": "<2-3 sentence summary useful for matching against employee profiles>"
 }}"""
 
@@ -644,6 +645,19 @@ async def parse_job_requirement(raw_text: str) -> dict:
         defaults["rate_min"] = str(defaults["rate_min"])
     if defaults.get("rate_max") is not None:
         defaults["rate_max"] = str(defaults["rate_max"])
+
+    # Phase 5 M0 — normalize / recover application_url and classify platform.
+    from services.application_url import prefer_application_url_from_parse
+    classified = prefer_application_url_from_parse(
+        defaults.get("application_url") or None,
+        raw_text,
+    )
+    if classified.normalized_url:
+        defaults["application_url"] = classified.normalized_url
+    elif classified.error and not (defaults.get("application_url") or "").strip():
+        defaults["application_url"] = ""
+    defaults["application_platform"] = classified.platform
+
     return defaults
 
 

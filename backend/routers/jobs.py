@@ -69,16 +69,23 @@ def _is_valid_http_url(value: Optional[str]) -> bool:
 
 def _validate_employer_application_url(job_req: JobRequirement) -> None:
     """Reject invalid / missing employer application URLs before opening Apply Now."""
-    if not job_req.application_url or not str(job_req.application_url).strip():
-        raise HTTPException(
-            status_code=422,
-            detail="This job doesn't have an application link yet. Use Contact Recruiter instead.",
-        )
-    if not _is_valid_http_url(job_req.application_url):
+    from services.application_url import normalize_application_url
+
+    classified = normalize_application_url(job_req.application_url)
+    if not classified.is_valid or not classified.normalized_url:
+        if not job_req.application_url or not str(job_req.application_url).strip():
+            raise HTTPException(
+                status_code=422,
+                detail="This job doesn't have an application link yet. Use Contact Recruiter instead.",
+            )
         raise HTTPException(
             status_code=422,
             detail="This application URL doesn't look valid.",
         )
+    # Persist normalized form for downstream tracker / snapshot freshness
+    job_req.application_url = classified.normalized_url
+    if hasattr(job_req, "application_platform"):
+        job_req.application_platform = classified.platform
 
 
 def _to_job_response(job: JobApplication, **warnings) -> JobApplicationResponse:
@@ -329,10 +336,10 @@ async def save_external_job(
         existing.status = resolved
         existing.job_snapshot_json = snapshot_json  # keep the snapshot fresh while the source is still live
         existing.last_activity_at = now
+        if job_req.application_url:
+            existing.job_url = job_req.application_url
         if is_apply_open:
             existing.application_method = "employer_website"
-            if job_req.application_url:
-                existing.job_url = job_req.application_url
             if not existing.application_opened_at:
                 existing.application_opened_at = now
         needs_contact_reminder = False
@@ -370,6 +377,9 @@ async def save_external_job(
         fields["application_method"] = "employer_website"
         fields["job_url"] = job_req.application_url
         fields["application_opened_at"] = now
+    elif job_req.application_url:
+        # Preserve apply URL on Save / Contact so Application Status can surface it.
+        fields["job_url"] = job_req.application_url
     if is_contact:
         fields["recruiter_contacted_at"] = now
 

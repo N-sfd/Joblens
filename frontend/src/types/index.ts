@@ -728,6 +728,8 @@ export interface JobRequirement {
   // Direct employer application link, when provided — powers "Apply on
   // Employer Website" in the Apply Options modal.
   application_url: string | null;
+  // Phase 5 M0 — classified ATS/platform for application_url (greenhouse, lever, …).
+  application_platform: string | null;
   raw_email_text: string | null;
   submission_instructions: string | null;
   submission_deadline: string | null;
@@ -851,6 +853,7 @@ export interface JobRequirementParseResult {
   number_of_openings: number | null;
   submission_instructions: string;
   application_url: string;
+  application_platform: string;
   summary: string;
 }
 

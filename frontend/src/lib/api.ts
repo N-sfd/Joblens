@@ -455,6 +455,61 @@ export const api = {
   getAtsDashboardStats: () =>
     request<import("@/types").AtsDashboardStats>("/api/ats/dashboard"),
 
+  // ATS staff access / role management
+  getAtsMe: () =>
+    request<{
+      user_id: string | null;
+      email: string | null;
+      display_name: string | null;
+      role: "admin" | "recruiter" | "viewer";
+      role_source: string;
+      organization_name: string | null;
+      can_write: boolean;
+      is_admin: boolean;
+      has_ats_access: boolean;
+    }>("/api/ats/me"),
+  listAtsStaffUsers: () =>
+    request<
+      Array<{
+        id: number;
+        clerk_user_id: string;
+        email: string | null;
+        display_name: string | null;
+        role: string;
+        organization_name: string | null;
+        role_updated_at: string | null;
+        role_updated_by: string | null;
+        last_seen_at: string | null;
+        created_at: string | null;
+      }>
+    >("/api/ats/users"),
+  createAtsStaffUser: (data: {
+    clerk_user_id: string;
+    role: "admin" | "recruiter" | "viewer";
+    email?: string;
+    display_name?: string;
+    organization_name?: string;
+  }) =>
+    request("/api/ats/users", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+  updateAtsStaffRole: (
+    clerkUserId: string,
+    data: {
+      role: "admin" | "recruiter" | "viewer";
+      email?: string;
+      display_name?: string;
+      organization_name?: string;
+    },
+  ) =>
+    request(`/api/ats/users/${encodeURIComponent(clerkUserId)}`, {
+      method: "PATCH",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(data),
+    }),
+
   // Zoho Mail (ATS — private)
   getZohoConnection: () =>
     request<import("@/types").ZohoConnectionStatus>("/api/zoho/connection"),

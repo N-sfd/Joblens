@@ -47,6 +47,10 @@ def create_tables():
     _ensure_ats_columns()
     _ensure_profile_columns()
     _ensure_application_status_columns()
+    _ensure_columns("job_requirements", {
+        "application_platform": "VARCHAR(50)",
+    })
+    # AtsStaffUser is created via metadata.create_all above (and Alembic j0e1f2a3b4c5).
 
 
 def _ensure_application_status_columns() -> None:
@@ -59,6 +63,11 @@ def _ensure_application_status_columns() -> None:
         "action_required_reason": "VARCHAR(255)",
         "last_user_activity_at": "DATETIME",
         "reminder_completed_at": "DATETIME",
+        "confirmation_number": "VARCHAR(120)",
+        "confirmation_url": "VARCHAR(500)",
+        "submission_notes": "TEXT",
+        "resume_document_id": "INTEGER",
+        "cover_letter_document_id": "INTEGER",
     })
 
 

@@ -106,9 +106,9 @@ def migrate_guest_data(db: Session, guest_id: Optional[str], user_id: int) -> No
     guest_id = (guest_id or "").strip()
     if not guest_id:
         return
-    from models import JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity
+    from models import JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity, ExtensionDiagnostic, ExtensionToken, ExtensionFillSession, SeekerDocument, ApplicationDocument, ExtensionUploadSession
 
-    for model in (JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity):
+    for model in (JobApplication, ResumeAnalysis, JobMatch, CoverLetter, AiActivity, ExtensionDiagnostic, ExtensionToken, ExtensionFillSession, SeekerDocument, ApplicationDocument, ExtensionUploadSession):
         db.query(model).filter(
             model.guest_id == guest_id, model.user_id.is_(None)
         ).update({"user_id": user_id, "guest_id": None}, synchronize_session=False)

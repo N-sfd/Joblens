@@ -1,0 +1,37 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Data Analyst at Contoso</title>
+</head>
+<body>
+  <!-- Embedded widget pattern -->
+  <h1>Data Analyst at Contoso</h1>
+  <iframe id="grnhse_iframe" src="https://boards.greenhouse.io/embed/job_app?for=contoso&token=0" title="Application"></iframe>
+  <div id="grnhse_app">
+    <form onsubmit="return false;">
+      <label for="name">Full Name *</label>
+      <input id="name" name="name" type="text" required />
+      <label for="email">Email *</label>
+      <input id="email" name="email" type="email" required />
+      <label for="resume">Resume/CV *</label>
+      <input id="resume" name="resume" type="file" required />
+      <label for="auth">Work authorization *</label>
+      <select id="auth" name="question_auth" required>
+        <option value="">Select...</option>
+        <option value="yes">Authorized to work</option>
+        <option value="no">Not authorized</option>
+      </select>
+      <label for="sponsor">Do you require sponsorship? *</label>
+      <select id="sponsor" name="question_sponsor" required>
+        <option value="">Select...</option>
+        <option value="yes">Yes</option>
+        <option value="no">No</option>
+      </select>
+      <label for="extra">Anything else we should know?</label>
+      <textarea id="extra" name="question_extra"></textarea>
+      <button type="submit">Submit Application</button>
+    </form>
+  </div>
+</body>
+</html>

@@ -84,17 +84,49 @@ async def analyze_resume_file(
     except Exception as e:
         raise_clean_ai_error(logger, "Resume analysis", e)
 
-    db.add(
-        ResumeAnalysis(
-            filename=filename,
-            resume_text=text,
-            ats_score=analysis.get("ats_score", 0),
-            analysis_json=json.dumps(analysis),
-            guest_id=owner.guest_id,
-            user_id=owner.user_id,
-        )
+    row = ResumeAnalysis(
+        filename=filename,
+        resume_text=text,
+        ats_score=analysis.get("ats_score", 0),
+        analysis_json=json.dumps(analysis),
+        guest_id=owner.guest_id,
+        user_id=owner.user_id,
     )
+    db.add(row)
     db.commit()
+    db.refresh(row)
+
+    seeker_document_id = None
+    try:
+        from services.seeker_document_storage import save_seeker_bytes, extension_allowed
+        from models import SeekerDocument
+        if extension_allowed(filename):
+            owner_key = str(owner.user_id or owner.guest_id or "anon")
+            path, mime, size, digest = save_seeker_bytes(owner_key, filename, content)
+            prev = (
+                owned(db.query(SeekerDocument), SeekerDocument, owner)
+                .filter(SeekerDocument.document_type == "resume", SeekerDocument.deleted_at.is_(None))
+                .count()
+            )
+            doc = SeekerDocument(
+                user_id=owner.user_id,
+                guest_id=owner.guest_id,
+                document_type="resume",
+                file_name=filename,
+                mime_type=mime,
+                file_size=size,
+                version_number=prev + 1,
+                storage_path=path,
+                source_resume_analysis_id=row.id,
+                content_sha256=digest,
+            )
+            db.add(doc)
+            db.commit()
+            db.refresh(doc)
+            seeker_document_id = doc.id
+    except Exception:
+        logger.exception("Failed to retain resume bytes for upload assist (non-fatal)")
+
     log_activity(
         db, owner, "resume_analyzed",
         f"Analyzed resume — ATS Score: {analysis.get('ats_score', 0)}%",
@@ -105,6 +137,8 @@ async def analyze_resume_file(
         "filename": filename,
         "resume_text": text,
         "analysis": analysis,
+        "resume_id": row.id,
+        "seeker_document_id": seeker_document_id,
     }
 
 

@@ -1,7 +1,8 @@
-import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import AtsNav from "@/components/AtsNav";
 import AtsAuthBridge from "@/components/AtsAuthBridge";
+import AtsAccessGate from "@/components/AtsAccessGate";
+import AtsHeaderAccount from "@/components/AtsHeaderAccount";
 
 // PROTECTED layout — every page under this (ats) group is gated by the
 // middleware.ts route matcher. If you add new ATS pages, no extra protection
@@ -27,14 +28,11 @@ export default function AtsLayout({ children }: { children: React.ReactNode }) {
           <Link href="/ats" className="md:hidden font-bold text-slate-900 text-sm">
             CRM
           </Link>
-          <div className="ml-auto flex items-center gap-4">
-            <Link href="/" className="text-sm text-slate-500 hover:text-slate-900">
-              ApplyPilot
-            </Link>
-            <UserButton afterSignOutUrl="/" />
-          </div>
+          <AtsHeaderAccount />
         </header>
-        <main className="flex-1">{children}</main>
+        <main className="flex-1">
+          <AtsAccessGate>{children}</AtsAccessGate>
+        </main>
       </div>
     </div>
   );

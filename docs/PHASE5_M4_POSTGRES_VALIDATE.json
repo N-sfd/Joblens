@@ -1,0 +1,50 @@
+{
+  "generated_at": "2026-07-13T16:57:36.209398+00:00",
+  "expected_head": "i9d0e1f2a3b4",
+  "backup_configuration": "Local Docker volume joblens_pgdata. For production use provider automated backups (Render/Supabase/Neon). Do not use production credentials for automated tests.",
+  "connectivity": {
+    "ok": true,
+    "postgresql_version": "16.13",
+    "database": "joblens",
+    "listen_addresses": "*",
+    "port": "5432",
+    "url_host_hint": "127.0.0.1:5433 (docker-compose host mapping)"
+  },
+  "migrate_rc": 0,
+  "downgrade_smoke": {
+    "downgrade_rc": 0,
+    "upgrade_rc": 0
+  },
+  "schema": {
+    "tables_present": [
+      "application_answers",
+      "application_documents",
+      "audit_logs",
+      "extension_auth_challenges",
+      "extension_diagnostics",
+      "extension_fill_sessions",
+      "extension_tokens",
+      "extension_upload_sessions",
+      "job_applications",
+      "job_requirements",
+      "profiles",
+      "seeker_documents"
+    ],
+    "missing_tables": [],
+    "job_requirements.application_platform": true,
+    "job_applications_fk_count": 0,
+    "extension_tokens_uniques": [],
+    "extension_tokens_indexes": [
+      "ix_extension_tokens_guest_id",
+      "ix_extension_tokens_jti",
+      "ix_extension_tokens_refresh_token_hash",
+      "ix_extension_tokens_user_id"
+    ],
+    "upload_session_nullable_used_at": true,
+    "alembic_version": "i9d0e1f2a3b4",
+    "json_works": false,
+    "json_error": "(sqlalchemy.exc.InvalidRequestError) A value is required for bind parameter '1'\n[SQL: SELECT '{\"a\"%(1)s}'::json ->> 'a']\n(Background on this error at: https://sqlalche.me/e/20/cd3x)",
+    "timezone": "UTC"
+  },
+  "head_matches": true
+}

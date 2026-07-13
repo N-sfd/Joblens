@@ -67,6 +67,12 @@ class JobApplication(Base):
     last_user_activity_at = Column(DateTime, nullable=True)
     # Reminder completion (inline reminder model — no separate reminders table)
     reminder_completed_at = Column(DateTime, nullable=True)
+    # Phase 5 M3 — user-confirmed submission metadata (no silent apply)
+    confirmation_number = Column(String(120), nullable=True)
+    confirmation_url = Column(String(500), nullable=True)
+    submission_notes = Column(Text, nullable=True)
+    resume_document_id = Column(Integer, nullable=True)
+    cover_letter_document_id = Column(Integer, nullable=True)
     guest_id = Column(String(36), nullable=True, index=True)
     user_id = Column(Integer, nullable=True, index=True)
     created_at = Column(DateTime, default=func.now())
@@ -202,6 +208,172 @@ class ApplicationAnswer(Base):
     approval_status = Column(String(30), nullable=False, default="draft")
     reuse_policy = Column(String(40), nullable=False, default="always_ask")
     last_reviewed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class ExtensionAuthChallenge(Base):
+    """One-time pairing challenge for browser-extension ↔ JobLens connect (M1)."""
+
+    __tablename__ = "extension_auth_challenges"
+
+    id = Column(Integer, primary_key=True, index=True)
+    challenge = Column(String(64), unique=True, nullable=False, index=True)
+    status = Column(String(20), nullable=False, default="pending")  # pending|confirmed|consumed|expired
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    extension_version = Column(String(30), nullable=True)
+    # One-time plaintext delivered via exchange then cleared
+    pending_access_token = Column(Text, nullable=True)
+    pending_refresh_token = Column(Text, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    confirmed_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+class ExtensionToken(Base):
+    """Revocable extension-scoped credential (hash only at rest)."""
+
+    __tablename__ = "extension_tokens"
+
+    id = Column(Integer, primary_key=True, index=True)
+    jti = Column(String(64), unique=True, nullable=False, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    access_token_hash = Column(String(64), nullable=False)
+    refresh_token_hash = Column(String(64), nullable=False, index=True)
+    extension_version = Column(String(30), nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    refresh_expires_at = Column(DateTime, nullable=False)
+    revoked_at = Column(DateTime, nullable=True)
+    last_used_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+class ExtensionDiagnostic(Base):
+    """Read-only Greenhouse form diagnostic saved from the extension (no field values)."""
+
+    __tablename__ = "extension_diagnostics"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    job_id = Column(Integer, nullable=True, index=True)
+    application_url_normalized = Column(String(500), nullable=True)
+    platform = Column(String(50), nullable=True)
+    employer = Column(String(255), nullable=True)
+    job_title = Column(String(255), nullable=True)
+    detected_fields_json = Column(Text, nullable=False, default="[]")
+    supported_count = Column(Integer, nullable=False, default=0)
+    sensitive_count = Column(Integer, nullable=False, default=0)
+    unsupported_count = Column(Integer, nullable=False, default=0)
+    detector_version = Column(String(40), nullable=True)
+    extension_version = Column(String(30), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+
+
+class ExtensionFillSession(Base):
+    """M2 assisted-fill session — field names/status metadata only (no profile values)."""
+
+    __tablename__ = "extension_fill_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    job_id = Column(Integer, nullable=True, index=True)  # JobApplication.id when known
+    job_requirement_id = Column(Integer, nullable=True, index=True)
+    application_url_normalized = Column(String(500), nullable=True)
+    platform = Column(String(50), nullable=True, default="greenhouse")
+    status = Column(String(40), nullable=False, default="created", index=True)
+    detected_fields_json = Column(Text, nullable=False, default="[]")
+    requested_fields_json = Column(Text, nullable=False, default="[]")
+    approved_fields_json = Column(Text, nullable=False, default="[]")
+    successful_fields_json = Column(Text, nullable=False, default="[]")
+    skipped_fields_json = Column(Text, nullable=False, default="[]")
+    failed_fields_json = Column(Text, nullable=False, default="[]")
+    missing_fields_json = Column(Text, nullable=False, default="[]")
+    detector_version = Column(String(40), nullable=True)
+    extension_version = Column(String(30), nullable=True)
+    started_at = Column(DateTime, default=func.now())
+    reviewed_at = Column(DateTime, nullable=True)
+    filled_at = Column(DateTime, nullable=True)
+    completed_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class SeekerDocument(Base):
+    """Immutable-ish binary document for JobLens seeker application uploads (M3).
+
+    Created when a resume file is analyzed (original bytes retained) or when a
+    cover letter is snapshotted as text/plain for employer upload.
+    """
+
+    __tablename__ = "seeker_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    document_type = Column(String(40), nullable=False, index=True)  # resume | cover_letter
+    file_name = Column(String(255), nullable=False)
+    mime_type = Column(String(120), nullable=False)
+    file_size = Column(Integer, nullable=False, default=0)
+    version_number = Column(Integer, nullable=False, default=1)
+    storage_path = Column(String(500), nullable=False)
+    source_resume_analysis_id = Column(Integer, nullable=True, index=True)
+    source_cover_letter_id = Column(Integer, nullable=True, index=True)
+    content_sha256 = Column(String(64), nullable=True)
+    deleted_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class ApplicationDocument(Base):
+    """Links a JobApplication to the exact document version used (M3)."""
+
+    __tablename__ = "application_documents"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    job_application_id = Column(Integer, ForeignKey("job_applications.id"), nullable=False, index=True)
+    extension_fill_session_id = Column(Integer, nullable=True, index=True)
+    document_type = Column(String(40), nullable=False)  # resume | cover_letter | supporting_document
+    source_document_id = Column(Integer, nullable=False, index=True)
+    source_document_version = Column(Integer, nullable=False, default=1)
+    file_name = Column(String(255), nullable=False)
+    mime_type = Column(String(120), nullable=True)
+    file_size = Column(Integer, nullable=True)
+    upload_method = Column(String(40), nullable=False, default="extension_assisted")
+    upload_status = Column(String(40), nullable=False, default="selected")
+    employer_field_label = Column(String(255), nullable=True)
+    uploaded_at = Column(DateTime, nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class ExtensionUploadSession(Base):
+    """One-time, short-lived authorization to retrieve a document for upload assist."""
+
+    __tablename__ = "extension_upload_sessions"
+
+    id = Column(Integer, primary_key=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    fill_session_id = Column(Integer, nullable=True, index=True)
+    job_application_id = Column(Integer, nullable=True, index=True)
+    seeker_document_id = Column(Integer, nullable=False, index=True)
+    document_type = Column(String(40), nullable=False)
+    employer_field_key = Column(String(255), nullable=True)
+    employer_field_label = Column(String(255), nullable=True)
+    accept_attr = Column(String(255), nullable=True)
+    retrieval_token_hash = Column(String(64), nullable=False, index=True)
+    status = Column(String(40), nullable=False, default="approved")  # approved|retrieving|used|cancelled|expired|failed
+    used_at = Column(DateTime, nullable=True)
+    expires_at = Column(DateTime, nullable=False)
+    verification_status = Column(String(40), nullable=True)
+    error_code = Column(String(80), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -357,6 +529,8 @@ class JobRequirement(Base):
     # Direct employer application link, when the recruiter/email provided one
     # — powers "Apply on Employer Website" in JobLens's Apply Options modal.
     application_url = Column(String(500), nullable=True)
+    # Phase 5 M0 — normalized classifier label (greenhouse, lever, …).
+    application_platform = Column(String(50), nullable=True, index=True)
     raw_email_text = Column(Text, nullable=True)
     submission_instructions = Column(Text, nullable=True)
     submission_deadline = Column(String(50), nullable=True)
@@ -639,6 +813,29 @@ class CRMActivity(Base):
     status = Column(String(50), default="Open")
     assigned_to = Column(String(255), nullable=True)
     created_by = Column(String(255), nullable=True)
+    created_at = Column(DateTime, default=func.now())
+    updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
+
+
+class AtsStaffUser(Base):
+    """ATS staff identity mapped from Clerk `sub` → role.
+
+    Used when the session JWT does not carry public_metadata.role (common) and
+    when the Clerk Backend API is unavailable. JobLens seeker Users table is
+    unrelated — ATS staff are Clerk identities only.
+    """
+
+    __tablename__ = "ats_staff_users"
+
+    id = Column(Integer, primary_key=True, index=True)
+    clerk_user_id = Column(String(128), unique=True, nullable=False, index=True)
+    email = Column(String(255), nullable=True, index=True)
+    display_name = Column(String(255), nullable=True)
+    role = Column(String(40), nullable=False, default="viewer", index=True)
+    organization_name = Column(String(255), nullable=True)
+    role_updated_at = Column(DateTime, nullable=True)
+    role_updated_by = Column(String(128), nullable=True)
+    last_seen_at = Column(DateTime, nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -1349,6 +1546,7 @@ class JobRequirementBase(BaseModel):
     certification_requirement: Optional[str] = None
     job_description: Optional[str] = None
     application_url: Optional[str] = None
+    application_platform: Optional[str] = None
     raw_email_text: Optional[str] = None
     submission_instructions: Optional[str] = None
     submission_deadline: Optional[str] = None
@@ -1458,6 +1656,7 @@ class JobRequirementParseResponse(BaseModel):
     number_of_openings: Optional[int] = None
     submission_instructions: str = ""
     application_url: str = ""
+    application_platform: str = ""
     summary: str = ""
 
     model_config = {"from_attributes": True}

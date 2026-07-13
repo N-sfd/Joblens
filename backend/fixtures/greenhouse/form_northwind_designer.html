@@ -1,0 +1,36 @@
+<!DOCTYPE html>
+<html lang="en">
+<head>
+  <meta charset="utf-8" />
+  <title>Product Designer at Northwind</title>
+</head>
+<body>
+  <h1>Product Designer at Northwind</h1>
+  <div id="grnhse_app">
+    <form onsubmit="return false;">
+      <label for="first_name">First Name *</label>
+      <input id="first_name" name="first_name" type="text" required />
+      <label for="last_name">Last Name *</label>
+      <input id="last_name" name="last_name" type="text" required />
+      <label for="email">Email *</label>
+      <input id="email" name="email" type="email" required />
+      <label for="phone">Phone *</label>
+      <input id="phone" name="phone" type="tel" required />
+      <label for="resume">Resume *</label>
+      <input id="resume" name="resume" type="file" required />
+      <label for="cover">Cover Letter *</label>
+      <input id="cover" name="cover_letter" type="file" required />
+      <label for="linkedin">LinkedIn Profile *</label>
+      <input id="linkedin" name="question_li" type="url" required />
+      <label for="salary">What are your salary expectations?</label>
+      <input id="salary" name="question_salary" type="text" />
+      <label for="veteran">Veteran Status</label>
+      <select id="veteran" name="demographic_veteran">
+        <option value="">Select...</option>
+        <option value="decline">I don't wish to answer</option>
+      </select>
+      <button type="submit">Submit Application</button>
+    </form>
+  </div>
+</body>
+</html>

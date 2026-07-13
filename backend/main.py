@@ -8,9 +8,10 @@ import os
 load_dotenv(Path(__file__).resolve().parent / ".env")
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho, applications
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
+from services.extension_config import validate_extension_config_at_startup
 import logging
 
 logger = logging.getLogger(__name__)
@@ -37,6 +38,7 @@ async def lifespan(app: FastAPI):
             "vars) on Render before deploying."
         )
     validate_storage_config()
+    validate_extension_config_at_startup()
     if env == "production" and STORAGE_PROVIDER == "local":
         logger.warning(
             "STORAGE_PROVIDER=local in production — uploaded employee resumes will be lost "
@@ -87,6 +89,9 @@ app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
 app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
 app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
 app.include_router(applications.router, prefix="/api/applications", tags=["Application Status"])
+app.include_router(extension.router, prefix="/api/extension", tags=["Browser Extension"])
+app.include_router(extension_upload.router, prefix="/api/extension", tags=["Browser Extension Uploads"])
+app.include_router(extension_pilot.router, prefix="/api/extension", tags=["Browser Extension Pilot"])
 app.include_router(match.router, prefix="/api/match", tags=["Match"])
 app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
 app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
@@ -106,6 +111,7 @@ app.include_router(crm_organizations.router, prefix="/api/crm/organizations", ta
 app.include_router(crm_contacts.router, prefix="/api/crm/contacts", tags=["CRM Contacts (ATS)"])
 app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
 app.include_router(ats_dashboard.router, prefix="/api/ats", tags=["ATS Dashboard"])
+app.include_router(ats_staff.router, prefix="/api/ats", tags=["ATS Staff Access"])
 app.include_router(zoho.router, prefix="/api/zoho", tags=["Zoho Mail (ATS)"])
 
 

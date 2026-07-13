@@ -3,7 +3,7 @@
 import { useEffect, useState, useCallback } from "react";
 import Link from "next/link";
 import { api } from "@/lib/api";
-import type { ActivityEntry, JobApplication, JobStats } from "@/types";
+import type { ActivityEntry, JobApplication, JobStats, ApplicationStatusSummary } from "@/types";
 import StatusBadge from "@/components/StatusBadge";
 import DashboardHero from "@/components/illustrations/DashboardHero";
 import { EmptyJobsIllustration, EmptyActivityIllustration } from "@/components/illustrations/EmptyState";
@@ -65,15 +65,22 @@ export default function DashboardPage() {
   const [recent, setRecent] = useState<JobApplication[]>([]);
   const [loading, setLoading] = useState(true);
   const [activity, setActivity] = useState<ActivityEntry[]>([]);
+  const [appSummary, setAppSummary] = useState<ApplicationStatusSummary | null>(null);
 
   const loadData = useCallback(async () => {
     setLoading(true);
     try {
-      const [s, j, a] = await Promise.all([api.getStats(), api.listJobs(), api.getActivity()]);
+      const [s, j, a, statusList] = await Promise.all([
+        api.getStats(),
+        api.listJobs(),
+        api.getActivity(),
+        api.listApplicationStatus({ page: 1, page_size: 1 }).catch(() => null),
+      ]);
       setStats(s);
       setJobs(j);
       setRecent(j.slice(0, 5));
       setActivity(a);
+      setAppSummary(statusList?.summary ?? null);
     } catch (e) {
       console.error(e);
     } finally {
@@ -112,6 +119,35 @@ export default function DashboardPage() {
       </div>
 
       <DashboardHero />
+
+      {/* Application Status snapshot */}
+      <div className="mb-8">
+        <div className="flex items-center justify-between mb-3 px-1">
+          <h2 className="font-semibold text-slate-800 dark:text-slate-100">Application Status</h2>
+          <Link href="/applications/status" className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
+            Open status <ArrowRight size={14} />
+          </Link>
+        </div>
+        <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-4 gap-3">
+          {[
+            { label: "Follow-ups due", value: appSummary?.follow_ups_due ?? 0, href: "/applications/status?follow_up_status=due_today" },
+            { label: "Opened this week", value: appSummary?.opened_this_week ?? 0, href: "/applications/status?status=Application%20Opened" },
+            { label: "Applied this week", value: appSummary?.applied_this_week ?? 0, href: "/applications/status?status=Applied" },
+            { label: "Recruiters contacted", value: appSummary?.recruiter_contacts ?? 0, href: "/applications/status?status=Recruiter%20Contacted" },
+            { label: "Interviews", value: appSummary?.interviews ?? 0, href: "/applications/status?status=Interviewing" },
+            { label: "Offers", value: appSummary?.offers ?? 0, href: "/applications/status?status=Offer" },
+            { label: "Needs action", value: appSummary?.action_needed ?? 0, href: "/applications/status?action_needed=true" },
+            { label: "Total tracked", value: appSummary?.total ?? 0, href: "/applications/status" },
+          ].map((c) => (
+            <Link key={c.label} href={c.href} className="card p-3 hover:border-indigo-300 transition-colors">
+              <p className="text-[11px] text-slate-400 font-medium">{c.label}</p>
+              <p className="text-xl font-bold text-slate-900 dark:text-white mt-1">
+                {loading ? "—" : c.value}
+              </p>
+            </Link>
+          ))}
+        </div>
+      </div>
 
       {/* Stats */}
       <div className="grid grid-cols-2 sm:grid-cols-3 lg:grid-cols-5 gap-4 mb-8">
@@ -162,8 +198,8 @@ export default function DashboardPage() {
           <div className="card">
             <div className="flex items-center justify-between px-5 py-4 border-b border-slate-100 dark:border-slate-800">
               <h2 className="font-semibold text-slate-800 dark:text-slate-100">Recent Applications</h2>
-              <Link href="/jobs" className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
-                View all <ArrowRight size={14} />
+              <Link href="/applications/status" className="text-indigo-600 text-sm font-medium hover:text-indigo-700 flex items-center gap-1">
+                Application Status <ArrowRight size={14} />
               </Link>
             </div>
             <div className="divide-y divide-slate-100 dark:divide-slate-800">

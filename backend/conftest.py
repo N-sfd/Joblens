@@ -7,7 +7,17 @@ os.environ["DATABASE_URL"] = "sqlite://"
 os.environ["ENV"] = "test"
 os.environ["ATS_AUTH_ENFORCE"] = "false"
 os.environ.setdefault("SECRET_KEY", "test-secret-key")
+os.environ.setdefault("EXTENSION_JWT_SECRET", "test-secret-key")
+os.environ.setdefault("EXTENSION_TOKEN_ISSUER", "joblens-extension")
+os.environ.setdefault("EXTENSION_TOKEN_AUDIENCE", "joblens-extension-api")
+os.environ.setdefault("EXTENSION_MIN_VERSION", "0.3.0")
 os.environ.setdefault("STORAGE_PROVIDER", "local")
+os.environ.setdefault("EXTENSION_ENABLED", "true")
+os.environ.setdefault("EXTENSION_ASSISTED_FILL_ENABLED", "true")
+os.environ.setdefault("EXTENSION_DOCUMENT_UPLOAD_ENABLED", "true")
+os.environ.setdefault("EXTENSION_DIAGNOSTICS_ENABLED", "true")
+os.environ.setdefault("EXTENSION_SUBMISSION_CONFIRMATION_ENABLED", "true")
+os.environ.setdefault("EXTENSION_GREENHOUSE_ENABLED", "true")
 
 import pytest
 from fastapi.testclient import TestClient
@@ -20,6 +30,17 @@ from auth import hash_password, create_access_token, COOKIE_NAME
 from models import User
 import models  # noqa: F401 — register all ORM tables
 from main import app
+
+
+@pytest.fixture(autouse=True)
+def _clear_rate_limits():
+    from services import rate_limit as rl
+
+    with rl._lock:
+        rl._hits.clear()
+    yield
+    with rl._lock:
+        rl._hits.clear()
 
 
 @pytest.fixture()

@@ -116,6 +116,7 @@ def _to_public_detail(job: JobRequirement) -> JobRequirementResponse:
         certification_requirement=job.certification_requirement,
         job_description=job.job_description,
         application_url=job.application_url,
+        application_platform=getattr(job, "application_platform", None),
         number_of_openings=job.number_of_openings,
         status=job.status,
         received_at=job.received_at,

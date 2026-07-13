@@ -1,0 +1,51 @@
+{
+  "version": "0.4.0",
+  "build": "production",
+  "timestamp": "2026-07-13T17:29:14.221Z",
+  "commit": "0729a1af86a8d808d71c200545bef6837ce9467d",
+  "apiOrigin": "https://api.joblens.app",
+  "webOrigin": "https://joblens.app",
+  "permissions": [
+    "activeTab",
+    "scripting",
+    "storage"
+  ],
+  "host_permissions": [
+    "https://boards.greenhouse.io/*",
+    "https://job-boards.greenhouse.io/*",
+    "https://api.joblens.app/*",
+    "https://joblens.app/*",
+    "https://www.joblens.app/*"
+  ],
+  "csp": {
+    "extension_pages": "script-src 'self'; object-src 'self'; base-uri 'self'; form-action 'self'"
+  },
+  "artifact": "joblens-greenhouse-extension-v0.4.0.zip",
+  "sha256": "387c3dabb8001236e4cbd662a2ed9848eb40cc7a61bdea443fba581bef2d5321",
+  "file_count": 10,
+  "permissions_summary": {
+    "permissions": [
+      "activeTab",
+      "scripting",
+      "storage"
+    ],
+    "host_permissions": [
+      "https://boards.greenhouse.io/*",
+      "https://job-boards.greenhouse.io/*",
+      "https://api.joblens.app/*",
+      "https://joblens.app/*",
+      "https://www.joblens.app/*"
+    ]
+  },
+  "release_notes": [
+    "Greenhouse-only assisted fill and optional document upload.",
+    "User must click employer Submit and confirm with I Submitted.",
+    "No automatic submission, CAPTCHA bypass, or employer credential storage."
+  ],
+  "excluded": [
+    ".env",
+    "source maps (production)",
+    "dev fixtures",
+    "localhost hosts"
+  ]
+}

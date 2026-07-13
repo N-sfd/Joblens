@@ -156,7 +156,9 @@ def _to_list_item(db: Session, owner: Owner, job: JobApplication) -> Application
         application_method_label=method_label(job.application_method),
         application_source=job.application_source,
         job_url=job.job_url,
-        has_application_url=bool(job.job_url),
+        has_application_url=bool(job.job_url) or bool(
+            (parse_snapshot(job) or {}).get("application_url")
+        ),
         source_job_requirement_id=job.source_job_requirement_id,
         source_job_available=available,
         source_job_closed=closed or (bool(snap) and not available and bool(job.source_job_requirement_id)),
@@ -230,6 +232,12 @@ def _build_timeline(db: Session, owner: Owner, job: JobApplication) -> list[Appl
     add_derived("application_opened", job.application_opened_at, "Application URL opened")
     add_derived("recruiter_contacted", job.recruiter_contacted_at, "Recruiter contacted")
     add_derived("applied", job.applied_at, "Marked as Applied")
+    if getattr(job, "confirmation_number", None) and job.applied_at:
+        add_derived(
+            "submission_confirmed",
+            job.applied_at,
+            f"User confirmed submission" + (f" (#{job.confirmation_number})" if job.confirmation_number else ""),
+        )
     if job.follow_up_date and not any(e.event_type == "reminder_created" for e in events):
         when = job.status_changed_at or job.last_activity_at or job.created_at
         if when:

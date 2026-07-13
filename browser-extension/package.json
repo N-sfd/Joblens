@@ -1,0 +1,24 @@
+{
+  "name": "joblens-browser-extension",
+  "version": "0.4.0",
+  "private": true,
+  "type": "module",
+  "description": "JobLens Phase 5 M4 — Greenhouse assist production packaging",
+  "scripts": {
+    "build": "node scripts/build.mjs",
+    "build:production": "node scripts/build.mjs --production",
+    "dev": "node scripts/build.mjs --watch",
+    "typecheck": "tsc --noEmit",
+    "test": "vitest run",
+    "test:watch": "vitest",
+    "package": "npm run build && node scripts/package.mjs",
+    "package:production": "npm run build:production && node scripts/package.mjs --production"
+  },
+  "devDependencies": {
+    "@types/chrome": "^0.0.287",
+    "esbuild": "^0.25.0",
+    "jsdom": "^26.0.0",
+    "typescript": "^5.7.3",
+    "vitest": "^3.0.5"
+  }
+}

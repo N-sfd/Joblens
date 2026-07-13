@@ -80,6 +80,7 @@ def _to_response(job: JobRequirement) -> JobRequirementResponse:
         certification_requirement=job.certification_requirement,
         job_description=job.job_description,
         application_url=job.application_url,
+        application_platform=getattr(job, "application_platform", None),
         raw_email_text=job.raw_email_text,
         submission_instructions=job.submission_instructions,
         submission_deadline=job.submission_deadline,
@@ -116,6 +117,7 @@ def _get_job_or_404(db: Session, job_id: int) -> JobRequirement:
 def _prepare_create_data(data: dict) -> dict:
     data["required_skills"] = json.dumps(data.pop("required_skills") or [])
     data["preferred_skills"] = json.dumps(data.pop("preferred_skills") or [])
+    data = _apply_url_classification(data)
     return data
 
 
@@ -124,6 +126,38 @@ def _prepare_update_data(data: dict) -> dict:
         data["required_skills"] = json.dumps(data["required_skills"])
     if "preferred_skills" in data and data["preferred_skills"] is not None:
         data["preferred_skills"] = json.dumps(data["preferred_skills"])
+    if "application_url" in data or "application_platform" in data or "recruiter_email" in data:
+        data = _apply_url_classification(data, partial=True)
+    return data
+
+
+def _apply_url_classification(data: dict, *, partial: bool = False) -> dict:
+    """Normalize application_url and set application_platform (Phase 5 M0)."""
+    from services.application_url import (
+        normalize_application_url,
+        classify_platform,
+        PLATFORM_RECRUITER_EMAIL,
+        PLATFORM_UNKNOWN,
+    )
+
+    url = data.get("application_url")
+    email = data.get("recruiter_email")
+    if url is not None or not partial:
+        classified = normalize_application_url(url)
+        if classified.is_valid and classified.normalized_url:
+            data["application_url"] = classified.normalized_url
+            data["application_platform"] = classified.platform
+        elif url is not None and not str(url).strip():
+            data["application_url"] = None
+            if email and str(email).strip():
+                data["application_platform"] = PLATFORM_RECRUITER_EMAIL
+            else:
+                data["application_platform"] = data.get("application_platform") or PLATFORM_UNKNOWN
+        elif classified.error and url:
+            # Keep original string but mark unknown/invalid for operators to fix
+            data["application_platform"] = PLATFORM_UNKNOWN
+        elif not url and email and str(email).strip():
+            data["application_platform"] = PLATFORM_RECRUITER_EMAIL
     return data
 
 
