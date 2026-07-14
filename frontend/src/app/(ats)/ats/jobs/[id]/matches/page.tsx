@@ -87,7 +87,7 @@ export default function JobMatchesPage() {
             <table className="w-full text-sm">
               <thead>
                 <tr className="border-b border-slate-100 bg-slate-50">
-                  {["Employee", "Score", "Primary Skill", "Matching Skills", "Missing Skills", "Work Auth", "Availability", "Rate", "Warnings", ""].map((h) => (
+                  {["Candidate", "Score", "Primary Skill", "Matching Skills", "Missing Skills", "Work Auth", "Availability", "Rate", "Warnings", ""].map((h) => (
                     <th key={h || "actions"} className="text-left px-3 py-3 text-xs font-semibold text-slate-500 uppercase tracking-wider whitespace-nowrap">{h}</th>
                   ))}
                 </tr>

@@ -74,7 +74,7 @@ export default function SendJobModal({ jobId, jobTitle, match, onClose, onSent }
       >
         <div className="flex items-start justify-between gap-3 px-6 py-4 border-b border-slate-100">
           <div>
-            <h2 className="font-bold text-slate-900">Send Job to Employee</h2>
+            <h2 className="font-bold text-slate-900">Send Job to Candidate</h2>
             <p className="text-sm text-slate-500 mt-0.5">
               {match.employee_name} · {jobTitle} · {match.match_score}% match
             </p>
@@ -92,7 +92,7 @@ export default function SendJobModal({ jobId, jobTitle, match, onClose, onSent }
             <>
               <p className="text-xs text-slate-500 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
                 Review the email below. Copy it to your mail client, send manually, then click <strong>Mark as Sent</strong> to track the outreach.
-                {employeeEmail ? ` Employee email: ${employeeEmail}` : " (No employee email on file.)"}
+                {employeeEmail ? ` Candidate email: ${employeeEmail}` : " (No candidate email on file.)"}
               </p>
               <label className="block">
                 <span className="label">Subject</span>

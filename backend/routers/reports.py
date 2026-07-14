@@ -12,13 +12,14 @@ from datetime import date, datetime, time, timedelta
 from typing import Any, Optional
 from urllib.parse import quote
 
-from fastapi import APIRouter, Depends, HTTPException, Query
+from fastapi import APIRouter, Depends, HTTPException, Query, Request
 from fastapi.responses import StreamingResponse
 from sqlalchemy import and_, func, or_
 from sqlalchemy.orm import Session, Query as SAQuery
 
 from ats_auth import AtsPrincipal, get_current_ats_user
 from database import get_db
+from services.rate_limit import rate_limit_csv_export
 from models import (
     CRMActivity,
     CRMContact,
@@ -31,6 +32,7 @@ from models import (
     ReportEnvelope,
     Submission,
 )
+from services.csv_safe import csv_safe_row
 from services.candidate_status import (
     CANDIDATE_STATUS_GROUPS,
     normalize_candidate_status,
@@ -1357,15 +1359,7 @@ async def reports_follow_ups(
 
 
 def _csv_escape_row(values: list[Any]) -> list[str]:
-    out = []
-    for v in values:
-        if v is None:
-            out.append("")
-        elif isinstance(v, datetime):
-            out.append(v.isoformat())
-        else:
-            out.append(str(v))
-    return out
+    return csv_safe_row(values)
 
 
 def _streaming_csv(headers: list[str], rows: list[list[Any]], filename: str) -> StreamingResponse:
@@ -1394,6 +1388,7 @@ def _streaming_csv(headers: list[str], rows: list[list[Any]], filename: str) -> 
 
 @router.get("/export")
 async def reports_export(
+    request: Request,
     report_type: str = Query(..., description="overview|jobs|candidates|pipeline|contacts|activity|follow-ups"),
     format: str = Query("csv"),
     preset: str = Query("last_30_days"),
@@ -1412,6 +1407,7 @@ async def reports_export(
     principal: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
+    rate_limit_csv_export(request, user_id=principal.user_id)
     if format.lower() != "csv":
         raise HTTPException(status_code=422, detail="Only format=csv is supported")
     rt = report_type.strip().lower()

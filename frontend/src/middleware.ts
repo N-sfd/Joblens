@@ -11,6 +11,7 @@ const LEGACY_ATS_REDIRECTS: Record<string, string> = {
   "/job-requirements": "/ats/jobs",
   "/employees": "/ats/candidates",
   "/ats/employee-resumes": "/ats/candidates",
+  "/ats/job-requirements": "/ats/jobs",
 };
 
 const LEGACY_ATS_EXACT: Record<string, string> = {
@@ -20,6 +21,9 @@ const LEGACY_ATS_EXACT: Record<string, string> = {
   "/ats/recruiters": "/ats/contacts?type=recruiter",
   "/ats/clients": "/ats/contacts?view=companies&type=client",
   "/ats/vendors": "/ats/contacts?view=companies&type=vendor",
+  "/ats/companies": "/ats/contacts?view=companies",
+  "/ats/interviews": "/ats/pipeline?stage_group=interview",
+  "/ats/offers": "/ats/pipeline?stage_group=offer",
 };
 
 function mapSubmissionsQueryToPipeline(search: string): string {
@@ -72,6 +76,20 @@ function applyLegacyRedirects(req: NextRequest) {
   if (pathname.startsWith("/ats/submissions/")) {
     const target = pathname.replace("/ats/submissions", "/ats/pipeline");
     const url = new URL(target, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+  // /ats/job-requirements/:id → /ats/jobs/:id
+  if (pathname.startsWith("/ats/job-requirements/")) {
+    const target = pathname.replace("/ats/job-requirements", "/ats/jobs");
+    const url = new URL(target, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+  // /ats/companies/:id → /ats/contacts/companies/:id
+  if (pathname.startsWith("/ats/companies/")) {
+    const rest = pathname.slice("/ats/companies/".length);
+    const url = new URL(`/ats/contacts/companies/${rest}`, req.url);
     url.search = req.nextUrl.search;
     return NextResponse.redirect(url);
   }

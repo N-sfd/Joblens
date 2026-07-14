@@ -1,150 +1,109 @@
-# ApplyPilot AI
+# JobLens — Recruitment CRM + ATS
 
-**ApplyPilot AI** is an AI-powered resume analyzer and job tracking platform. Users can analyze resumes, compare them against job descriptions, receive ATS-style feedback, identify missing keywords, generate tailored suggestions, and track applications through a dashboard.
+Unified staffing CRM and applicant tracking for Consult America / JobLens operators.
 
-The app includes a resume analyzer, job matcher, job tracker, cover letter assistant, and AI-generated recommendations — powered by a live agent activity feed that shows every step the AI takes in real time.
+## Product scope
 
-## Features
+Primary navigation:
 
-| Feature | Description |
-|---|---|
-| **Resume Analyzer** | Upload PDF/DOCX and get ATS score, skill analysis, and recommendations |
-| **Job Tracker** | Kanban-style tracker for all your applications |
-| **Job Matcher** | Paste a job description and get a match score + tailoring suggestions |
-| **Cover Letter Generator** | AI-generates a tailored cover letter in your chosen tone |
+1. Dashboard  
+2. Zoho Inbox  
+3. Jobs  
+4. Candidates  
+5. Pipeline  
+6. Contacts  
+7. Reports  
+8. Settings  
 
-## Public access (no login)
+The standalone job-seeker experience (Resume Analyzer, Discover Jobs, Job Matcher, browser extension pairing, etc.) remains in the repository behind `SEEKER_PRODUCT_ENABLED` / `NEXT_PUBLIC_SEEKER_PRODUCT_ENABLED` and is **not** the production CRM surface.
 
-This app is **fully public** — there is no user authentication, no `middleware.ts`, and no NextAuth (or similar). Anyone with the link can use every feature immediately.
+## Architecture
 
-| Area | Behavior |
-|---|---|
-| Resume / Match / Cover letter | No account; calls go straight to the API |
-| Job tracker | Each browser gets a random **`guestId`** in `localStorage`; sent as **`X-Guest-Id`** so your jobs stay private to that device |
-| Resume text & match context | Stored in `localStorage` only (not synced to a server) |
+- **Frontend:** Next.js (App Router), TypeScript, Tailwind — `frontend/`  
+- **Backend:** FastAPI, SQLAlchemy, Alembic — `backend/`  
+- **Auth:** Clerk (ATS session JWT verified on the API)  
+- **Database:** PostgreSQL in production (SQLite for local/dev only)  
+- **AI:** Groq / OpenAI-compatible parsing (server-side keys only)  
+- **Integrations:** Zoho Mail (optional)
 
-### If Vercel shows a login screen
+```mermaid
+flowchart LR
+    User --> Frontend
+    Frontend --> Clerk
+    Frontend --> Backend
+    Backend --> PostgreSQL
+    Backend --> FileStorage
+    Backend --> Zoho
+    Backend --> AI
+```
 
-That is usually **Vercel Deployment Protection**, not this app’s code. To allow public visitors:
-
-1. Vercel project → **Settings** → **Deployment Protection**
-2. Turn off **Vercel Authentication** / password protection for **Production** (or add your share link as an exception)
-3. Redeploy
-
-There is no Sign In / Sign Up in the UI and no route guards in the codebase.
-
----
-
-- **Frontend**: Next.js 14 (App Router), Tailwind CSS, TypeScript
-- **Backend**: FastAPI, SQLAlchemy, SQLite
-- **AI**: Claude (claude-sonnet-4-6) via Anthropic SDK
-- **Deploy**: Vercel (frontend) + Render (backend)
-
----
-
-## Local Development
-
-### Prerequisites
-
-- Python 3.11+
-- Node.js 18+
-- Anthropic API key → [console.anthropic.com](https://console.anthropic.com)
+## Local setup
 
 ### Backend
 
 ```bash
 cd backend
 python -m venv .venv
-source .venv/bin/activate   # Windows: .venv\Scripts\activate
+# Windows: .venv\Scripts\activate
+source .venv/bin/activate
 pip install -r requirements.txt
-cp .env.example .env        # add your ANTHROPIC_API_KEY
+cp .env.example .env
 uvicorn main:app --reload --port 8000
 ```
-
-API docs: http://localhost:8000/docs
 
 ### Frontend
 
 ```bash
 cd frontend
 npm install
-cp .env.example .env.local  # NEXT_PUBLIC_API_URL=http://localhost:8000
+cp .env.example .env.local
 npm run dev
 ```
 
-App: http://localhost:3000
+CRM UI: http://localhost:3000/ats  
 
----
+See [docs/ENVIRONMENT_VARIABLES.md](./docs/ENVIRONMENT_VARIABLES.md).
 
-## Deploy for Free
+## Database migrations
 
-See **[PRODUCTION.md](./PRODUCTION.md)** for the current Postgres + Clerk + Zoho production checklist.
-
-### Backend → Render (summary)
-
-1. Push this repo to GitHub.
-2. Render → **Blueprint** using `render.yaml` (creates Postgres + web service), **or** New Web Service with Root Directory `backend`.
-3. Start command: `python -m alembic upgrade head && uvicorn main:app --host 0.0.0.0 --port $PORT`
-4. Set secrets: `GROQ_API_KEY`, `ALLOWED_ORIGINS`, Clerk, Zoho, `TOKEN_ENCRYPTION_KEY`. Keep `ATS_AUTH_ENFORCE=true`.
-5. Confirm `https://<service>.onrender.com/health`.
-
-### Frontend → Vercel
-
-1. Go to [vercel.com](https://vercel.com) → **Add New Project** → import repo.
-2. Set **Root Directory** to `frontend`.
-3. Add **one** of these (required — otherwise the UI calls `localhost` and shows “Failed to fetch”):
-   - **Recommended:** `BACKEND_URL` = your Render **service root only**, e.g. `https://joblens-api.onrender.com` — **do not** add `/api` (that would produce `/api/api/...` and **Not Found**). The app proxies `/api/*` to FastAPI via `app/api/[[...path]]` at **request time** (set `BACKEND_URL` on Vercel and redeploy).
-   - **Alternative:** `NEXT_PUBLIC_API_URL` = the same backend URL. The browser calls the API directly; use **https** and set `ALLOWED_ORIGINS` on the backend to your Vercel site.
-4. Add Clerk keys (`NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY`, `CLERK_SECRET_KEY`).
-5. Redeploy after changing env vars so serverless picks up `BACKEND_URL`.
-6. Deploy — Vercel auto-detects Next.js.
-
----
-
-## Environment Variables
-
-### Backend (`backend/.env`)
-
-| Variable | Description |
-|---|---|
-| `ANTHROPIC_API_KEY` | Your Anthropic API key |
-| `DATABASE_URL` | SQLite path (default: `sqlite:///./aijob.db`) |
-| `ALLOWED_ORIGINS` | Comma-separated browser origins allowed for CORS. Use full URLs (`https://your-app.vercel.app`) or hostnames without scheme (`your-app.vercel.app` → `https://…`). Include `http://localhost:3000` for local dev if needed. |
-
-### Frontend (`frontend/.env.local` or Vercel env)
-
-| Variable | Description |
-|---|---|
-| `NEXT_PUBLIC_API_URL` | Backend URL for **local** dev (default in browser on `localhost` is `http://localhost:8000` if unset). On Vercel you can use this **or** `BACKEND_URL`. |
-| `BACKEND_URL` | **Vercel (recommended):** backend origin only, e.g. `https://joblens-api.onrender.com` — **not** `.../api` or `.../docs`. Read at runtime by the `/api/*` proxy route (`app/api/[[...path]]`). The browser calls same-origin `/api/...`; the server forwards to FastAPI. |
-
----
-
-## Project Structure
-
+```bash
+cd backend
+python -m alembic upgrade head
+python -m alembic current
 ```
-AIJob-Analyzer/
-├── backend/
-│   ├── main.py              # FastAPI app + CORS
-│   ├── database.py          # SQLAlchemy engine + session
-│   ├── models.py            # ORM + Pydantic schemas
-│   ├── services/
-│   │   └── claude_service.py  # All Claude API calls
-│   ├── routers/
-│   │   ├── resume.py        # File upload + analysis
-│   │   ├── jobs.py          # CRUD for job applications
-│   │   ├── match.py         # Resume vs JD matching
-│   │   └── cover_letter.py  # Cover letter generation
-│   ├── requirements.txt
-│   └── Dockerfile
-├── frontend/
-│   ├── src/
-│   │   ├── app/             # Next.js App Router pages
-│   │   ├── components/      # Sidebar, ScoreCircle, StatusBadge
-│   │   ├── lib/api.ts       # Typed API client
-│   │   └── types/index.ts   # Shared TypeScript types
-│   ├── package.json
-│   └── tailwind.config.ts
-├── render.yaml              # Render one-click deploy
-└── .gitignore
+
+## Tests & build
+
+```bash
+cd backend && python -m pytest -q
+cd frontend && npx tsc --noEmit && npm run build
 ```
+
+Production smoke (no writes):
+
+```bash
+cd backend
+SMOKE_BASE_URL=https://your-api.example.com python scripts/production_smoke_test.py
+```
+
+## Roles
+
+`admin` · `manager` · `recruiter` · `read_only`  
+
+Details: [docs/ROLE_PERMISSION_MATRIX.md](./docs/ROLE_PERMISSION_MATRIX.md)
+
+## Deployment
+
+- [docs/PRODUCTION_DEPLOYMENT.md](./docs/PRODUCTION_DEPLOYMENT.md)  
+- [docs/PRODUCTION_QA_CHECKLIST.md](./docs/PRODUCTION_QA_CHECKLIST.md)  
+- [docs/DATABASE_BACKUP_AND_RESTORE.md](./docs/DATABASE_BACKUP_AND_RESTORE.md)  
+- [docs/ROLLBACK_PLAN.md](./docs/ROLLBACK_PLAN.md)  
+- [docs/SECURITY_REVIEW.md](./docs/SECURITY_REVIEW.md)  
+- [docs/ROUTE_CONSOLIDATION.md](./docs/ROUTE_CONSOLIDATION.md)  
+- [docs/RELEASE_NOTES_v1.0.0.md](./docs/RELEASE_NOTES_v1.0.0.md)  
+
+Legacy deploy notes also in [PRODUCTION.md](./PRODUCTION.md).
+
+## License / private use
+
+Internal recruitment operations tooling — do not commit secrets, résumé dumps, or database backups.

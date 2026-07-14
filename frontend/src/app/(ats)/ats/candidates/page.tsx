@@ -187,7 +187,7 @@ function CandidatesPageInner() {
         <div>
           <p className="page-kicker">ATS</p>
           <h1 className="page-title">Candidates</h1>
-          <p className="page-subtitle">Employees, consultants, and resumes in one place.</p>
+          <p className="page-subtitle">Candidates, consultants, and resumes in one place.</p>
         </div>
         {canWrite && (
           <div className="flex flex-wrap gap-2 shrink-0">

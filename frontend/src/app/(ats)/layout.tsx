@@ -30,6 +30,7 @@ export default function AtsLayout({ children }: { children: React.ReactNode }) {
           </Link>
           <AtsHeaderAccount />
         </header>
+        <AtsNav compact />
         <main className="flex-1">
           <AtsAccessGate>{children}</AtsAccessGate>
         </main>

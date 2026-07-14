@@ -196,7 +196,7 @@ export default function AtsDashboardPage() {
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-slate-900">Recent Activity</h3>
-              <Link href="/ats/activities" className="text-xs text-indigo-600 hover:underline">View all</Link>
+              <Link href="/ats/reports?tab=activity" className="text-xs text-indigo-600 hover:underline">View report</Link>
             </div>
             {data.recent_activities.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-8">No recent activity yet.</p>
@@ -235,7 +235,7 @@ export default function AtsDashboardPage() {
           <div className="card p-5">
             <div className="flex items-center justify-between mb-3">
               <h3 className="font-semibold text-slate-900">Follow-Ups Due</h3>
-              <Link href="/ats/activities" className="text-xs text-indigo-600 hover:underline">View all</Link>
+              <Link href="/ats/pipeline?follow_up=due" className="text-xs text-indigo-600 hover:underline">View due</Link>
             </div>
             {data.follow_ups_due.length === 0 ? (
               <p className="text-sm text-slate-400 text-center py-6">No follow-ups due.</p>

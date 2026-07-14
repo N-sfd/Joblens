@@ -60,7 +60,7 @@ export default function EditJobRequirementPage() {
       </Link>
       <div className="mb-6">
         <p className="page-kicker">ATS</p>
-        <h1 className="page-title">Edit Job Requirement</h1>
+        <h1 className="page-title">Edit Job</h1>
       </div>
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}
       <div className="card p-6">
