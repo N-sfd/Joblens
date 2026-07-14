@@ -8,13 +8,21 @@ function normalizeOrigin(url: string): string {
 
 /** Base URL for FastAPI (no trailing slash). See README / .env.example for Vercel + Render. */
 function getApiBase(): string {
-  const nextPublic = process.env.NEXT_PUBLIC_API_URL?.trim();
-  if (nextPublic) return normalizeOrigin(nextPublic);
+  // Browser on deployed hosts: always same-origin `/api` → Vercel proxy (`BACKEND_URL`).
+  // A baked-in NEXT_PUBLIC_API_URL often points at a sleeping Render host or an origin
+  // missing from ALLOWED_ORIGINS (e.g. staging-rc), which surfaces as "Failed to fetch".
   if (typeof window !== "undefined") {
-    if (window.location.hostname === "localhost") return "http://localhost:8000";
+    const host = window.location.hostname;
+    if (host === "localhost" || host === "127.0.0.1") {
+      const nextPublic = process.env.NEXT_PUBLIC_API_URL?.trim();
+      return nextPublic ? normalizeOrigin(nextPublic) : "http://localhost:8000";
+    }
     return "";
   }
-  const serverBackend = process.env.BACKEND_URL?.trim() || "http://localhost:8000";
+  const serverBackend =
+    process.env.BACKEND_URL?.trim() ||
+    process.env.NEXT_PUBLIC_API_URL?.trim() ||
+    "http://localhost:8000";
   return normalizeOrigin(serverBackend);
 }
 
