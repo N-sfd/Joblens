@@ -47,13 +47,14 @@ Add for Preview + Production before treating RC as signed off. Also set seeker f
 | Deploy type | Vercel **Preview** (not `--prod`) |
 | Branch | `crm-consolidation/production-readiness` |
 | Preview URL | https://joblens-fc3dkuub5-n-sfds-projects.vercel.app |
+| Staging RC alias | https://joblens-staging-rc.vercel.app |
 | Inspect | https://vercel.com/n-sfds-projects/joblens/9Y22gLtMN94CqNhDtQ7JRB5ZLvB6 |
 | Production alias | Do **not** retarget until hard GO |
 
 Record additional smoke targets:
 
 ```text
-RC_URL=https://joblens-fc3dkuub5-n-sfds-projects.vercel.app
+RC_URL=https://joblens-staging-rc.vercel.app
 SMOKE_BASE_URL=          # backend staging / Render RC — still required
 Inspect=https://vercel.com/n-sfds-projects/joblens/9Y22gLtMN94CqNhDtQ7JRB5ZLvB6
 ```
