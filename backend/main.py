@@ -5,7 +5,7 @@ from dotenv import load_dotenv
 from pathlib import Path
 import os
 
-load_dotenv(Path(__file__).resolve().parent / ".env")
+load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
 from database import create_tables
 from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
@@ -74,7 +74,14 @@ def _parse_allowed_origins(raw: str) -> list[str]:
     return [o for o in origins if o] or ["http://localhost:3000"]
 
 
-allowed_origins = _parse_allowed_origins(os.getenv("ALLOWED_ORIGINS", "http://localhost:3000"))
+# Include both localhost and 127.0.0.1 — browsers treat them as different
+# origins, and a mismatch surfaces as "Failed to fetch" on JobLens sign-in.
+allowed_origins = _parse_allowed_origins(
+    os.getenv(
+        "ALLOWED_ORIGINS",
+        "http://localhost:3000,http://127.0.0.1:3000,http://localhost:3001,http://127.0.0.1:3001",
+    )
+)
 
 app.add_middleware(
     CORSMiddleware,

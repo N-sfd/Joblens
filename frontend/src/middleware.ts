@@ -2,9 +2,9 @@ import { NextResponse } from "next/server";
 import type { NextRequest } from "next/server";
 import { clerkMiddleware, createRouteMatcher } from "@clerk/nextjs/server";
 
-// PROTECTED (requires Clerk sign-in): ATS/admin routes only.
-// Everything else stays public for job seekers.
-const isAtsPath = (pathname: string) => pathname === "/ats" || pathname.startsWith("/ats/");
+// Only run this middleware on ATS + legacy CRM paths. Job-seeker pages
+// (/ , /match, /dashboard, …) skip Clerk entirely so local Next stays responsive.
+const isProtectedAtsRoute = createRouteMatcher(["/ats", "/ats/(.*)"]);
 
 const LEGACY_ATS_REDIRECTS: Record<string, string> = {
   "/job-requirements": "/ats/jobs",
@@ -29,17 +29,13 @@ const hasClerk =
 function publicMiddleware(req: NextRequest) {
   const redirected = applyLegacyRedirects(req);
   if (redirected) return redirected;
-  if (isAtsPath(req.nextUrl.pathname)) {
+  if (isProtectedAtsRoute(req)) {
     const signInUrl = new URL("/sign-in", req.url);
     signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
     return NextResponse.redirect(signInUrl);
   }
   return NextResponse.next();
 }
-
-// Only construct clerkMiddleware when keys exist — calling it without
-// CLERK_SECRET_KEY fails Vercel production builds and leaves prod stale.
-const isProtectedAtsRoute = createRouteMatcher(["/ats", "/ats/(.*)"]);
 
 export default hasClerk
   ? clerkMiddleware(async (auth, req) => {
@@ -60,7 +56,11 @@ export default hasClerk
 
 export const config = {
   matcher: [
-    "/((?!_next|.*\\..*).*)",
-    "/(api|trpc)(.*)",
+    "/ats",
+    "/ats/(.*)",
+    "/job-requirements",
+    "/job-requirements/(.*)",
+    "/employees",
+    "/employees/(.*)",
   ],
 };

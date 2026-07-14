@@ -1,0 +1,28 @@
+﻿{
+  "id": "dpl_HHpCtbWJzoLxx3HnrEUkYuBL6Z2C",
+  "name": "joblens",
+  "url": "joblens-2d03hlwpa-n-sfds-projects.vercel.app",
+  "target": "production",
+  "readyState": "ERROR",
+  "createdAt": 1783972980722,
+  "aliases": [
+    "joblens-n-sfds-projects.vercel.app",
+    "joblens-git-main-n-sfds-projects.vercel.app"
+  ],
+  "builds": [
+    {
+      "id": "bld_fju9za25s",
+      "deploymentId": "dpl_HHpCtbWJzoLxx3HnrEUkYuBL6Z2C",
+      "entrypoint": ".",
+      "readyState": "READY",
+      "readyStateAt": 1783972980548,
+      "createdAt": 1783972980548,
+      "createdIn": "sfo1",
+      "use": "@vercel/vc-build",
+      "config": {},
+      "output": [],
+      "fingerprint": null
+    }
+  ],
+  "contextName": "n-sfds-projects"
+}
