@@ -1411,6 +1411,8 @@ class EmployeeResponse(EmployeeBase):
     name: str
     email: str
     status: str
+    # Display-layer status (services/candidate_status.py) — never rewrites `status`.
+    status_display: Optional[str] = None
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -1419,11 +1421,16 @@ class EmployeeResponse(EmployeeBase):
 
 
 class EmployeeListItem(EmployeeResponse):
-    """Employee row for the ATS list view — includes resume summary metadata."""
+    """Candidate/Employee row for the unified Candidates list — counts only, no resume text."""
 
     resume_count: int = 0
     resume_status: str = "None"  # None | Parsed | Failed
     has_primary_resume: bool = False
+    match_count: int = 0
+    submission_count: int = 0
+    interview_count: int = 0
+    offer_count: int = 0
+    last_activity_at: Optional[datetime] = None
 
 
 class EmployeeListResponse(BaseModel):
@@ -1436,6 +1443,31 @@ class EmployeeListResponse(BaseModel):
 
 class EmployeeStatusUpdate(BaseModel):
     status: str
+
+
+class CandidateDuplicateMatch(BaseModel):
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    status: str
+    status_display: str
+    match_reason: str  # email | phone | external_id | name_phone | name_email
+
+
+class CandidateDuplicateCheckResponse(BaseModel):
+    matches: list[CandidateDuplicateMatch]
+    blocked: bool = False  # True when exact email/phone match (prefer open existing)
+
+
+class CandidateCounts(BaseModel):
+    resumes: int = 0
+    matches: int = 0
+    active_submissions: int = 0
+    interviews: int = 0
+    offers: int = 0
+    placements: int = 0
+    open_follow_ups: int = 0
 
 
 # --- Employee Resume (ATS) schemas ---

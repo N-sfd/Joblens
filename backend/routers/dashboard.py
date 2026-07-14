@@ -35,6 +35,10 @@ from models import (
 )
 from ats_auth import AtsPrincipal, get_current_ats_user
 from services.job_status import _ALL_KNOWN_RAW_STATUSES, raw_statuses_matching_group
+from services.candidate_status import (
+    raw_statuses_matching_group as candidate_raw_statuses_matching_group,
+    _STATUS_DISPLAY_MAP as _CANDIDATE_STATUS_MAP,
+)
 
 router = APIRouter()
 
@@ -44,6 +48,10 @@ ORG_WIDE_ROLES = ("admin", "manager", "read_only")
 # module's `status_group=open` filter (services/job_status.py) — the
 # Dashboard count and the Jobs list must never diverge.
 _OPEN_STATUSES, _OPEN_INCLUDES_UNMAPPED = raw_statuses_matching_group("open")
+
+# "Active Candidates" matches Candidates list `status_group=active`.
+_ACTIVE_CAND_STATUSES, _ACTIVE_CAND_INCLUDES_UNMAPPED = candidate_raw_statuses_matching_group("active")
+_ALL_KNOWN_CAND_RAW = set(_CANDIDATE_STATUS_MAP.keys())
 
 SUBMITTED_OR_LATER_STATUSES = {"Submitted", "Client Review", "Interview", "Offer", "Selected"}
 ACTIVE_OFFER_STATUSES = {"Draft", "Extended", "Accepted"}
@@ -138,6 +146,15 @@ async def get_dashboard_summary(
         or_(JobRequirement.status.in_(_OPEN_STATUSES), ~JobRequirement.status.in_(_ALL_KNOWN_RAW_STATUSES))
         if _OPEN_INCLUDES_UNMAPPED else JobRequirement.status.in_(_OPEN_STATUSES)
     )
+    active_candidates_filter = (
+        or_(
+            Employee.status.in_(list(_ACTIVE_CAND_STATUSES)),
+            ~Employee.status.in_(list(_ALL_KNOWN_CAND_RAW)),
+            Employee.status.is_(None),
+        )
+        if _ACTIVE_CAND_INCLUDES_UNMAPPED
+        else Employee.status.in_(list(_ACTIVE_CAND_STATUSES))
+    )
 
     counts = DashboardSummaryCounts(
         open_jobs=scoped_count(JobRequirement, open_jobs_filter),
@@ -146,7 +163,7 @@ async def get_dashboard_summary(
             JobRequirement.source.ilike("%zoho%"),
             JobRequirement.created_at >= week_ago,
         ),
-        active_candidates=scoped_count(Employee, Employee.status == "Active"),
+        active_candidates=scoped_count(Employee, active_candidates_filter),
         candidates_submitted=scoped_count(Submission, Submission.status.in_(SUBMITTED_OR_LATER_STATUSES)),
         interviews_scheduled=scoped_count(Interview, Interview.status == "Scheduled"),
         offers=scoped_count(Offer, Offer.status.in_(ACTIVE_OFFER_STATUSES)),

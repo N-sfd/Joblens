@@ -121,6 +121,9 @@ if SEEKER_PRODUCT_ENABLED:
 # Private ATS data — Clerk JWT verification via ats_auth.py (set ATS_AUTH_ENFORCE=true in production).
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
+# Unified Candidates aliases — same Employee entity, no parallel table.
+app.include_router(employees.router, prefix="/api/candidates", tags=["Candidates (ATS)"])
+app.include_router(employee_resumes.router, prefix="/api/candidates", tags=["Candidate Resumes (ATS)"])
 app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
 app.include_router(job_sends.router, prefix="/api/job-sends", tags=["Job Sends (ATS)"])
 app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions (ATS)"])

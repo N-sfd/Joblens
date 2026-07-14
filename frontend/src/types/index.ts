@@ -393,6 +393,7 @@ export type EmployeeStatus = "Active" | "Inactive" | "On Project" | "Bench" | "D
 export interface Employee {
   id: number;
   name: string;
+  status_display?: string | null;
   employee_code: string | null;
   first_name: string | null;
   middle_name: string | null;
@@ -476,6 +477,11 @@ export interface EmployeeListItem extends Employee {
   resume_count: number;
   resume_status: "None" | "Parsed" | "Failed";
   has_primary_resume: boolean;
+  match_count?: number;
+  submission_count?: number;
+  interview_count?: number;
+  offer_count?: number;
+  last_activity_at?: string | null;
 }
 
 export interface EmployeeListResponse {
@@ -488,19 +494,66 @@ export interface EmployeeListResponse {
 
 export interface EmployeeListParams {
   q?: string;
+  email?: string;
+  phone?: string;
   status?: string;
+  status_group?: string;
   availability?: string;
   work_authorization?: string;
+  visa_status?: string;
   primary_skill?: string;
   location?: string;
   employment_type?: string;
+  source?: string;
+  has_resume?: boolean;
+  has_matches?: boolean;
+  has_submissions?: boolean;
   archived?: boolean;
+  sort?: string;
   page?: number;
   page_size?: number;
 }
 
+export interface CandidateDuplicateMatch {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string | null;
+  status: string;
+  status_display: string;
+  match_reason: string;
+}
+
+export interface CandidateDuplicateCheckResponse {
+  matches: CandidateDuplicateMatch[];
+  blocked: boolean;
+}
+
+export interface CandidateCounts {
+  resumes: number;
+  matches: number;
+  active_submissions: number;
+  interviews: number;
+  offers: number;
+  placements: number;
+  open_follow_ups: number;
+}
+
 export const EMPLOYEE_STATUSES = [
   "Active", "Bench", "On Project", "Available Soon", "Inactive", "Do Not Contact", "Former Employee",
+] as const;
+export const CANDIDATE_DISPLAY_STATUSES = [
+  "New", "Active", "Submitted", "Interviewing", "Offered", "Placed", "Rejected", "Inactive",
+] as const;
+export const CANDIDATE_SORT_OPTIONS = [
+  ["last_activity", "Last activity"],
+  ["newest", "Newest"],
+  ["name", "Name"],
+  ["title", "Current title"],
+  ["experience", "Experience"],
+  ["matches", "Match count"],
+  ["submissions", "Submission count"],
+  ["availability", "Availability"],
 ] as const;
 export const EMPLOYMENT_TYPES = [
   "W2 Employee", "C2C Consultant", "1099 Consultant", "Contractor", "Candidate", "Internal Employee",

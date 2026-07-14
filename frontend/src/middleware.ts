@@ -9,14 +9,33 @@ const isProtectedAtsRoute = createRouteMatcher(["/ats", "/ats/(.*)"]);
 
 const LEGACY_ATS_REDIRECTS: Record<string, string> = {
   "/job-requirements": "/ats/jobs",
-  "/employees": "/ats/employees",
+  "/employees": "/ats/candidates",
+  "/ats/employee-resumes": "/ats/candidates",
   "/ats/recruiters": "/ats/contacts",
   "/ats/vendors": "/ats/contacts",
   "/ats/clients": "/ats/contacts",
 };
 
+const LEGACY_ATS_EXACT: Record<string, string> = {
+  "/ats/employees": "/ats/candidates",
+  "/ats/employees/new": "/ats/candidates/new",
+  "/ats/employees/new-from-resume": "/ats/candidates/new?mode=resume",
+};
+
 function applyLegacyRedirects(req: NextRequest) {
   const { pathname } = req.nextUrl;
+
+  if (LEGACY_ATS_EXACT[pathname]) {
+    return NextResponse.redirect(new URL(LEGACY_ATS_EXACT[pathname], req.url));
+  }
+  // /ats/employees/:id[/edit] → /ats/candidates/:id[/edit]
+  if (pathname.startsWith("/ats/employees/")) {
+    const target = pathname.replace("/ats/employees", "/ats/candidates");
+    const url = new URL(target, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+
   for (const [legacyPrefix, targetPrefix] of Object.entries(LEGACY_ATS_REDIRECTS)) {
     if (pathname === legacyPrefix || pathname.startsWith(`${legacyPrefix}/`)) {
       const target = pathname.replace(legacyPrefix, targetPrefix);

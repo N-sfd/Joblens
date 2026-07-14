@@ -14,11 +14,16 @@ from models import (
     EmployeeResume,
     EmployeeResumeResponse,
     EmployeeResponse,
+    Interview,
+    JobEmployeeSend,
+    Offer,
     ResumeUploadResult,
     ResumeFieldSuggestion,
     ApplyResumeSuggestionsRequest,
+    Submission,
 )
 from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
+from sqlalchemy import func
 import services.storage as storage
 from services.audit import log_audit
 from services.claude_service import parse_employee_resume
@@ -28,10 +33,11 @@ router = APIRouter()
 
 # File storage is pluggable — see services/storage.py (STORAGE_PROVIDER env var:
 # local | supabase).
-ALLOWED_EXTENSIONS = {".pdf", ".docx", ".txt"}
+ALLOWED_EXTENSIONS = {".pdf", ".docx", ".doc", ".txt"}
 ALLOWED_MIME_TYPES = {
     "application/pdf",
     "application/vnd.openxmlformats-officedocument.wordprocessingml.document",
+    "application/msword",
     "application/octet-stream",  # some browsers send this for docx
     "text/plain",
     "",  # some clients omit content-type
@@ -347,6 +353,7 @@ async def get_latest_employee_resume(
 
 
 @router.post("/{employee_id}/resumes/{resume_id}/primary", response_model=EmployeeResumeResponse)
+@router.patch("/{employee_id}/resumes/{resume_id}/primary", response_model=EmployeeResumeResponse)
 async def set_primary_resume(
     employee_id: int,
     resume_id: int,
@@ -445,6 +452,52 @@ async def delete_employee_resume(
     resume = _get_resume_or_404(db, employee_id, resume_id)
     was_primary = resume.is_primary
 
+    # No direct resume FK on submissions — protect when the candidate has
+    # business history (submissions / interviews / offers / saved matches).
+    deps = (
+        (db.query(func.count(Submission.id)).filter(Submission.employee_id == employee_id).scalar() or 0)
+        + (
+            db.query(func.count(Interview.id))
+            .join(Submission, Submission.id == Interview.submission_id)
+            .filter(Submission.employee_id == employee_id)
+            .scalar() or 0
+        )
+        + (
+            db.query(func.count(Offer.id))
+            .join(Submission, Submission.id == Offer.submission_id)
+            .filter(Submission.employee_id == employee_id)
+            .scalar() or 0
+        )
+        + (
+            db.query(func.count(JobEmployeeSend.id))
+            .filter(JobEmployeeSend.employee_id == employee_id)
+            .scalar() or 0
+        )
+    )
+    if deps:
+        resume.parsing_status = "archived"
+        resume.is_primary = False
+        if was_primary:
+            latest = (
+                db.query(EmployeeResume)
+                .filter(
+                    EmployeeResume.employee_id == employee_id,
+                    EmployeeResume.id != resume_id,
+                    EmployeeResume.parsing_status != "archived",
+                )
+                .order_by(EmployeeResume.uploaded_at.desc())
+                .first()
+            )
+            if latest:
+                latest.is_primary = True
+        db.commit()
+        log_audit(
+            db, "resume.archived", "employee_resume", resume_id,
+            f"Archived resume for candidate {employee_id} (dependent records)",
+            principal.user_id,
+        )
+        return {"message": "Resume archived because dependent records exist.", "archived": True}
+
     storage.delete_resume_file(resume)
 
     db.delete(resume)
@@ -463,4 +516,4 @@ async def delete_employee_resume(
 
     db.commit()
     log_audit(db, "resume.deleted", "employee_resume", resume_id, f"Deleted resume for employee {employee_id}", principal.user_id)
-    return {"message": "Resume deleted."}
+    return {"message": "Resume deleted.", "archived": False}

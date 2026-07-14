@@ -123,10 +123,12 @@ def test_active_candidates_count(client, db_session, as_role):
     as_role("admin")
     make_employee(db_session, name="Active One", status="Active")
     make_employee(db_session, name="Active Two", status="Active")
-    make_employee(db_session, name="Bench One", status="Bench")
+    make_employee(db_session, name="Bench One", status="Bench")  # maps to Active display group
+    make_employee(db_session, name="Inactive One", status="Inactive")
 
     res = client.get("/api/dashboard/summary")
-    assert res.json()["counts"]["active_candidates"] == 2
+    # Same definition as /api/candidates?status_group=active (Bench → Active).
+    assert res.json()["counts"]["active_candidates"] == 3
 
 
 def test_submission_stage_counts_and_pipeline_mapping(client, db_session, as_role):

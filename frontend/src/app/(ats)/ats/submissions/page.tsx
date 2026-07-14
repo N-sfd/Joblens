@@ -170,7 +170,7 @@ function SubmissionsPageInner() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/ats/employees/${s.employee_id}`} className="text-slate-800 hover:text-indigo-600">
+                    <Link href={`/ats/candidates/${s.employee_id}`} className="text-slate-800 hover:text-indigo-600">
                       {s.employee_name ?? `Employee #${s.employee_id}`}
                     </Link>
                   </td>

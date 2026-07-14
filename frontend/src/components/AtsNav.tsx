@@ -7,16 +7,15 @@ import {
   LayoutDashboard, Users, Briefcase, Inbox, Send, Contact, BarChart3, Settings,
 } from "lucide-react";
 
-// Consolidated 8-item nav (Recruitment CRM + ATS). Several items still land on
-// an interim existing page until their module-merge phase ships:
-//   - Candidates -> /ats/employees (Employee Resumes folds in during the Candidates phase)
-//   - Pipeline -> /ats/submissions (Job Sends/Interviews/Offers/Onboarding fold in during the Pipeline phase)
+// Consolidated 8-item nav (Recruitment CRM + ATS):
+//   - Candidates -> /ats/candidates (Employees + resume workflows)
+//   - Pipeline -> /ats/submissions (Job Sends/Interviews/Offers fold in during Pipeline phase)
 //   - Reports -> stub page until the Reports phase
 const NAV: { href: string; label: string; icon: React.ElementType }[] = [
   { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ats/email-inbox", label: "Zoho Inbox", icon: Inbox },
   { href: "/ats/jobs", label: "Jobs", icon: Briefcase },
-  { href: "/ats/employees", label: "Candidates", icon: Users },
+  { href: "/ats/candidates", label: "Candidates", icon: Users },
   { href: "/ats/submissions", label: "Pipeline", icon: Send },
   { href: "/ats/contacts", label: "Contacts", icon: Contact },
   { href: "/ats/reports", label: "Reports", icon: BarChart3 },

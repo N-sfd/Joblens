@@ -201,7 +201,7 @@ export default function JobRequirementDetailPage() {
           <Link href={`/ats/jobs/${jobId}/matches`} className="btn-primary flex items-center gap-2 text-sm">
             <GitCompareArrows size={14} /> Match Candidates
           </Link>
-          <Link href="/ats/employees/new" className="btn-secondary flex items-center gap-2 text-sm">
+          <Link href="/ats/candidates/new" className="btn-secondary flex items-center gap-2 text-sm">
             <UserPlus size={14} /> Add Candidate
           </Link>
           <Link href={`/ats/submissions?job_requirement_id=${jobId}`} className="btn-secondary flex items-center gap-2 text-sm">
@@ -345,7 +345,7 @@ function CandidatesTab({ jobId, canWrite }: { jobId: number; canWrite: boolean }
           {items.map((c) => (
             <tr key={c.employee_id} className="hover:bg-slate-50/50">
               <td className="px-4 py-3">
-                <Link href={`/ats/employees/${c.employee_id}`} className="font-medium text-indigo-600 hover:text-indigo-800">{c.employee_name}</Link>
+                <Link href={`/ats/candidates/${c.employee_id}`} className="font-medium text-indigo-600 hover:text-indigo-800">{c.employee_name}</Link>
               </td>
               <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">{c.current_title || "—"}</td>
               <td className="px-4 py-3 hidden md:table-cell max-w-xs"><TagList items={c.skills.slice(0, 4)} /></td>
@@ -361,7 +361,7 @@ function CandidatesTab({ jobId, canWrite }: { jobId: number; canWrite: boolean }
               <td className="px-4 py-3 text-slate-600">{c.submission_status || "—"}</td>
               <td className="px-4 py-3">
                 <div className="flex items-center justify-end gap-2 flex-wrap">
-                  <Link href={`/ats/employees/${c.employee_id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
+                  <Link href={`/ats/candidates/${c.employee_id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
                   {canWrite && !c.submission_id && (
                     <Link
                       href={`/ats/submissions?job_requirement_id=${jobId}&employee_id=${c.employee_id}`}
@@ -426,7 +426,7 @@ function SubmissionsTab({ jobId }: { jobId: number }) {
           {items.map((s) => (
             <tr key={s.id} className="hover:bg-slate-50/50">
               <td className="px-4 py-3">
-                <Link href={`/ats/employees/${s.employee_id}`} className="font-medium text-indigo-600 hover:text-indigo-800">
+                <Link href={`/ats/candidates/${s.employee_id}`} className="font-medium text-indigo-600 hover:text-indigo-800">
                   {s.employee_name ?? `Employee #${s.employee_id}`}
                 </Link>
               </td>

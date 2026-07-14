@@ -29,7 +29,7 @@ function relatedLink(item: {
   employee_id: number | null;
 }): { href: string; label: string } | null {
   if (item.job_requirement_id) return { href: `/ats/jobs/${item.job_requirement_id}`, label: "job" };
-  if (item.employee_id) return { href: `/ats/employees/${item.employee_id}`, label: "candidate" };
+  if (item.employee_id) return { href: `/ats/candidates/${item.employee_id}`, label: "candidate" };
   if (item.contact_id) return { href: `/ats/contacts/${item.contact_id}`, label: "contact" };
   if (item.organization_id) return { href: `/ats/contacts`, label: "company" };
   return null;
@@ -56,8 +56,8 @@ type CardDef = {
 const CARDS: CardDef[] = [
   { key: "open_jobs", label: "Open Jobs", subtitle: "Currently open requirements", href: "/ats/jobs?status_group=open", icon: Briefcase, tone: "bg-indigo-50 text-indigo-600" },
   { key: "new_zoho_jobs", label: "New Zoho Jobs", subtitle: "Imported in the last 7 days", href: "/ats/jobs?source=zoho&created_within_days=7", icon: Inbox, tone: "bg-blue-50 text-blue-600" },
-  { key: "active_candidates", label: "Active Candidates", subtitle: "Available for placement", href: "/ats/employees?status=Active", icon: Users, tone: "bg-emerald-50 text-emerald-600" },
-  { key: "candidates_submitted", label: "Candidates Submitted", subtitle: "Currently with a client", href: "/ats/submissions?status=Submitted", icon: Send, tone: "bg-cyan-50 text-cyan-600" },
+  { key: "active_candidates", label: "Active Candidates", subtitle: "Available for placement", href: "/ats/candidates?status_group=active", icon: Users, tone: "bg-emerald-50 text-emerald-600" },
+  { key: "candidates_submitted", label: "Candidates Submitted", subtitle: "Currently with a client", href: "/ats/candidates?has_submissions=true", icon: Send, tone: "bg-cyan-50 text-cyan-600" },
   { key: "interviews_scheduled", label: "Interviews Scheduled", subtitle: "Upcoming interviews", href: "/ats/interviews", icon: CalendarCheck, tone: "bg-teal-50 text-teal-600" },
   { key: "offers", label: "Offers", subtitle: "Open offers in play", href: "/ats/offers", icon: BadgeCheck, tone: "bg-rose-50 text-rose-600" },
   { key: "placements", label: "Placements", subtitle: "Candidates placed", href: "/ats/submissions?status=Selected", icon: Award, tone: "bg-amber-50 text-amber-600" },
@@ -67,9 +67,9 @@ const CARDS: CardDef[] = [
 const QUICK_ACTIONS = [
   { label: "Import Job from Zoho", href: "/ats/email-inbox", icon: Inbox },
   { label: "Add Job", href: "/ats/jobs/new", icon: Briefcase },
-  { label: "Add Candidate", href: "/ats/employees/new", icon: UserPlus },
-  { label: "Parse Resume", href: "/ats/employees/new-from-resume", icon: FileUp },
-  { label: "Match Candidate", href: "/ats/jobs", icon: GitCompareArrows },
+  { label: "Add Candidate", href: "/ats/candidates/new", icon: UserPlus },
+  { label: "Parse Resume", href: "/ats/candidates/new?mode=resume", icon: FileUp },
+  { label: "Match Candidate", href: "/ats/candidates", icon: GitCompareArrows },
   { label: "Create Submission", href: "/ats/submissions", icon: Send },
 ];
 

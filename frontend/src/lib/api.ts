@@ -51,7 +51,7 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
 
 // Private ATS/CRM endpoints — these carry the Clerk session JWT for backend
 // verification (see ats_auth.py). Public job-seeker endpoints do not.
-const ATS_PREFIXES = ["/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/interviews", "/api/offers", "/api/crm", "/api/ats", "/api/zoho"];
+const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/interviews", "/api/offers", "/api/crm", "/api/ats", "/api/zoho", "/api/dashboard"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
@@ -307,7 +307,63 @@ export const api = {
       body: JSON.stringify({ resume_text, job_description, company_name, tone }),
     }),
 
-  // Employees (ATS — private, behind Clerk-protected /ats routes)
+  // Candidates (ATS — Employee entity; /api/candidates aliases /api/employees)
+  getCandidates: (params?: import("@/types").EmployeeListParams) =>
+    request<import("@/types").EmployeeListResponse>(
+      `/api/candidates/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
+  getCandidate: (id: number) => request<import("@/types").Employee>(`/api/candidates/${id}`),
+  createCandidate: (data: import("@/types").EmployeeCreate, opts?: { forceNew?: boolean }) =>
+    request<import("@/types").Employee>(`/api/candidates/${opts?.forceNew ? "?force_new=true" : ""}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateCandidate: (id: number, data: import("@/types").EmployeeUpdate) =>
+    request<import("@/types").Employee>(`/api/candidates/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateCandidateStatus: (id: number, status: string) =>
+    request<import("@/types").Employee>(`/api/candidates/${id}/status`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    }),
+  deleteCandidate: (id: number) => request<{ message: string }>(`/api/candidates/${id}`, { method: "DELETE" }),
+  checkCandidateDuplicates: (body: { email?: string | null; phone?: string | null; name?: string | null; exclude_id?: number }) =>
+    request<import("@/types").CandidateDuplicateCheckResponse>("/api/candidates/check-duplicates", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  getCandidateCounts: (id: number) =>
+    request<import("@/types").CandidateCounts>(`/api/candidates/${id}/counts`),
+  getCandidateMatches: (id: number) =>
+    request<Record<string, unknown>[]>(`/api/candidates/${id}/matches`),
+  runCandidateMatches: (id: number, body?: { job_ids?: number[]; save?: boolean; min_score?: number }) =>
+    request<Record<string, unknown>[]>(`/api/candidates/${id}/matches`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body ?? {}),
+    }),
+  getCandidateSubmissions: (id: number) =>
+    request<Record<string, unknown>[]>(`/api/candidates/${id}/submissions`),
+  getCandidateInterviews: (id: number) =>
+    request<Record<string, unknown>[]>(`/api/candidates/${id}/interviews`),
+  getCandidateOffers: (id: number) =>
+    request<Record<string, unknown>[]>(`/api/candidates/${id}/offers`),
+  getCandidateActivities: (id: number) =>
+    request<Record<string, unknown>[]>(`/api/candidates/${id}/activities`),
+  parseCandidateResume: (file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<import("@/types").EmployeeResumeParsed>(`/api/candidates/parse-resume`, { method: "POST", body: form });
+  },
+  uploadCandidateResume: (candidateId: number, file: File) => {
+    const form = new FormData();
+    form.append("file", file);
+    return request<import("@/types").ResumeUploadResult>(`/api/candidates/${candidateId}/resumes`, {
+      method: "POST", body: form,
+    });
+  },
+  getCandidateResumes: (candidateId: number) =>
+    request<import("@/types").EmployeeResume[]>(`/api/candidates/${candidateId}/resumes`),
+  reparseCandidateResume: (candidateId: number, resumeId: number) =>
+    request<import("@/types").ResumeUploadResult>(`/api/candidates/${candidateId}/resumes/${resumeId}/reparse`, { method: "POST" }),
+
+  // Employees (ATS — backward-compatible aliases)
   getEmployees: (params?: import("@/types").EmployeeListParams) =>
     request<import("@/types").EmployeeListResponse>(
       `/api/employees/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
