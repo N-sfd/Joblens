@@ -243,10 +243,13 @@ export default function JobRequirementForm({ form, onChange }: Props) {
     let active = true;
     (async () => {
       try {
-        const [o, c] = await Promise.all([api.getOrganizations(), api.getContacts()]);
+        const [o, c] = await Promise.all([
+          api.getCompanies({ page_size: 100 }),
+          api.getContacts({ page_size: 100 }),
+        ]);
         if (!active) return;
-        setOrgs(o ?? []);
-        setContacts(c ?? []);
+        setOrgs(o.items ?? []);
+        setContacts(c.items ?? []);
       } catch {
         // CRM linking is optional; free-text fields still work if this fails.
       }

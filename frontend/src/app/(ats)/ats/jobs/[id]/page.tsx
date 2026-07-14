@@ -267,9 +267,9 @@ function OverviewTab({ job, rateDisplay }: { job: JobRequirement; rateDisplay: s
     <div className="space-y-5">
       <div className="card p-6 space-y-5">
         <div className="grid grid-cols-1 sm:grid-cols-2 gap-5">
-          <LinkedField label="Client" value={job.client_name || job.client} href={job.client_id ? `/ats/contacts/${job.client_id}` : null} />
-          <LinkedField label="Vendor" value={job.vendor_name || job.vendor} href={job.vendor_id ? `/ats/contacts/${job.vendor_id}` : null} />
-          <LinkedField label="End Client" value={job.end_client_name || job.end_client} href={job.end_client_id ? `/ats/contacts/${job.end_client_id}` : null} />
+          <LinkedField label="Client" value={job.client_name || job.client} href={job.client_id ? `/ats/contacts/companies/${job.client_id}` : null} />
+          <LinkedField label="Vendor" value={job.vendor_name || job.vendor} href={job.vendor_id ? `/ats/contacts/companies/${job.vendor_id}` : null} />
+          <LinkedField label="End Client" value={job.end_client_name || job.end_client} href={job.end_client_id ? `/ats/contacts/companies/${job.end_client_id}` : null} />
           <LinkedField
             label="Recruiter"
             value={job.recruiter_contact_name || ([job.recruiter_name, job.recruiter_email, job.recruiter_phone].filter(Boolean).join(" · ") || null)}

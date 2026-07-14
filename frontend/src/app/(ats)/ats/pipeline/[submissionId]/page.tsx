@@ -202,9 +202,30 @@ export default function PipelineDetailPage() {
               label="Job"
               value={<Link href={`/ats/jobs/${record.job_requirement_id}`} className="text-indigo-600 hover:underline">{record.job_title ?? `#${record.job_requirement_id}`}</Link>}
             />
-            <Field label="Client" value={record.client_name || "—"} />
-            <Field label="Vendor" value={record.vendor_name || "—"} />
-            <Field label="Recruiter" value={record.recruiter_name || "—"} />
+            <Field
+              label="Client"
+              value={
+                record.client_id
+                  ? <Link href={`/ats/contacts/companies/${record.client_id}`} className="text-indigo-600 hover:underline">{record.client_name || `Company #${record.client_id}`}</Link>
+                  : (record.client_name || "—")
+              }
+            />
+            <Field
+              label="Vendor"
+              value={
+                record.vendor_id
+                  ? <Link href={`/ats/contacts/companies/${record.vendor_id}`} className="text-indigo-600 hover:underline">{record.vendor_name || `Company #${record.vendor_id}`}</Link>
+                  : (record.vendor_name || "—")
+              }
+            />
+            <Field
+              label="Recruiter"
+              value={
+                record.recruiter_contact_id
+                  ? <Link href={`/ats/contacts/${record.recruiter_contact_id}`} className="text-indigo-600 hover:underline">{record.recruiter_name || `Contact #${record.recruiter_contact_id}`}</Link>
+                  : (record.recruiter_name || "—")
+              }
+            />
             <Field label="Submitted rate" value={record.submitted_rate || "—"} />
             <Field label="Submission date" value={formatDate(record.submission_date)} />
             <Field label="Next interview" value={formatDateTime(record.next_interview_at)} />

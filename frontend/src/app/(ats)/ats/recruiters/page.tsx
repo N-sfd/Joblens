@@ -1,12 +1,5 @@
-import ContactsView from "@/components/crm/ContactsView";
+import { redirect } from "next/navigation";
 
 export default function RecruitersPage() {
-  return (
-    <ContactsView
-      title="Recruiters"
-      subtitle="Recruiter contacts who send you job requirements."
-      detailBasePath="/ats/recruiters"
-      fixedType="Recruiter"
-    />
-  );
+  redirect("/ats/contacts?type=recruiter");
 }

@@ -132,6 +132,8 @@ app.include_router(interviews.router, prefix="/api/interviews", tags=["Interview
 app.include_router(offers.router, prefix="/api/offers", tags=["Offers (ATS)"])
 app.include_router(crm_organizations.router, prefix="/api/crm/organizations", tags=["CRM Organizations (ATS)"])
 app.include_router(crm_contacts.router, prefix="/api/crm/contacts", tags=["CRM Contacts (ATS)"])
+app.include_router(crm_organizations.router, prefix="/api/companies", tags=["Companies (ATS)"])
+app.include_router(crm_contacts.router, prefix="/api/contacts", tags=["Contacts (ATS)"])
 app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
 app.include_router(ats_dashboard.router, prefix="/api/ats", tags=["ATS Dashboard"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard (CRM + ATS)"])

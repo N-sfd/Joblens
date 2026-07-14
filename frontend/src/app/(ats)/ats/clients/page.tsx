@@ -1,13 +1,5 @@
-import OrganizationsView from "@/components/crm/OrganizationsView";
+import { redirect } from "next/navigation";
 
 export default function ClientsPage() {
-  return (
-    <OrganizationsView
-      title="Clients"
-      subtitle="Direct clients, end clients, and agencies you place consultants with."
-      detailBasePath="/ats/clients"
-      types={["Direct Client", "End Client", "Government Agency", "Other"]}
-      defaultType="Direct Client"
-    />
-  );
+  redirect("/ats/contacts?view=companies&type=client");
 }

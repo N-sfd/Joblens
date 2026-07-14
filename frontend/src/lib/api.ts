@@ -73,7 +73,7 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
 
 // Private ATS/CRM endpoints — these carry the Clerk session JWT for backend
 // verification (see ats_auth.py). Public job-seeker endpoints do not.
-const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/pipeline", "/api/interviews", "/api/offers", "/api/crm", "/api/ats", "/api/zoho", "/api/dashboard"];
+const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/pipeline", "/api/interviews", "/api/offers", "/api/crm", "/api/contacts", "/api/companies", "/api/ats", "/api/zoho", "/api/dashboard"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
@@ -742,35 +742,114 @@ export const api = {
   archiveImportedEmail: (id: number) =>
     request<import("@/types").ImportedEmail>(`/api/zoho/emails/${id}/archive`, { method: "POST" }),
 
-  // CRM Organizations (ATS — private)
-  getOrganizations: (params?: { type?: string; status?: string; q?: string; needs_review?: boolean }) =>
-    request<import("@/types").CRMOrganization[]>(`/api/crm/organizations/${qs(params)}`),
+  // Companies / Organizations (ATS — Unified Contacts; /api/companies aliases /api/crm/organizations)
+  getCompanies: (params?: import("@/types").CRMOrganizationListParams) =>
+    request<import("@/types").CRMOrganizationListResponse>(
+      `/api/companies/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
+  getCompany: (id: number) =>
+    request<import("@/types").CRMOrganization>(`/api/companies/${id}`),
+  createCompany: (data: import("@/types").CRMOrganizationCreate, opts?: { forceNew?: boolean }) =>
+    request<import("@/types").CRMOrganization>(`/api/companies/${opts?.forceNew ? "?force_new=true" : ""}`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateCompany: (id: number, data: import("@/types").CRMOrganizationUpdate) =>
+    request<import("@/types").CRMOrganization>(`/api/companies/${id}`, {
+      method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updateCompanyStatus: (id: number, status: string) =>
+    request<import("@/types").CRMOrganization>(`/api/companies/${id}/status`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    }),
+  deleteCompany: (id: number) =>
+    request<{ message: string }>(`/api/companies/${id}`, { method: "DELETE" }),
+  checkCompanyDuplicates: (body: {
+    organization_name?: string | null;
+    website?: string | null;
+    email_domain?: string | null;
+    exclude_id?: number;
+  }) =>
+    request<import("@/types").CompanyDuplicateCheckResponse>("/api/companies/check-duplicates", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  getCompanyContacts: (id: number) =>
+    request<import("@/types").CRMContact[]>(`/api/companies/${id}/contacts`),
+  linkCompanyContact: (companyId: number, contactId: number) =>
+    request<import("@/types").CRMContact>(`/api/companies/${companyId}/contacts`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ contact_id: contactId }),
+    }),
+  unlinkCompanyContact: (companyId: number, contactId: number) =>
+    request<{ message: string }>(`/api/companies/${companyId}/contacts/${contactId}`, { method: "DELETE" }),
+  getCompanyJobs: (id: number) =>
+    request<import("@/types").JobRequirement[]>(`/api/companies/${id}/jobs`),
+  getCompanyPipeline: (id: number) =>
+    request<import("@/types").Submission[]>(`/api/companies/${id}/pipeline`),
+  getCompanyActivities: (id: number) =>
+    request<import("@/types").CRMActivity[]>(`/api/companies/${id}/activities`),
+
+  // Legacy aliases
+  getOrganizations: (params?: import("@/types").CRMOrganizationListParams) =>
+    request<import("@/types").CRMOrganizationListResponse>(
+      `/api/companies/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
   getOrganization: (id: number) =>
-    request<import("@/types").CRMOrganization>(`/api/crm/organizations/${id}`),
-  createOrganization: (data: import("@/types").CRMOrganizationCreate) =>
-    request<import("@/types").CRMOrganization>("/api/crm/organizations/", {
+    request<import("@/types").CRMOrganization>(`/api/companies/${id}`),
+  createOrganization: (data: import("@/types").CRMOrganizationCreate, opts?: { forceNew?: boolean }) =>
+    request<import("@/types").CRMOrganization>(`/api/companies/${opts?.forceNew ? "?force_new=true" : ""}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
   updateOrganization: (id: number, data: import("@/types").CRMOrganizationUpdate) =>
-    request<import("@/types").CRMOrganization>(`/api/crm/organizations/${id}`, {
+    request<import("@/types").CRMOrganization>(`/api/companies/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
   deleteOrganization: (id: number) =>
-    request<{ message: string }>(`/api/crm/organizations/${id}`, { method: "DELETE" }),
+    request<{ message: string }>(`/api/companies/${id}`, { method: "DELETE" }),
+  getCrmOrganizations: (params?: import("@/types").CRMOrganizationListParams) =>
+    request<import("@/types").CRMOrganizationListResponse>(
+      `/api/companies/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
 
-  // CRM Contacts (ATS — private)
-  getContacts: (params?: { organization_id?: number; contact_type?: string; status?: string; q?: string; needs_review?: boolean }) =>
-    request<import("@/types").CRMContact[]>(`/api/crm/contacts/${qs(params)}`),
-  getContact: (id: number) => request<import("@/types").CRMContact>(`/api/crm/contacts/${id}`),
-  createContact: (data: import("@/types").CRMContactCreate) =>
-    request<import("@/types").CRMContact>("/api/crm/contacts/", {
+  // Contacts / People (ATS — Unified Contacts; /api/contacts aliases /api/crm/contacts)
+  getContacts: (params?: import("@/types").CRMContactListParams) =>
+    request<import("@/types").CRMContactListResponse>(
+      `/api/contacts/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
+  getContact: (id: number) => request<import("@/types").CRMContact>(`/api/contacts/${id}`),
+  createContact: (data: import("@/types").CRMContactCreate, opts?: { forceNew?: boolean }) =>
+    request<import("@/types").CRMContact>(`/api/contacts/${opts?.forceNew ? "?force_new=true" : ""}`, {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
   updateContact: (id: number, data: import("@/types").CRMContactUpdate) =>
-    request<import("@/types").CRMContact>(`/api/crm/contacts/${id}`, {
+    request<import("@/types").CRMContact>(`/api/contacts/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
-  deleteContact: (id: number) => request<{ message: string }>(`/api/crm/contacts/${id}`, { method: "DELETE" }),
+  updateContactStatus: (id: number, status: string) =>
+    request<import("@/types").CRMContact>(`/api/contacts/${id}/status`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    }),
+  deleteContact: (id: number) => request<{ message: string }>(`/api/contacts/${id}`, { method: "DELETE" }),
+  checkContactDuplicates: (body: {
+    email?: string | null;
+    phone?: string | null;
+    exclude_id?: number;
+  }) =>
+    request<import("@/types").ContactDuplicateCheckResponse>("/api/contacts/check-duplicates", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(body),
+    }),
+  markContacted: (id: number, data: import("@/types").MarkContactedPayload) =>
+    request<import("@/types").CRMContact>(`/api/contacts/${id}/mark-contacted`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  getContactJobs: (id: number) =>
+    request<import("@/types").JobRequirement[]>(`/api/contacts/${id}/jobs`),
+  getContactPipeline: (id: number) =>
+    request<import("@/types").Submission[]>(`/api/contacts/${id}/pipeline`),
+  getContactActivities: (id: number) =>
+    request<import("@/types").CRMActivity[]>(`/api/contacts/${id}/activities`),
+  getCrmContacts: (params?: import("@/types").CRMContactListParams) =>
+    request<import("@/types").CRMContactListResponse>(
+      `/api/contacts/${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`
+    ),
 
   // CRM Activities (ATS — private)
   getActivities: (params?: { organization_id?: number | null; contact_id?: number | null; employee_id?: number | null; job_requirement_id?: number | null; activity_type?: string }) =>

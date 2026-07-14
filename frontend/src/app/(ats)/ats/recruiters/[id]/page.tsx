@@ -1,10 +1,22 @@
 "use client";
 
 import { useParams } from "next/navigation";
-import ContactDetail from "@/components/crm/ContactDetail";
+import { useEffect } from "react";
+import { useRouter } from "next/navigation";
+import { Loader2 } from "lucide-react";
 
-export default function RecruiterDetailPage() {
+export default function RecruiterDetailRedirect() {
   const params = useParams();
-  const id = Number(params.id);
-  return <ContactDetail id={id} backPath="/ats/recruiters" />;
+  const router = useRouter();
+  const id = params.id;
+
+  useEffect(() => {
+    if (id) router.replace(`/ats/contacts/${id}`);
+  }, [id, router]);
+
+  return (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 size={24} className="animate-spin text-indigo-500" />
+    </div>
+  );
 }

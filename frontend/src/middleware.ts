@@ -11,15 +11,15 @@ const LEGACY_ATS_REDIRECTS: Record<string, string> = {
   "/job-requirements": "/ats/jobs",
   "/employees": "/ats/candidates",
   "/ats/employee-resumes": "/ats/candidates",
-  "/ats/recruiters": "/ats/contacts",
-  "/ats/vendors": "/ats/contacts",
-  "/ats/clients": "/ats/contacts",
 };
 
 const LEGACY_ATS_EXACT: Record<string, string> = {
   "/ats/employees": "/ats/candidates",
   "/ats/employees/new": "/ats/candidates/new",
   "/ats/employees/new-from-resume": "/ats/candidates/new?mode=resume",
+  "/ats/recruiters": "/ats/contacts?type=recruiter",
+  "/ats/clients": "/ats/contacts?view=companies&type=client",
+  "/ats/vendors": "/ats/contacts?view=companies&type=vendor",
 };
 
 function mapSubmissionsQueryToPipeline(search: string): string {
@@ -56,7 +56,9 @@ function applyLegacyRedirects(req: NextRequest) {
   }
   if (LEGACY_ATS_EXACT[pathname]) {
     const url = new URL(LEGACY_ATS_EXACT[pathname], req.url);
-    url.search = req.nextUrl.search;
+    for (const [k, v] of req.nextUrl.searchParams.entries()) {
+      if (!url.searchParams.has(k)) url.searchParams.set(k, v);
+    }
     return NextResponse.redirect(url);
   }
   // /ats/employees/:id[/edit] → /ats/candidates/:id[/edit]
@@ -70,6 +72,25 @@ function applyLegacyRedirects(req: NextRequest) {
   if (pathname.startsWith("/ats/submissions/")) {
     const target = pathname.replace("/ats/submissions", "/ats/pipeline");
     const url = new URL(target, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+  // Unified Contacts legacy detail routes — do NOT map company IDs to people paths
+  if (pathname.startsWith("/ats/recruiters/")) {
+    const rest = pathname.slice("/ats/recruiters/".length);
+    const url = new URL(`/ats/contacts/${rest}`, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+  if (pathname.startsWith("/ats/clients/")) {
+    const rest = pathname.slice("/ats/clients/".length);
+    const url = new URL(`/ats/contacts/companies/${rest}`, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+  if (pathname.startsWith("/ats/vendors/")) {
+    const rest = pathname.slice("/ats/vendors/".length);
+    const url = new URL(`/ats/contacts/companies/${rest}`, req.url);
     url.search = req.nextUrl.search;
     return NextResponse.redirect(url);
   }

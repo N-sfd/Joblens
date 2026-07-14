@@ -357,10 +357,12 @@ def _find_org_by_name(db: Session, name: str) -> CRMOrganization | None:
 
 
 def _find_contact(db: Session, email: str | None, name: str | None) -> CRMContact | None:
+    from services.crm_normalize import normalize_email as _norm_email
+
     if email and email.strip():
         contact = (
             db.query(CRMContact)
-            .filter(CRMContact.normalized_email == email.strip().lower())
+            .filter(CRMContact.normalized_email == _norm_email(email))
             .first()
         )
         if contact:
@@ -429,12 +431,14 @@ def _find_or_create_contact(
     parts = (name or "").strip().split()
     first_name = parts[0] if parts else None
     last_name = " ".join(parts[1:]) if len(parts) > 1 else None
+    from services.crm_normalize import normalize_email as _norm_email
+
     contact = CRMContact(
         organization_id=organization_id,
         first_name=first_name,
         last_name=last_name,
         email=email,
-        normalized_email=email.strip().lower() if email else None,
+        normalized_email=_norm_email(email) or None,
         phone=phone,
         contact_type="Recruiter",
         source=source,

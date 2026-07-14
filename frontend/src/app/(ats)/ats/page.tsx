@@ -31,7 +31,7 @@ function relatedLink(item: {
   if (item.job_requirement_id) return { href: `/ats/jobs/${item.job_requirement_id}`, label: "job" };
   if (item.employee_id) return { href: `/ats/candidates/${item.employee_id}`, label: "candidate" };
   if (item.contact_id) return { href: `/ats/contacts/${item.contact_id}`, label: "contact" };
-  if (item.organization_id) return { href: `/ats/contacts`, label: "company" };
+  if (item.organization_id) return { href: `/ats/contacts/companies/${item.organization_id}`, label: "company" };
   return null;
 }
 
@@ -68,6 +68,7 @@ const QUICK_ACTIONS = [
   { label: "Import Job from Zoho", href: "/ats/email-inbox", icon: Inbox },
   { label: "Add Job", href: "/ats/jobs/new", icon: Briefcase },
   { label: "Add Candidate", href: "/ats/candidates/new", icon: UserPlus },
+  { label: "Add Contact", href: "/ats/contacts/new", icon: UserPlus },
   { label: "Parse Resume", href: "/ats/candidates/new?mode=resume", icon: FileUp },
   { label: "Match Candidate", href: "/ats/candidates", icon: GitCompareArrows },
   { label: "Create Submission", href: "/ats/pipeline", icon: Send },

@@ -562,24 +562,59 @@ export const EMPLOYEE_AVAILABILITIES = [
   "Immediate", "One Week", "Two Weeks", "Thirty Days", "On Project", "Not Available",
 ] as const;
 
-// CRM
+// CRM / Unified Contacts (Phase 6)
 export const ORGANIZATION_TYPES = [
-  "Staffing Vendor", "Direct Client", "End Client", "Implementation Partner",
-  "Managed Service Provider", "Government Agency", "Other",
+  "Client", "Vendor", "End Client", "Recruiting Agency", "Employer", "Partner", "Other",
+  // Legacy stored values (still accepted by API)
+  "Staffing Vendor", "Direct Client", "Implementation Partner",
+  "Managed Service Provider", "Government Agency",
 ] as const;
 export const ORGANIZATION_STATUSES = [
-  "Active", "Prospect", "Inactive", "Blocked", "Do Not Work With",
+  "Active", "Inactive", "Archived", "Prospect", "Blocked", "Do Not Work With",
 ] as const;
 export const CONTACT_TYPES = [
-  "Recruiter", "Account Manager", "Client Manager", "Hiring Manager",
-  "Vendor Manager", "HR Contact", "Other",
+  "Recruiter", "Hiring Manager", "Client Contact", "Vendor Contact", "Candidate Contact", "Other",
+  // Legacy stored values
+  "Account Manager", "Client Manager", "Vendor Manager", "HR Contact",
 ] as const;
 export const CONTACT_STATUSES = [
-  "Active", "Inactive", "Do Not Contact", "Bounced Email", "Unsubscribed",
+  "Active", "Inactive", "Archived", "Do Not Contact", "Bounced Email", "Unsubscribed",
 ] as const;
+
+/** Display labels used in filters / badges (normalized by backend). */
+export const CONTACT_DISPLAY_TYPES = [
+  "Recruiter", "Hiring Manager", "Client Contact", "Vendor Contact", "Candidate Contact", "Other",
+] as const;
+export const CONTACT_DISPLAY_STATUSES = ["Active", "Inactive", "Archived"] as const;
+export const COMPANY_DISPLAY_TYPES = [
+  "Client", "Vendor", "End Client", "Recruiting Agency", "Employer", "Partner", "Other",
+] as const;
+export const COMPANY_DISPLAY_STATUSES = ["Active", "Inactive", "Archived"] as const;
+export const CONTACT_SORT_OPTIONS = [
+  { value: "last_activity", label: "Last activity" },
+  { value: "name", label: "Name" },
+  { value: "newest", label: "Newest" },
+  { value: "updated", label: "Recently updated" },
+] as const;
+export const COMPANY_SORT_OPTIONS = [
+  { value: "last_activity", label: "Last activity" },
+  { value: "name", label: "Name" },
+  { value: "newest", label: "Newest" },
+  { value: "updated", label: "Recently updated" },
+] as const;
+export const CONTACT_METHODS = [
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "sms", label: "SMS" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "meeting", label: "Meeting" },
+  { value: "other", label: "Other" },
+] as const;
+
 export const ACTIVITY_TYPES = [
   "Email Received", "Email Sent", "Phone Call", "Follow-Up", "Meeting", "Note",
   "Job Received", "Resume Sent", "Interview Scheduled", "Feedback Received", "Other",
+  "SMS", "LinkedIn Message",
 ] as const;
 
 export interface CRMOrganization {
@@ -605,12 +640,66 @@ export interface CRMOrganization {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 6 display + counts
+  organization_type_display?: string | null;
+  status_display?: string | null;
+  source_display?: string | null;
+  contact_count?: number;
+  open_job_count?: number;
+  active_pipeline_count?: number;
+  interview_count?: number;
+  offer_count?: number;
+  placement_count?: number;
+  primary_contact_name?: string | null;
+  next_follow_up_at?: string | null;
+  follow_up_overdue?: boolean;
+  last_activity_at?: string | null;
 }
 
 export type CRMOrganizationCreate = Partial<Omit<CRMOrganization, "id" | "created_at" | "updated_at" | "created_by" | "needs_review" | "source">> & {
   organization_name: string;
 };
 export type CRMOrganizationUpdate = Partial<CRMOrganizationCreate> & { needs_review?: boolean };
+
+export interface CRMOrganizationListResponse {
+  items: CRMOrganization[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CRMOrganizationListParams {
+  q?: string;
+  type?: string;
+  organization_type?: string;
+  status?: string;
+  source?: string;
+  has_open_jobs?: boolean;
+  has_active_pipeline?: boolean;
+  has_placements?: boolean;
+  overdue_follow_up?: boolean;
+  needs_review?: boolean;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface CompanyDuplicateMatch {
+  id: number;
+  organization_name: string;
+  organization_type?: string | null;
+  organization_type_display?: string | null;
+  email_domain?: string | null;
+  status?: string | null;
+  status_display?: string | null;
+  match_reason: string;
+}
+
+export interface CompanyDuplicateCheckResponse {
+  matches: CompanyDuplicateMatch[];
+  blocked?: boolean;
+}
 
 export interface CRMContact {
   id: number;
@@ -633,10 +722,70 @@ export interface CRMContact {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 6 display + counts
+  contact_type_display?: string | null;
+  status_display?: string | null;
+  source_display?: string | null;
+  open_job_count?: number;
+  active_pipeline_count?: number;
+  next_follow_up_at?: string | null;
+  follow_up_overdue?: boolean;
+  last_activity_at?: string | null;
+  display_name?: string | null;
 }
 
 export type CRMContactCreate = Partial<Omit<CRMContact, "id" | "created_at" | "updated_at" | "created_by" | "needs_review" | "source" | "organization_name" | "last_contacted_at">>;
 export type CRMContactUpdate = Partial<CRMContactCreate> & { needs_review?: boolean };
+
+export interface CRMContactListResponse {
+  items: CRMContact[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CRMContactListParams {
+  q?: string;
+  organization_id?: number;
+  contact_type?: string;
+  type?: string;
+  status?: string;
+  source?: string;
+  has_open_jobs?: boolean;
+  has_pipeline?: boolean;
+  overdue_follow_up?: boolean;
+  needs_review?: boolean;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ContactDuplicateMatch {
+  id: number;
+  display_name: string;
+  email?: string | null;
+  phone?: string | null;
+  contact_type?: string | null;
+  contact_type_display?: string | null;
+  status?: string | null;
+  status_display?: string | null;
+  organization_id?: number | null;
+  match_reason: string;
+}
+
+export interface ContactDuplicateCheckResponse {
+  matches: ContactDuplicateMatch[];
+  blocked?: boolean;
+}
+
+export interface MarkContactedPayload {
+  method: string;
+  contacted_at?: string | null;
+  subject?: string | null;
+  notes?: string | null;
+  complete_follow_up_id?: number | null;
+}
 
 export interface CRMActivity {
   id: number;
@@ -1085,6 +1234,7 @@ export interface Submission {
   vendor_name: string | null;
   recruiter_name: string | null;
   client_name?: string | null;
+  client_id?: number | null;
   status_display?: string | null;
   status_group?: string | null;
   stage_order?: number | null;

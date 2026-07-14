@@ -2,7 +2,7 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, 
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
-from pydantic import BaseModel, EmailStr, field_validator
+from pydantic import BaseModel, EmailStr, Field, field_validator
 from typing import Optional
 from datetime import datetime
 
@@ -1853,8 +1853,60 @@ class CRMOrganizationResponse(CRMOrganizationBase):
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Phase 6 Unified Contacts — display + relationship counts
+    organization_type_display: Optional[str] = None
+    status_display: Optional[str] = None
+    source_display: Optional[str] = None
+    contact_count: int = 0
+    open_job_count: int = 0
+    active_pipeline_count: int = 0
+    interview_count: int = 0
+    offer_count: int = 0
+    placement_count: int = 0
+    primary_contact_name: Optional[str] = None
+    next_follow_up_at: Optional[datetime] = None
+    follow_up_overdue: bool = False
+    last_activity_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class CRMOrganizationListItem(CRMOrganizationResponse):
+    """Company list row — notes omitted from serialization."""
+
+    notes: Optional[str] = Field(default=None, exclude=True)
+
+
+class CRMOrganizationListResponse(BaseModel):
+    items: list[CRMOrganizationListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class CompanyDuplicateMatch(BaseModel):
+    id: int
+    organization_name: str
+    organization_type: Optional[str] = None
+    organization_type_display: Optional[str] = None
+    email_domain: Optional[str] = None
+    status: Optional[str] = None
+    status_display: Optional[str] = None
+    match_reason: str  # domain | name
+
+
+class CompanyDuplicateCheckResponse(BaseModel):
+    matches: list[CompanyDuplicateMatch]
+    blocked: bool = False
+
+
+class OrganizationStatusUpdate(BaseModel):
+    status: str
+
+
+class LinkContactBody(BaseModel):
+    contact_id: int
 
 
 # --- CRM Contact schemas ---
@@ -1913,8 +1965,62 @@ class CRMContactResponse(CRMContactBase):
     created_at: datetime
     updated_at: datetime
     organization_name: Optional[str] = None
+    # Phase 6 Unified Contacts
+    contact_type_display: Optional[str] = None
+    status_display: Optional[str] = None
+    source_display: Optional[str] = None
+    open_job_count: int = 0
+    active_pipeline_count: int = 0
+    next_follow_up_at: Optional[datetime] = None
+    follow_up_overdue: bool = False
+    last_activity_at: Optional[datetime] = None
+    display_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class CRMContactListItem(CRMContactResponse):
+    """Contact list row — notes omitted from serialization."""
+
+    notes: Optional[str] = Field(default=None, exclude=True)
+
+
+class CRMContactListResponse(BaseModel):
+    items: list[CRMContactListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class ContactDuplicateMatch(BaseModel):
+    id: int
+    display_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    contact_type: Optional[str] = None
+    contact_type_display: Optional[str] = None
+    status: Optional[str] = None
+    status_display: Optional[str] = None
+    organization_id: Optional[int] = None
+    match_reason: str  # email | phone
+
+
+class ContactDuplicateCheckResponse(BaseModel):
+    matches: list[ContactDuplicateMatch]
+    blocked: bool = False
+
+
+class MarkContactedBody(BaseModel):
+    method: str  # email | phone | sms | linkedin | meeting | other
+    contacted_at: Optional[datetime] = None
+    subject: Optional[str] = None
+    notes: Optional[str] = None
+    complete_follow_up_id: Optional[int] = None
+
+
+class ContactStatusUpdate(BaseModel):
+    status: str
 
 
 # --- CRM Activity schemas ---
