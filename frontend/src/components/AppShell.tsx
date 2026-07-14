@@ -9,6 +9,34 @@ import Sidebar, { nav } from "./Sidebar";
 import LogoMark from "./Logo";
 import UserMenu from "./UserMenu";
 import { useTheme } from "@/lib/ThemeContext";
+import { isClerkConfigured } from "@/lib/clerkConfigured";
+
+function ClerkHeaderControls() {
+  return (
+    <>
+      <SignedIn>
+        <Link
+          href="/ats"
+          className="hidden sm:inline text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
+        >
+          ATS Dashboard
+        </Link>
+        <UserButton afterSignOutUrl="/" />
+      </SignedIn>
+      <SignedOut>
+        <SignInButton mode="modal">
+          <button
+            type="button"
+            className="hidden sm:inline text-xs font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+          >
+            ATS Sign in
+          </button>
+        </SignInButton>
+        <UserMenu />
+      </SignedOut>
+    </>
+  );
+}
 
 export default function AppShell({ children }: { children: React.ReactNode }) {
   const [open, setOpen] = useState(false);
@@ -18,7 +46,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
 
   return (
     <div className="flex h-screen overflow-hidden">
-      {/* Mobile backdrop */}
       {open && (
         <div
           className="fixed inset-0 bg-black/50 z-20 md:hidden"
@@ -26,7 +53,6 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         />
       )}
 
-      {/* Sidebar — drawer on mobile, fixed on desktop */}
       <div
         className={`fixed inset-y-0 left-0 z-30 transition-transform duration-300 md:relative md:translate-x-0 md:flex md:shrink-0 ${
           open ? "translate-x-0" : "-translate-x-full md:translate-x-0"
@@ -35,9 +61,7 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
         <Sidebar onClose={() => setOpen(false)} />
       </div>
 
-      {/* Main content */}
       <div className="flex-1 flex flex-col overflow-hidden min-w-0">
-        {/* Top bar */}
         <header className="flex items-center gap-3 px-4 sm:px-6 py-3 bg-white/80 dark:bg-slate-900/80 backdrop-blur-sm border-b border-slate-200 dark:border-slate-800 shrink-0">
           <button
             type="button"
@@ -69,26 +93,19 @@ export default function AppShell({ children }: { children: React.ReactNode }) {
             >
               {theme === "dark" ? <Sun size={17} /> : <Moon size={17} />}
             </button>
-            <SignedIn>
-              <Link
-                href="/ats"
-                className="hidden sm:inline text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
-              >
-                ATS Dashboard
-              </Link>
-              <UserButton afterSignOutUrl="/" />
-            </SignedIn>
-            <SignedOut>
-              <SignInButton mode="modal">
-                <button
-                  type="button"
-                  className="hidden sm:inline text-xs font-medium text-slate-400 hover:text-slate-700 dark:hover:text-slate-200 transition-colors"
+            {isClerkConfigured() ? (
+              <ClerkHeaderControls />
+            ) : (
+              <>
+                <Link
+                  href="/ats"
+                  className="hidden sm:inline text-xs font-medium text-slate-500 dark:text-slate-400 hover:text-slate-800 dark:hover:text-slate-100 transition-colors"
                 >
-                  ATS Sign in
-                </button>
-              </SignInButton>
-              <UserMenu />
-            </SignedOut>
+                  ATS Dashboard
+                </Link>
+                <UserMenu />
+              </>
+            )}
           </div>
         </header>
 
