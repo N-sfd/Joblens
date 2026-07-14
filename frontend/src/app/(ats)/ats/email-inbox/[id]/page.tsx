@@ -3,11 +3,12 @@
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
 import { useParams, useRouter } from "next/navigation";
-import { ArrowLeft, Briefcase, Loader2, Sparkles, XCircle } from "lucide-react";
+import { Archive, ArrowLeft, Briefcase, Link2, Loader2, Sparkles, XCircle } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
-import type { ImportedEmailDetail } from "@/types";
+import type { ImportedEmailDetail, JobRequirement } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
+import LinkJobPicker from "@/components/LinkJobPicker";
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
@@ -27,6 +28,25 @@ function classificationClass(c: string) {
   }
 }
 
+function importStatusLabel(s: string) {
+  const map: Record<string, string> = {
+    pending: "Pending", imported: "Imported", linked: "Linked",
+    ignored: "Ignored", archived: "Archived", failed: "Failed",
+  };
+  return map[s] ?? s;
+}
+
+function importStatusClass(s: string) {
+  switch (s) {
+    case "imported":
+    case "linked": return "bg-emerald-100 text-emerald-700";
+    case "ignored":
+    case "archived": return "bg-slate-100 text-slate-500";
+    case "failed": return "bg-red-100 text-red-700";
+    default: return "bg-amber-100 text-amber-800";
+  }
+}
+
 export default function EmailDetailPage() {
   const params = useParams();
   const router = useRouter();
@@ -37,6 +57,7 @@ export default function EmailDetailPage() {
   const [busy, setBusy] = useState(false);
   const [error, setError] = useState<string | null>(null);
   const [classifyReason, setClassifyReason] = useState<string | null>(null);
+  const [linking, setLinking] = useState(false);
 
   const load = useCallback(async () => {
     if (!emailId || Number.isNaN(emailId)) return;
@@ -67,16 +88,34 @@ export default function EmailDetailPage() {
     }
   };
 
-  const dismiss = async () => {
+  const ignore = async () => {
     setBusy(true);
     try {
-      await api.updateImportedEmail(emailId, { classification: "other", needs_review: false });
+      await api.ignoreImportedEmail(emailId);
       await load();
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to dismiss email.");
+      setError(e instanceof Error ? e.message : "Failed to ignore email.");
     } finally {
       setBusy(false);
     }
+  };
+
+  const archive = async () => {
+    setBusy(true);
+    try {
+      await api.archiveImportedEmail(emailId);
+      await load();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Failed to archive email.");
+    } finally {
+      setBusy(false);
+    }
+  };
+
+  const linkToJob = async (job: JobRequirement) => {
+    await api.linkEmailToJob(emailId, job.id);
+    setLinking(false);
+    await load();
   };
 
   if (loading) {
@@ -107,6 +146,9 @@ export default function EmailDetailPage() {
           <span className={clsx("text-xs font-medium px-2 py-0.5 rounded-full", classificationClass(email.classification))}>
             {email.classification}
           </span>
+          <span className={clsx("text-xs font-medium px-2 py-0.5 rounded-full", importStatusClass(email.import_status))}>
+            {importStatusLabel(email.import_status)}
+          </span>
           {email.needs_review && (
             <span className="text-xs font-medium px-2 py-0.5 rounded-full bg-orange-100 text-orange-700">Needs review</span>
           )}
@@ -128,23 +170,38 @@ export default function EmailDetailPage() {
           Classify
         </button>
         {!email.job_requirement_id ? (
-          <button
-            type="button"
-            className="btn-primary flex items-center gap-2"
-            disabled={busy}
-            onClick={() => router.push(`/ats/jobs/new?emailId=${email.id}`)}
-          >
-            <Briefcase size={14} /> Create Job
-          </button>
+          <>
+            <button
+              type="button"
+              className="btn-primary flex items-center gap-2"
+              disabled={busy}
+              onClick={() => router.push(`/ats/jobs/new?emailId=${email.id}`)}
+            >
+              <Briefcase size={14} /> Parse Job
+            </button>
+            <button
+              type="button"
+              className="btn-secondary flex items-center gap-2"
+              disabled={busy}
+              onClick={() => setLinking(true)}
+            >
+              <Link2 size={14} /> Link to Existing Job
+            </button>
+          </>
         ) : (
           <Link href={`/ats/jobs/${email.job_requirement_id}`} className="btn-primary flex items-center gap-2">
             <Briefcase size={14} /> View Job #{email.job_requirement_id}
           </Link>
         )}
-        <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={dismiss}>
-          <XCircle size={14} /> Dismiss
+        <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={ignore}>
+          <XCircle size={14} /> Ignore
+        </button>
+        <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={archive}>
+          <Archive size={14} /> Archive
         </button>
       </div>
+
+      {linking && <LinkJobPicker onClose={() => setLinking(false)} onLink={linkToJob} />}
 
       <div className="card p-6">
         <h2 className="font-semibold text-slate-800 text-sm mb-3">Message</h2>

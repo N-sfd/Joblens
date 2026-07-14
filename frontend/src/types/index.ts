@@ -1154,6 +1154,8 @@ export interface ImportedEmail {
   classification: string;
   needs_review: boolean;
   job_requirement_id: number | null;
+  import_status: string;
+  preview: string | null;
   imported_at: string;
 }
 
@@ -1181,5 +1183,9 @@ export interface CreateJobFromEmailResult {
 
 export const EMAIL_CLASSIFICATIONS = [
   "unclassified", "job_req", "candidate", "spam", "other",
+] as const;
+
+export const IMPORT_STATUSES = [
+  "pending", "imported", "linked", "ignored", "archived", "failed",
 ] as const;
 export type EmailClassification = typeof EMAIL_CLASSIFICATIONS[number];

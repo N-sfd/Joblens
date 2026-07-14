@@ -686,6 +686,9 @@ class ImportedEmail(Base):
     classification = Column(String(50), default="unclassified")
     job_requirement_id = Column(Integer, ForeignKey("job_requirements.id"), nullable=True, index=True)
     needs_review = Column(Boolean, default=False)
+    # Workflow state, distinct from `classification` (AI content type):
+    # pending | imported | linked | ignored | archived | failed
+    import_status = Column(String(20), nullable=False, default="pending", index=True)
     imported_at = Column(DateTime, default=func.now())
 
     connection = relationship("ZohoConnection", back_populates="imported_emails")
@@ -2123,6 +2126,8 @@ class ImportedEmailResponse(BaseModel):
     classification: str
     needs_review: bool
     job_requirement_id: Optional[int] = None
+    import_status: str = "pending"
+    preview: Optional[str] = None
     imported_at: datetime
 
     model_config = {"from_attributes": True}
@@ -2153,3 +2158,7 @@ class CreateJobFromEmailResponse(BaseModel):
 class ImportedEmailUpdate(BaseModel):
     classification: Optional[str] = None
     needs_review: Optional[bool] = None
+
+
+class LinkEmailToJobRequest(BaseModel):
+    job_requirement_id: int

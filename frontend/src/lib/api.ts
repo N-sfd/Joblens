@@ -530,7 +530,7 @@ export const api = {
     request<import("@/types").ZohoConnectionStatus>("/api/zoho/connection", { method: "DELETE" }),
   syncZohoMail: () =>
     request<import("@/types").ZohoSyncResponse>("/api/zoho/sync", { method: "POST" }),
-  getImportedEmails: (params?: { classification?: string; needs_review?: boolean; limit?: number }) =>
+  getImportedEmails: (params?: { classification?: string; needs_review?: boolean; import_status?: string; q?: string; limit?: number }) =>
     request<import("@/types").ImportedEmail[]>(`/api/zoho/emails${qs(params)}`),
   getImportedEmail: (id: number) =>
     request<import("@/types").ImportedEmailDetail>(`/api/zoho/emails/${id}`),
@@ -555,6 +555,16 @@ export const api = {
       headers: { "Content-Type": "application/json" },
       body: JSON.stringify(data),
     }),
+  linkEmailToJob: (id: number, jobRequirementId: number) =>
+    request<import("@/types").CreateJobFromEmailResult>(`/api/zoho/emails/${id}/link-job`, {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify({ job_requirement_id: jobRequirementId }),
+    }),
+  ignoreImportedEmail: (id: number) =>
+    request<import("@/types").ImportedEmail>(`/api/zoho/emails/${id}/ignore`, { method: "POST" }),
+  archiveImportedEmail: (id: number) =>
+    request<import("@/types").ImportedEmail>(`/api/zoho/emails/${id}/archive`, { method: "POST" }),
 
   // CRM Organizations (ATS — private)
   getOrganizations: (params?: { type?: string; status?: string; q?: string; needs_review?: boolean }) =>
