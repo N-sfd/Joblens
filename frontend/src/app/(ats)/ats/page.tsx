@@ -57,11 +57,11 @@ const CARDS: CardDef[] = [
   { key: "open_jobs", label: "Open Jobs", subtitle: "Currently open requirements", href: "/ats/jobs?status_group=open", icon: Briefcase, tone: "bg-indigo-50 text-indigo-600" },
   { key: "new_zoho_jobs", label: "New Zoho Jobs", subtitle: "Imported in the last 7 days", href: "/ats/jobs?source=zoho&created_within_days=7", icon: Inbox, tone: "bg-blue-50 text-blue-600" },
   { key: "active_candidates", label: "Active Candidates", subtitle: "Available for placement", href: "/ats/candidates?status_group=active", icon: Users, tone: "bg-emerald-50 text-emerald-600" },
-  { key: "candidates_submitted", label: "Candidates Submitted", subtitle: "Currently with a client", href: "/ats/candidates?has_submissions=true", icon: Send, tone: "bg-cyan-50 text-cyan-600" },
-  { key: "interviews_scheduled", label: "Interviews Scheduled", subtitle: "Upcoming interviews", href: "/ats/interviews", icon: CalendarCheck, tone: "bg-teal-50 text-teal-600" },
-  { key: "offers", label: "Offers", subtitle: "Open offers in play", href: "/ats/offers", icon: BadgeCheck, tone: "bg-rose-50 text-rose-600" },
-  { key: "placements", label: "Placements", subtitle: "Candidates placed", href: "/ats/submissions?status=Selected", icon: Award, tone: "bg-amber-50 text-amber-600" },
-  { key: "follow_ups_due", label: "Follow-Ups Due", subtitle: "Open tasks with a due date", href: "/ats/activities", icon: BellRing, tone: "bg-orange-50 text-orange-600" },
+  { key: "candidates_submitted", label: "Candidates Submitted", subtitle: "Currently with a client", href: "/ats/pipeline?stage_group=submitted", icon: Send, tone: "bg-cyan-50 text-cyan-600" },
+  { key: "interviews_scheduled", label: "Interviews Scheduled", subtitle: "Upcoming interviews", href: "/ats/pipeline?stage=interview_scheduled", icon: CalendarCheck, tone: "bg-teal-50 text-teal-600" },
+  { key: "offers", label: "Offers", subtitle: "Open offers in play", href: "/ats/pipeline?stage_group=offer", icon: BadgeCheck, tone: "bg-rose-50 text-rose-600" },
+  { key: "placements", label: "Placements", subtitle: "Candidates placed", href: "/ats/pipeline?stage_group=placed", icon: Award, tone: "bg-amber-50 text-amber-600" },
+  { key: "follow_ups_due", label: "Follow-Ups Due", subtitle: "Open tasks with a due date", href: "/ats/pipeline?follow_up=due", icon: BellRing, tone: "bg-orange-50 text-orange-600" },
 ];
 
 const QUICK_ACTIONS = [
@@ -70,7 +70,7 @@ const QUICK_ACTIONS = [
   { label: "Add Candidate", href: "/ats/candidates/new", icon: UserPlus },
   { label: "Parse Resume", href: "/ats/candidates/new?mode=resume", icon: FileUp },
   { label: "Match Candidate", href: "/ats/candidates", icon: GitCompareArrows },
-  { label: "Create Submission", href: "/ats/submissions", icon: Send },
+  { label: "Create Submission", href: "/ats/pipeline", icon: Send },
 ];
 
 export default function AtsDashboardPage() {
@@ -181,7 +181,7 @@ export default function AtsDashboardPage() {
               {data.pipeline.map((stage) => (
                 <Link
                   key={stage.stage}
-                  href={`/ats/submissions?status=${encodeURIComponent(stage.stage === "Placed" ? "Selected" : stage.stage)}`}
+                  href={`/ats/pipeline?stage=${encodeURIComponent(stage.stage.toLowerCase().replace(/ /g, "_"))}`}
                   className="shrink-0 min-w-[104px] rounded-lg border border-slate-100 bg-slate-50 hover:bg-slate-100 transition-colors px-3 py-2.5 text-center"
                 >
                   <p className="text-lg font-bold text-slate-900">{stage.count}</p>

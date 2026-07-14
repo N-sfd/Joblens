@@ -1993,11 +1993,68 @@ class SubmissionResponse(SubmissionBase):
     employee_name: Optional[str] = None
     vendor_name: Optional[str] = None
     recruiter_name: Optional[str] = None
+    client_name: Optional[str] = None
+    # Pipeline display (services/pipeline_status.py) — never rewrites `status`.
+    status_display: Optional[str] = None
+    status_group: Optional[str] = None
+    stage_order: Optional[int] = None
+    match_score: Optional[int] = None
+    resume_filename: Optional[str] = None
+    next_interview_at: Optional[datetime] = None
+    offer_status: Optional[str] = None
+    next_follow_up_at: Optional[datetime] = None
+    follow_up_overdue: bool = False
+    last_activity_at: Optional[datetime] = None
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SubmissionListResponse(BaseModel):
+    items: list[SubmissionResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class PipelineSummaryCounts(BaseModel):
+    active: int = 0
+    submitted: int = 0
+    interview: int = 0
+    offer: int = 0
+    placed: int = 0
+    follow_ups_due: int = 0
+
+
+class PipelineStageUpdate(BaseModel):
+    stage: str
+    reason: Optional[str] = None
+    confirmed: bool = False
+    resume_override_reason: Optional[str] = None  # admin when moving to Submitted without resume
+
+
+class PipelineRejectBody(BaseModel):
+    reason: str
+    notes: Optional[str] = None
+    stage: str = "Rejected"
+
+
+class PipelineWithdrawBody(BaseModel):
+    reason: str
+    notes: Optional[str] = None
+    effective_date: Optional[datetime] = None
+
+
+class PipelinePlaceBody(BaseModel):
+    confirmed: bool = True
+    start_date: Optional[str] = None
+    final_rate: Optional[str] = None
+    fill_job: bool = False
+    offer_id: Optional[int] = None
+    override_reason: Optional[str] = None
 
 
 class InterviewBase(BaseModel):

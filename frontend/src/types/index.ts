@@ -1022,6 +1022,51 @@ export const SUBMISSION_STATUSES = [
 ] as const;
 export type SubmissionStatus = typeof SUBMISSION_STATUSES[number];
 
+/** Canonical display stages for the unified Pipeline module. */
+export const PIPELINE_STAGES = [
+  "Identified",
+  "Contacted",
+  "Interested",
+  "Submitted",
+  "Client Review",
+  "Interview Scheduled",
+  "Interview Completed",
+  "Offer",
+  "Placed",
+  "Rejected",
+  "Withdrawn",
+] as const;
+export type PipelineStage = typeof PIPELINE_STAGES[number];
+
+export const PIPELINE_ACTIVE_STAGES = PIPELINE_STAGES.filter(
+  (s) => s !== "Placed" && s !== "Rejected" && s !== "Withdrawn",
+);
+
+export const PIPELINE_CREATE_STAGES = [
+  "Identified", "Contacted", "Interested", "Submitted",
+] as const;
+
+export const PIPELINE_STAGE_GROUPS = [
+  "active",
+  "pre_submission",
+  "submitted",
+  "interview",
+  "offer",
+  "placed",
+  "closed",
+] as const;
+export type PipelineStageGroup = typeof PIPELINE_STAGE_GROUPS[number];
+
+export const PIPELINE_STAGE_GROUP_LABELS: Record<PipelineStageGroup, string> = {
+  active: "Active",
+  pre_submission: "Pre-submission",
+  submitted: "Submitted",
+  interview: "Interview",
+  offer: "Offer",
+  placed: "Placed",
+  closed: "Closed",
+};
+
 export interface Submission {
   id: number;
   job_requirement_id: number;
@@ -1039,9 +1084,52 @@ export interface Submission {
   employee_name: string | null;
   vendor_name: string | null;
   recruiter_name: string | null;
+  client_name?: string | null;
+  status_display?: string | null;
+  status_group?: string | null;
+  stage_order?: number | null;
+  match_score?: number | null;
+  resume_filename?: string | null;
+  next_interview_at?: string | null;
+  offer_status?: string | null;
+  next_follow_up_at?: string | null;
+  follow_up_overdue?: boolean;
+  last_activity_at?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SubmissionListResponse {
+  items: Submission[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface PipelineSummaryCounts {
+  active: number;
+  submitted: number;
+  interview: number;
+  offer: number;
+  placed: number;
+  follow_ups_due: number;
+}
+
+export interface PipelineListParams {
+  q?: string;
+  job_requirement_id?: number;
+  employee_id?: number;
+  status?: string;
+  stage?: string;
+  stage_group?: string;
+  active_only?: boolean;
+  follow_up?: string;
+  sort?: string;
+  created_by?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export interface SubmissionCreate {
@@ -1067,6 +1155,13 @@ export interface SubmissionUpdate {
   status?: string;
   vendor_reference?: string | null;
   notes?: string | null;
+}
+
+export interface PipelineStageUpdate {
+  stage: string;
+  reason?: string | null;
+  confirmed?: boolean;
+  resume_override_reason?: string | null;
 }
 
 export const INTERVIEW_STATUSES = ["Scheduled", "Completed", "Cancelled", "No Show"] as const;

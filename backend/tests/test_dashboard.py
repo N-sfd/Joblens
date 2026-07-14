@@ -142,7 +142,7 @@ def test_submission_stage_counts_and_pipeline_mapping(client, db_session, as_rol
 
     res = client.get("/api/dashboard/summary")
     body = res.json()
-    assert body["counts"]["candidates_submitted"] == 3  # Submitted x2 + Selected x1
+    assert body["counts"]["candidates_submitted"] == 2  # Submitted x2 (Selected → placed group)
     assert body["counts"]["placements"] == 1
 
     pipeline = {s["stage"]: s["count"] for s in body["pipeline"]}

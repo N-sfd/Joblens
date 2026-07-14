@@ -211,7 +211,7 @@ function CandidateDetailInner() {
               <button type="button" onClick={runMatch} disabled={matching} className="btn-secondary flex items-center gap-2 text-sm">
                 {matching ? <Loader2 size={14} className="animate-spin" /> : <GitCompareArrows size={14} />} Match to Jobs
               </button>
-              <Link href={`/ats/submissions?employee_id=${candidateId}`} className="btn-secondary flex items-center gap-2 text-sm">
+              <Link href={`/ats/pipeline?employee_id=${candidateId}`} className="btn-secondary flex items-center gap-2 text-sm">
                 <Send size={14} /> Create Submission
               </Link>
               <Link href={`/ats/candidates/${candidateId}/edit`} className="btn-primary flex items-center gap-2 text-sm">
@@ -341,7 +341,7 @@ function CandidateDetailInner() {
                         {(m.match_reason as string) || (m.recommendation as string) || "—"}
                       </td>
                       <td className="px-4 py-3 text-right">
-                        <Link href={`/ats/submissions?employee_id=${candidateId}&job_requirement_id=${jobId}`} className="text-xs text-indigo-600 hover:underline">
+                        <Link href={`/ats/pipeline?employee_id=${candidateId}&job_requirement_id=${jobId}`} className="text-xs text-indigo-600 hover:underline">
                           Create Submission
                         </Link>
                       </td>
@@ -360,7 +360,7 @@ function CandidateDetailInner() {
           rows={submissions}
           columns={["job_title", "client", "status", "submitted_at"]}
           idKey="id"
-          link={(r) => `/ats/submissions/${r.id}`}
+          link={(r) => `/ats/pipeline/${r.id}`}
         />
       )}
 
@@ -370,7 +370,7 @@ function CandidateDetailInner() {
           rows={interviews}
           columns={["interview_date", "interview_type", "status", "interviewer_name"]}
           idKey="id"
-          link={(r) => `/ats/interviews`}
+          link={(r) => `/ats/pipeline/${(r.submission_id as number) || ""}`}
         />
       )}
 
@@ -380,7 +380,7 @@ function CandidateDetailInner() {
           rows={offers}
           columns={["offered_title", "offered_rate", "status", "offer_date"]}
           idKey="id"
-          link={() => `/ats/offers`}
+          link={(r) => `/ats/pipeline/${(r.submission_id as number) || ""}`}
         />
       )}
 

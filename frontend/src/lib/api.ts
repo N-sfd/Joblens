@@ -21,6 +21,23 @@ function getApiBase(): string {
 const OWNED_PREFIXES = ["/api/jobs", "/api/applications", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/integrations/joblens/jobs"];
 
 /** Build a query string (with leading `?`) from defined params; empty → "". */
+export class ApiError extends Error {
+  status: number;
+  detail: unknown;
+  submissionId?: number;
+
+  constructor(message: string, status: number, detail?: unknown) {
+    super(message);
+    this.name = "ApiError";
+    this.status = status;
+    this.detail = detail;
+    if (detail && typeof detail === "object" && "submission_id" in detail) {
+      const id = Number((detail as { submission_id: unknown }).submission_id);
+      if (Number.isFinite(id)) this.submissionId = id;
+    }
+  }
+}
+
 function formatApiErrorDetail(detail: unknown, fallback: string): string {
   if (typeof detail === "string" && detail.trim()) return detail;
   if (Array.isArray(detail)) {
@@ -33,8 +50,13 @@ function formatApiErrorDetail(detail: unknown, fallback: string): string {
       .filter(Boolean);
     if (msgs.length) return msgs.join("; ");
   }
-  if (detail && typeof detail === "object" && "msg" in detail) {
-    return String((detail as { msg: unknown }).msg);
+  if (detail && typeof detail === "object") {
+    if ("message" in detail && typeof (detail as { message: unknown }).message === "string") {
+      return String((detail as { message: string }).message);
+    }
+    if ("msg" in detail) {
+      return String((detail as { msg: unknown }).msg);
+    }
   }
   return fallback;
 }
@@ -51,7 +73,7 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
 
 // Private ATS/CRM endpoints — these carry the Clerk session JWT for backend
 // verification (see ats_auth.py). Public job-seeker endpoints do not.
-const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/interviews", "/api/offers", "/api/crm", "/api/ats", "/api/zoho", "/api/dashboard"];
+const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/pipeline", "/api/interviews", "/api/offers", "/api/crm", "/api/ats", "/api/zoho", "/api/dashboard"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
@@ -85,9 +107,28 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const body = await res.text();
     let detail: unknown = body;
     try { detail = JSON.parse(body)?.detail ?? body; } catch {}
-    throw new Error(formatApiErrorDetail(detail, body || `Request failed: ${res.status}`));
+    throw new ApiError(
+      formatApiErrorDetail(detail, body || `Request failed: ${res.status}`),
+      res.status,
+      detail,
+    );
   }
   return res.json();
+}
+
+function normalizeSubmissionList(
+  data: import("@/types").SubmissionListResponse | import("@/types").Submission[],
+): import("@/types").SubmissionListResponse {
+  if (Array.isArray(data)) {
+    return { items: data, total: data.length, page: 1, page_size: data.length || 20, total_pages: 1 };
+  }
+  return {
+    items: data.items ?? [],
+    total: data.total ?? 0,
+    page: data.page ?? 1,
+    page_size: data.page_size ?? 20,
+    total_pages: data.total_pages ?? 1,
+  };
 }
 
 export const api = {
@@ -469,17 +510,85 @@ export const api = {
       body: JSON.stringify(data),
     }),
 
-  getSubmissions: (params?: { job_requirement_id?: number; employee_id?: number; status?: string; active_only?: boolean }) =>
-    request<import("@/types").Submission[]>(`/api/submissions/${qs(params)}`),
-  getSubmission: (id: number) => request<import("@/types").Submission>(`/api/submissions/${id}`),
+  getPipeline: async (params?: import("@/types").PipelineListParams) => {
+    const data = await request<import("@/types").SubmissionListResponse | import("@/types").Submission[]>(
+      `/api/pipeline/${qs(params as Record<string, string | number | boolean | undefined | null> | undefined)}`,
+    );
+    return normalizeSubmissionList(data);
+  },
+  getPipelineSummary: () =>
+    request<import("@/types").PipelineSummaryCounts>("/api/pipeline/summary"),
+  getPipelineRecord: (id: number) =>
+    request<import("@/types").Submission>(`/api/pipeline/${id}`),
+  createPipeline: (data: import("@/types").SubmissionCreate) =>
+    request<import("@/types").Submission>("/api/pipeline/", {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  updatePipeline: (id: number, data: import("@/types").SubmissionUpdate) =>
+    request<import("@/types").Submission>(`/api/pipeline/${id}`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  changePipelineStage: (id: number, data: import("@/types").PipelineStageUpdate) =>
+    request<import("@/types").Submission>(`/api/pipeline/${id}/stage`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  placePipeline: (id: number, data?: {
+    confirmed?: boolean;
+    start_date?: string | null;
+    final_rate?: string | null;
+    fill_job?: boolean;
+    offer_id?: number | null;
+    override_reason?: string | null;
+  }) =>
+    request<import("@/types").Submission>(`/api/pipeline/${id}/place`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data ?? { confirmed: true }),
+    }),
+  rejectPipeline: (id: number, data: { reason: string; notes?: string | null; stage?: string }) =>
+    request<import("@/types").Submission>(`/api/pipeline/${id}/reject`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  withdrawPipeline: (id: number, data: { reason: string; notes?: string | null; effective_date?: string | null }) =>
+    request<import("@/types").Submission>(`/api/pipeline/${id}/withdraw`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  getPipelineActivities: (id: number) =>
+    request<import("@/types").CRMActivity[]>(`/api/pipeline/${id}/activities`),
+  createPipelineFollowUp: (id: number, data: import("@/types").CRMActivityCreate) =>
+    request<import("@/types").CRMActivity>(`/api/pipeline/${id}/follow-ups`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  getPipelineInterviews: (id: number) =>
+    request<import("@/types").Interview[]>(`/api/pipeline/${id}/interviews`),
+  createPipelineInterview: (id: number, data: Omit<import("@/types").InterviewCreate, "submission_id">) =>
+    request<import("@/types").Interview>(`/api/pipeline/${id}/interviews`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+  getPipelineOffer: (id: number) =>
+    request<import("@/types").Offer | null>(`/api/pipeline/${id}/offer`),
+  createPipelineOffer: (id: number, data: Omit<import("@/types").OfferCreate, "submission_id">) =>
+    request<import("@/types").Offer>(`/api/pipeline/${id}/offer`, {
+      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
+    }),
+
+  /** @deprecated Prefer getPipeline — returns items array for backward compatibility. */
+  getSubmissions: async (params?: {
+    job_requirement_id?: number;
+    employee_id?: number;
+    status?: string;
+    active_only?: boolean;
+  }) => {
+    const res = await api.getPipeline(params);
+    return res.items;
+  },
+  getSubmission: (id: number) => request<import("@/types").Submission>(`/api/pipeline/${id}`),
   createSubmission: (data: import("@/types").SubmissionCreate) =>
-    request<import("@/types").Submission>("/api/submissions/", {
+    request<import("@/types").Submission>("/api/pipeline/", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
   createSubmissionFromJobSend: (sendId: number) =>
-    request<import("@/types").Submission>(`/api/submissions/from-job-send/${sendId}`, { method: "POST" }),
+    request<import("@/types").Submission>(`/api/pipeline/from-job-send/${sendId}`, { method: "POST" }),
   updateSubmission: (id: number, data: import("@/types").SubmissionUpdate) =>
-    request<import("@/types").Submission>(`/api/submissions/${id}`, {
+    request<import("@/types").Submission>(`/api/pipeline/${id}`, {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
 

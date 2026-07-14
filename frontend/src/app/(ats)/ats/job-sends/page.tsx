@@ -69,7 +69,7 @@ function JobSendsPageInner() {
     setCreatingSubmission(sendId);
     try {
       const sub = await api.createSubmissionFromJobSend(sendId);
-      window.location.href = `/ats/submissions?highlight=${sub.id}`;
+      window.location.href = `/ats/pipeline?highlight=${sub.id}`;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create submission.");
     } finally {

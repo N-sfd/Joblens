@@ -14,7 +14,7 @@ SEEKER_PRODUCT_ENABLED = os.getenv("SEEKER_PRODUCT_ENABLED", "true").strip().low
 )
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, pipeline, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
 from services.extension_config import validate_extension_config_at_startup
@@ -126,7 +126,8 @@ app.include_router(employees.router, prefix="/api/candidates", tags=["Candidates
 app.include_router(employee_resumes.router, prefix="/api/candidates", tags=["Candidate Resumes (ATS)"])
 app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
 app.include_router(job_sends.router, prefix="/api/job-sends", tags=["Job Sends (ATS)"])
-app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions (ATS)"])
+app.include_router(pipeline.router, prefix="/api/pipeline", tags=["Pipeline (ATS)"])
+app.include_router(pipeline.router, prefix="/api/submissions", tags=["Submissions (ATS)"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews (ATS)"])
 app.include_router(offers.router, prefix="/api/offers", tags=["Offers (ATS)"])
 app.include_router(crm_organizations.router, prefix="/api/crm/organizations", tags=["CRM Organizations (ATS)"])

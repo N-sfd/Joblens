@@ -204,7 +204,7 @@ export default function JobRequirementDetailPage() {
           <Link href="/ats/candidates/new" className="btn-secondary flex items-center gap-2 text-sm">
             <UserPlus size={14} /> Add Candidate
           </Link>
-          <Link href={`/ats/submissions?job_requirement_id=${jobId}`} className="btn-secondary flex items-center gap-2 text-sm">
+          <Link href={`/ats/pipeline?job_requirement_id=${jobId}`} className="btn-secondary flex items-center gap-2 text-sm">
             <Send size={14} /> Create Submission
           </Link>
           {job.recruiter_email && (
@@ -364,10 +364,15 @@ function CandidatesTab({ jobId, canWrite }: { jobId: number; canWrite: boolean }
                   <Link href={`/ats/candidates/${c.employee_id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
                   {canWrite && !c.submission_id && (
                     <Link
-                      href={`/ats/submissions?job_requirement_id=${jobId}&employee_id=${c.employee_id}`}
+                      href={`/ats/pipeline?job_requirement_id=${jobId}&employee_id=${c.employee_id}`}
                       className="text-xs text-indigo-600 hover:underline"
                     >
                       Submit
+                    </Link>
+                  )}
+                  {canWrite && c.submission_id && (
+                    <Link href={`/ats/pipeline/${c.submission_id}`} className="text-xs text-indigo-600 hover:underline">
+                      View
                     </Link>
                   )}
                 </div>
@@ -405,7 +410,7 @@ function SubmissionsTab({ jobId }: { jobId: number }) {
     return (
       <div className="card p-10 text-center">
         <p className="text-slate-500 font-medium">No submissions yet.</p>
-        <Link href={`/ats/submissions?job_requirement_id=${jobId}`} className="text-sm text-indigo-600 hover:underline mt-1 inline-block">Create Submission</Link>
+        <Link href={`/ats/pipeline?job_requirement_id=${jobId}`} className="text-sm text-indigo-600 hover:underline mt-1 inline-block">Create Submission</Link>
       </div>
     );
   }
@@ -431,10 +436,10 @@ function SubmissionsTab({ jobId }: { jobId: number }) {
                 </Link>
               </td>
               <td className="px-4 py-3 text-slate-600 hidden sm:table-cell">{formatDate(s.submission_date)}</td>
-              <td className="px-4 py-3 text-slate-700">{s.status}</td>
+              <td className="px-4 py-3 text-slate-700">{s.status_display || s.status}</td>
               <td className="px-4 py-3 text-slate-600 hidden md:table-cell">{s.submitted_rate || "—"}</td>
               <td className="px-4 py-3 text-right">
-                <Link href="/ats/submissions" className="text-xs text-indigo-600 hover:underline">View</Link>
+                <Link href={`/ats/pipeline/${s.id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
               </td>
             </tr>
           ))}
@@ -491,7 +496,7 @@ function InterviewsTab({ jobId }: { jobId: number }) {
               <td className="px-4 py-3 text-slate-700">{iv.status}</td>
               <td className="px-4 py-3 text-slate-600 hidden md:table-cell">{iv.interviewer_name || "—"}</td>
               <td className="px-4 py-3 text-right">
-                <Link href="/ats/interviews" className="text-xs text-indigo-600 hover:underline">View</Link>
+                <Link href={`/ats/pipeline/${iv.submission_id}`} className="text-xs text-indigo-600 hover:underline">View</Link>
               </td>
             </tr>
           ))}

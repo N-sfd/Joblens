@@ -29,7 +29,6 @@ from models import (
     Employee,
     Interview,
     JobRequirement,
-    Offer,
     Submission,
     ZohoConnection,
 )
@@ -38,6 +37,12 @@ from services.job_status import _ALL_KNOWN_RAW_STATUSES, raw_statuses_matching_g
 from services.candidate_status import (
     raw_statuses_matching_group as candidate_raw_statuses_matching_group,
     _STATUS_DISPLAY_MAP as _CANDIDATE_STATUS_MAP,
+)
+from services.pipeline_status import (
+    PIPELINE_STAGES,
+    normalize_pipeline_stage,
+    raw_statuses_matching_group as pipeline_raw_statuses_matching_group,
+    _STATUS_DISPLAY_MAP as _PIPELINE_STATUS_MAP,
 )
 
 router = APIRouter()
@@ -53,26 +58,14 @@ _OPEN_STATUSES, _OPEN_INCLUDES_UNMAPPED = raw_statuses_matching_group("open")
 _ACTIVE_CAND_STATUSES, _ACTIVE_CAND_INCLUDES_UNMAPPED = candidate_raw_statuses_matching_group("active")
 _ALL_KNOWN_CAND_RAW = set(_CANDIDATE_STATUS_MAP.keys())
 
-SUBMITTED_OR_LATER_STATUSES = {"Submitted", "Client Review", "Interview", "Offer", "Selected"}
-ACTIVE_OFFER_STATUSES = {"Draft", "Extended", "Accepted"}
+# Pipeline stage groups — same definitions as /api/pipeline?stage_group=…
+_SUBMITTED_STATUSES, _SUBMITTED_INCLUDES_UNMAPPED = pipeline_raw_statuses_matching_group("submitted")
+_OFFER_STATUSES, _ = pipeline_raw_statuses_matching_group("offer")
+_PLACED_STATUSES, _ = pipeline_raw_statuses_matching_group("placed")
+_ALL_KNOWN_PIPELINE_RAW = set(_PIPELINE_STATUS_MAP.keys())
 
-PIPELINE_STAGE_ORDER = [
-    "Identified", "Contacted", "Interested", "Submitted", "Client Review",
-    "Interview Scheduled", "Interview Completed", "Offer", "Placed", "Rejected", "Withdrawn",
-]
-SUBMISSION_STATUS_TO_STAGE = {
-    "Draft": "Identified",
-    "Employee Contacted": "Contacted",
-    "Employee Interested": "Interested",
-    "Submitted": "Submitted",
-    "Client Review": "Client Review",
-    # "Interview" is split below using real Interview rows.
-    "Offer": "Offer",
-    "Selected": "Placed",
-    "Rejected": "Rejected",
-    "Withdrawn": "Withdrawn",
-    # "Closed" has no equivalent in the target stage vocabulary — excluded.
-}
+PIPELINE_STAGE_ORDER = list(PIPELINE_STAGES)
+
 
 NEW_JOB_WINDOW_DAYS = 7
 RECENT_LIMIT = 10
@@ -156,6 +149,29 @@ async def get_dashboard_summary(
         else Employee.status.in_(list(_ACTIVE_CAND_STATUSES))
     )
 
+    submitted_filter = (
+        or_(Submission.status.in_(list(_SUBMITTED_STATUSES)), ~Submission.status.in_(list(_ALL_KNOWN_PIPELINE_RAW)))
+        if _SUBMITTED_INCLUDES_UNMAPPED
+        else Submission.status.in_(list(_SUBMITTED_STATUSES))
+    )
+
+    # Interview Scheduled stage — parity with /ats/pipeline?stage=interview_scheduled.
+    # Same split as pipeline overview: Interview-status rows minus those counted as Completed.
+    interview_raw = {"Interview", "Interviewing", "Scheduled", "Interview Scheduled"}
+    interview_subs_q = db.query(func.count(Submission.id)).filter(Submission.status.in_(list(interview_raw)))
+    if owner:
+        interview_subs_q = interview_subs_q.filter(Submission.created_by == owner)
+    interview_subs = interview_subs_q.scalar() or 0
+    interview_completed_for_stage_q = (
+        db.query(func.count(func.distinct(Interview.submission_id)))
+        .join(Submission, Submission.id == Interview.submission_id)
+        .filter(Submission.status.in_(list(interview_raw)), Interview.status == "Completed")
+    )
+    if owner:
+        interview_completed_for_stage_q = interview_completed_for_stage_q.filter(Submission.created_by == owner)
+    interview_completed_for_stage = interview_completed_for_stage_q.scalar() or 0
+    interviews_scheduled_count = max(0, interview_subs - min(interview_completed_for_stage, interview_subs))
+
     counts = DashboardSummaryCounts(
         open_jobs=scoped_count(JobRequirement, open_jobs_filter),
         new_zoho_jobs=scoped_count(
@@ -164,10 +180,10 @@ async def get_dashboard_summary(
             JobRequirement.created_at >= week_ago,
         ),
         active_candidates=scoped_count(Employee, active_candidates_filter),
-        candidates_submitted=scoped_count(Submission, Submission.status.in_(SUBMITTED_OR_LATER_STATUSES)),
-        interviews_scheduled=scoped_count(Interview, Interview.status == "Scheduled"),
-        offers=scoped_count(Offer, Offer.status.in_(ACTIVE_OFFER_STATUSES)),
-        placements=scoped_count(Submission, Submission.status == "Selected"),
+        candidates_submitted=scoped_count(Submission, submitted_filter),
+        interviews_scheduled=interviews_scheduled_count,
+        offers=scoped_count(Submission, Submission.status.in_(list(_OFFER_STATUSES))),
+        placements=scoped_count(Submission, Submission.status.in_(list(_PLACED_STATUSES))),
         follow_ups_due=0,  # filled in below alongside the list, to share one filter
     )
 
@@ -266,8 +282,8 @@ async def get_dashboard_summary(
             stage_counts["Interview Completed"] += completed
             stage_counts["Interview Scheduled"] += count - completed
             continue
-        stage = SUBMISSION_STATUS_TO_STAGE.get(raw_status)
-        if stage:
+        stage = normalize_pipeline_stage(raw_status)
+        if stage in stage_counts:
             stage_counts[stage] += count
     pipeline = [DashboardPipelineStage(stage=s, count=stage_counts[s]) for s in PIPELINE_STAGE_ORDER]
 

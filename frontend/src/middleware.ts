@@ -22,15 +22,53 @@ const LEGACY_ATS_EXACT: Record<string, string> = {
   "/ats/employees/new-from-resume": "/ats/candidates/new?mode=resume",
 };
 
+function mapSubmissionsQueryToPipeline(search: string): string {
+  if (!search) return "";
+  const sp = new URLSearchParams(search.startsWith("?") ? search.slice(1) : search);
+  const status = sp.get("status");
+  if (status) {
+    const normalized = status.trim().toLowerCase();
+    sp.delete("status");
+    if (normalized === "submitted" || normalized === "client review") {
+      sp.set("stage_group", "submitted");
+    } else if (normalized === "interview") {
+      sp.set("stage_group", "interview");
+    } else if (normalized === "offer") {
+      sp.set("stage_group", "offer");
+    } else if (normalized === "selected" || normalized === "placed") {
+      sp.set("stage_group", "placed");
+    } else if (normalized === "rejected" || normalized === "withdrawn" || normalized === "closed") {
+      sp.set("stage_group", "closed");
+    } else {
+      sp.set("stage", status);
+    }
+  }
+  const s = sp.toString();
+  return s ? `?${s}` : "";
+}
+
 function applyLegacyRedirects(req: NextRequest) {
   const { pathname } = req.nextUrl;
 
+  if (pathname === "/ats/submissions") {
+    const url = new URL(`/ats/pipeline${mapSubmissionsQueryToPipeline(req.nextUrl.search)}`, req.url);
+    return NextResponse.redirect(url);
+  }
   if (LEGACY_ATS_EXACT[pathname]) {
-    return NextResponse.redirect(new URL(LEGACY_ATS_EXACT[pathname], req.url));
+    const url = new URL(LEGACY_ATS_EXACT[pathname], req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
   }
   // /ats/employees/:id[/edit] → /ats/candidates/:id[/edit]
   if (pathname.startsWith("/ats/employees/")) {
     const target = pathname.replace("/ats/employees", "/ats/candidates");
+    const url = new URL(target, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
+  // /ats/submissions/:id → /ats/pipeline/:id
+  if (pathname.startsWith("/ats/submissions/")) {
+    const target = pathname.replace("/ats/submissions", "/ats/pipeline");
     const url = new URL(target, req.url);
     url.search = req.nextUrl.search;
     return NextResponse.redirect(url);

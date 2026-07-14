@@ -9,14 +9,14 @@ import {
 
 // Consolidated 8-item nav (Recruitment CRM + ATS):
 //   - Candidates -> /ats/candidates (Employees + resume workflows)
-//   - Pipeline -> /ats/submissions (Job Sends/Interviews/Offers fold in during Pipeline phase)
+//   - Pipeline -> /ats/pipeline (submissions, interviews, offers)
 //   - Reports -> stub page until the Reports phase
 const NAV: { href: string; label: string; icon: React.ElementType }[] = [
   { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ats/email-inbox", label: "Zoho Inbox", icon: Inbox },
   { href: "/ats/jobs", label: "Jobs", icon: Briefcase },
   { href: "/ats/candidates", label: "Candidates", icon: Users },
-  { href: "/ats/submissions", label: "Pipeline", icon: Send },
+  { href: "/ats/pipeline", label: "Pipeline", icon: Send },
   { href: "/ats/contacts", label: "Contacts", icon: Contact },
   { href: "/ats/reports", label: "Reports", icon: BarChart3 },
   { href: "/ats/settings", label: "Settings", icon: Settings },
