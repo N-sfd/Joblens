@@ -831,7 +831,7 @@ class AtsStaffUser(Base):
     clerk_user_id = Column(String(128), unique=True, nullable=False, index=True)
     email = Column(String(255), nullable=True, index=True)
     display_name = Column(String(255), nullable=True)
-    role = Column(String(40), nullable=False, default="viewer", index=True)
+    role = Column(String(40), nullable=False, default="read_only", index=True)
     organization_name = Column(String(255), nullable=True)
     role_updated_at = Column(DateTime, nullable=True)
     role_updated_by = Column(String(128), nullable=True)

@@ -7,28 +7,33 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 
-export type AtsRole = "admin" | "recruiter" | "viewer";
+export type AtsRole = "admin" | "recruiter" | "manager" | "read_only";
 
 const ROLE_ALIASES: Record<string, AtsRole> = {
   administrator: "admin",
   recruiters: "recruiter",
-  view: "viewer",
-  readonly: "viewer",
+  managers: "manager",
+  view: "read_only",
+  viewer: "read_only",
+  readonly: "read_only",
+  "read-only": "read_only",
   hr_admin: "admin",
 };
 
+const VALID_ROLES: readonly AtsRole[] = ["admin", "recruiter", "manager", "read_only"];
+
 function normalizeRole(raw: unknown): AtsRole {
-  if (typeof raw !== "string" || !raw.trim()) return "viewer";
+  if (typeof raw !== "string" || !raw.trim()) return "read_only";
   const role = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
   const aliased = ROLE_ALIASES[role] ?? role;
-  return aliased === "admin" || aliased === "recruiter" || aliased === "viewer" ? aliased : "viewer";
+  return (VALID_ROLES as readonly string[]).includes(aliased) ? (aliased as AtsRole) : "read_only";
 }
 
 export type AtsMeState = {
   role: AtsRole;
   isAdmin: boolean;
   canWrite: boolean;
-  isViewer: boolean;
+  isReadOnly: boolean;
   hasAtsAccess: boolean;
   displayName: string | null;
   email: string | null;
@@ -54,7 +59,7 @@ export function useAtsRole(): AtsMeState {
   const refresh = useCallback(async () => {
     if (!authLoaded || !userLoaded) return;
     if (!isSignedIn) {
-      setRole("viewer");
+      setRole("read_only");
       setLoading(false);
       setError(null);
       return;
@@ -96,7 +101,7 @@ export function useAtsRole(): AtsMeState {
     const t = window.setTimeout(() => {
       setLoading(false);
       setError((prev) => prev || "Timed out checking ATS permissions. Try again or sign out and sign back in.");
-      if (clerkFallback === "admin" || clerkFallback === "recruiter") {
+      if (clerkFallback === "admin" || clerkFallback === "recruiter" || clerkFallback === "manager") {
         setRole(clerkFallback);
       }
     }, 12000);
@@ -106,9 +111,9 @@ export function useAtsRole(): AtsMeState {
   return {
     role,
     isAdmin: role === "admin",
-    canWrite: role === "admin" || role === "recruiter",
-    isViewer: role === "viewer",
-    hasAtsAccess: role === "admin" || role === "recruiter",
+    canWrite: role === "admin" || role === "recruiter" || role === "manager",
+    isReadOnly: role === "read_only",
+    hasAtsAccess: role === "admin" || role === "recruiter" || role === "manager",
     displayName:
       displayName ||
       user?.fullName ||

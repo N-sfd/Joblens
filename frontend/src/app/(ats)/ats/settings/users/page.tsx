@@ -26,7 +26,7 @@ export default function AtsStaffUsersPage() {
   const [clerkId, setClerkId] = useState("");
   const [email, setEmail] = useState("");
   const [name, setName] = useState("");
-  const [role, setRole] = useState<"admin" | "recruiter" | "viewer">("recruiter");
+  const [role, setRole] = useState<"admin" | "recruiter" | "manager" | "read_only">("recruiter");
 
   const load = async () => {
     setError(null);
@@ -69,7 +69,7 @@ export default function AtsStaffUsersPage() {
     }
   };
 
-  const onRoleChange = async (clerkUserId: string, next: "admin" | "recruiter" | "viewer") => {
+  const onRoleChange = async (clerkUserId: string, next: "admin" | "recruiter" | "manager" | "read_only") => {
     setBusy(true);
     setError(null);
     try {
@@ -149,8 +149,9 @@ export default function AtsStaffUsersPage() {
             onChange={(e) => setRole(e.target.value as typeof role)}
           >
             <option value="recruiter">Recruiter</option>
+            <option value="manager">Manager</option>
             <option value="admin">Admin</option>
-            <option value="viewer">Viewer (no ATS write)</option>
+            <option value="read_only">Read Only (no ATS write)</option>
           </select>
         </div>
         <div className="flex items-end">
@@ -189,12 +190,16 @@ export default function AtsStaffUsersPage() {
                     value={r.role}
                     disabled={busy}
                     onChange={(e) =>
-                      onRoleChange(r.clerk_user_id, e.target.value as "admin" | "recruiter" | "viewer")
+                      onRoleChange(
+                        r.clerk_user_id,
+                        e.target.value as "admin" | "recruiter" | "manager" | "read_only",
+                      )
                     }
                   >
                     <option value="admin">Admin</option>
                     <option value="recruiter">Recruiter</option>
-                    <option value="viewer">Viewer</option>
+                    <option value="manager">Manager</option>
+                    <option value="read_only">Read Only</option>
                   </select>
                 </td>
                 <td className="px-4 py-3 text-slate-600">{r.organization_name || "—"}</td>

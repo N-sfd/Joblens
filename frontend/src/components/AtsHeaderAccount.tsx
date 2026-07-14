@@ -7,7 +7,8 @@ import { useAtsRole } from "@/lib/atsRole";
 function roleLabel(role: string) {
   if (role === "admin") return "Admin";
   if (role === "recruiter") return "Recruiter";
-  return "Viewer";
+  if (role === "manager") return "Manager";
+  return "Read Only";
 }
 
 export default function AtsHeaderAccount() {

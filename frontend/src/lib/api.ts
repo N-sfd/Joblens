@@ -466,7 +466,7 @@ export const api = {
       user_id: string | null;
       email: string | null;
       display_name: string | null;
-      role: "admin" | "recruiter" | "viewer";
+      role: "admin" | "recruiter" | "manager" | "read_only";
       role_source: string;
       organization_name: string | null;
       can_write: boolean;
@@ -490,7 +490,7 @@ export const api = {
     >("/api/ats/users"),
   createAtsStaffUser: (data: {
     clerk_user_id: string;
-    role: "admin" | "recruiter" | "viewer";
+    role: "admin" | "recruiter" | "manager" | "read_only";
     email?: string;
     display_name?: string;
     organization_name?: string;
@@ -503,7 +503,7 @@ export const api = {
   updateAtsStaffRole: (
     clerkUserId: string,
     data: {
-      role: "admin" | "recruiter" | "viewer";
+      role: "admin" | "recruiter" | "manager" | "read_only";
       email?: string;
       display_name?: string;
       organization_name?: string;

@@ -7,6 +7,12 @@ import os
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
+SEEKER_PRODUCT_ENABLED = os.getenv("SEEKER_PRODUCT_ENABLED", "true").strip().lower() not in (
+    "false",
+    "0",
+    "no",
+)
+
 from database import create_tables
 from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
@@ -91,21 +97,27 @@ app.add_middleware(
     allow_headers=["*"],
 )
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
-app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
-app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
-app.include_router(applications.router, prefix="/api/applications", tags=["Application Status"])
-app.include_router(extension.router, prefix="/api/extension", tags=["Browser Extension"])
-app.include_router(extension_upload.router, prefix="/api/extension", tags=["Browser Extension Uploads"])
-app.include_router(extension_pilot.router, prefix="/api/extension", tags=["Browser Extension Pilot"])
-app.include_router(match.router, prefix="/api/match", tags=["Match"])
-app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
-app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
-app.include_router(account.router, prefix="/api/account", tags=["Account"])
-# CRM/ATS → JobLens job publishing surface (routers/public_jobs.py). Public —
-# guest_id/user pattern, not Clerk-gated — since JobLens calls it directly.
-app.include_router(public_jobs.router, prefix="/api/integrations/joblens/jobs", tags=["JobLens Integration"])
+# Job-seeker product ("JobLens") — gated behind SEEKER_PRODUCT_ENABLED so it can
+# be turned off without deleting code while the app consolidates onto the
+# Recruitment CRM + ATS product. Defaults to enabled; flip to false once the
+# consolidated ATS nav/pages are confirmed stable.
+if SEEKER_PRODUCT_ENABLED:
+    app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+    app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+    app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
+    app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+    app.include_router(applications.router, prefix="/api/applications", tags=["Application Status"])
+    app.include_router(extension.router, prefix="/api/extension", tags=["Browser Extension"])
+    app.include_router(extension_upload.router, prefix="/api/extension", tags=["Browser Extension Uploads"])
+    app.include_router(extension_pilot.router, prefix="/api/extension", tags=["Browser Extension Pilot"])
+    app.include_router(match.router, prefix="/api/match", tags=["Match"])
+    app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
+    app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
+    app.include_router(account.router, prefix="/api/account", tags=["Account"])
+    # CRM/ATS → JobLens job publishing surface (routers/public_jobs.py). Public —
+    # guest_id/user pattern, not Clerk-gated — since JobLens calls it directly.
+    # Only the seeker-side Discover Jobs UI consumes this; folded into the same flag.
+    app.include_router(public_jobs.router, prefix="/api/integrations/joblens/jobs", tags=["JobLens Integration"])
 # Private ATS data — Clerk JWT verification via ats_auth.py (set ATS_AUTH_ENFORCE=true in production).
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])

@@ -11,7 +11,10 @@ Role resolution order (never trust a browser-supplied role header):
   2. Clerk Backend API public_metadata (when reachable)
   3. Local `ats_staff_users` row for clerk_user_id
   4. Bootstrap allowlist (ATS_BOOTSTRAP_ADMIN_EMAILS / _USER_IDS) → admin
-  5. Default viewer when enforced, else admin for local anonymous CRUD
+  5. Default read_only when enforced, else admin for local anonymous CRUD
+
+Roles: admin, recruiter, manager, read_only (legacy "viewer" is normalized to
+read_only for backward compatibility with stale Clerk public_metadata values).
 """
 
 from __future__ import annotations
@@ -49,8 +52,8 @@ _jwks_cache: dict = {"keys": None, "fetched_at": 0.0}
 _role_cache: dict[str, tuple[str, float]] = {}
 _ROLE_CACHE_TTL = 300.0
 
-ATS_ROLES = ("admin", "recruiter", "viewer")
-WRITE_ROLES = ("admin", "recruiter")
+ATS_ROLES = ("admin", "recruiter", "manager", "read_only")
+WRITE_ROLES = ("admin", "recruiter", "manager")
 ADMIN_ROLES = ("admin",)
 
 FORBIDDEN_MSG = (
@@ -67,14 +70,14 @@ def _csv_set(name: str) -> set[str]:
     return {p.strip().lower() for p in raw.split(",") if p.strip()}
 
 
-def normalize_ats_role(raw: Optional[str], *, default: str = "viewer") -> str:
+def normalize_ats_role(raw: Optional[str], *, default: str = "read_only") -> str:
     return _normalize_role(raw, default=default)
 
 
-def _normalize_role(raw: Optional[str], *, default: str = "viewer") -> str:
-    """Missing/unknown roles fall back to viewer (least privilege) when enforced."""
+def _normalize_role(raw: Optional[str], *, default: str = "read_only") -> str:
+    """Missing/unknown roles fall back to read_only (least privilege) when enforced."""
     if not raw or not str(raw).strip():
-        return default if default in ATS_ROLES else "viewer"
+        return default if default in ATS_ROLES else "read_only"
     role = str(raw).strip().lower().replace(" ", "_").replace("-", "_")
     aliases = {
         "administrator": "admin",
@@ -84,15 +87,18 @@ def _normalize_role(raw: Optional[str], *, default: str = "viewer") -> str:
         "recruiters": "recruiter",
         "recruiting": "recruiter",
         "talent": "recruiter",
-        "view": "viewer",
-        "readonly": "viewer",
-        "read_only": "viewer",
-        "none": "viewer",
-        "user": "viewer",
-        "member": "viewer",
+        "managers": "manager",
+        "manage": "manager",
+        "view": "read_only",
+        "viewer": "read_only",
+        "readonly": "read_only",
+        "read-only": "read_only",
+        "none": "read_only",
+        "user": "read_only",
+        "member": "read_only",
     }
     role = aliases.get(role, role)
-    return role if role in ATS_ROLES else "viewer"
+    return role if role in ATS_ROLES else "read_only"
 
 
 def _email_from_claims(claims: dict) -> Optional[str]:
@@ -229,7 +235,7 @@ def _upsert_staff_touch(
                     clerk_user_id=clerk_user_id,
                     email=email,
                     display_name=display_name,
-                    role=_normalize_role(role) if role else "viewer",
+                    role=_normalize_role(role) if role else "read_only",
                     role_updated_at=now if role else None,
                     role_updated_by=role_source,
                     last_seen_at=now,
@@ -244,7 +250,7 @@ def _upsert_staff_touch(
                     # Do not downgrade an existing elevated DB role from a transient miss
                     if not (
                         _normalize_role(row.role) in WRITE_ROLES
-                        and _normalize_role(role) == "viewer"
+                        and _normalize_role(role) == "read_only"
                         and role_source in ("jwt_missing", "default")
                     ):
                         prev = row.role
@@ -361,8 +367,8 @@ class AtsPrincipal:
             return self._resolved_role
 
         # 5) Default
-        self._resolved_role = _normalize_role(None, default="viewer" if ENFORCE else "admin")
-        self.role_source = "default_viewer" if ENFORCE else "dev_default_admin"
+        self._resolved_role = _normalize_role(None, default="read_only" if ENFORCE else "admin")
+        self.role_source = "default_read_only" if ENFORCE else "dev_default_admin"
         if self.user_id:
             _upsert_staff_touch(
                 clerk_user_id=self.user_id,

@@ -4,25 +4,22 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import {
-  LayoutDashboard, Users, FileText, Briefcase, Inbox, UserRound,
-  Building2, Building, Send, Mail, CalendarCheck, BadgeCheck, Settings, Activity, ClipboardList,
+  LayoutDashboard, Users, Briefcase, Inbox, Send, Contact, BarChart3, Settings,
 } from "lucide-react";
 
+// Consolidated 8-item nav (Recruitment CRM + ATS). Several items still land on
+// an interim existing page until their module-merge phase ships:
+//   - Candidates -> /ats/employees (Employee Resumes folds in during the Candidates phase)
+//   - Pipeline -> /ats/submissions (Job Sends/Interviews/Offers/Onboarding fold in during the Pipeline phase)
+//   - Reports -> stub page until the Reports phase
 const NAV: { href: string; label: string; icon: React.ElementType }[] = [
-  { href: "/ats", label: "ATS Dashboard", icon: LayoutDashboard },
-  { href: "/ats/employees", label: "Employees", icon: Users },
-  { href: "/ats/employee-resumes", label: "Employee Resumes", icon: FileText },
-  { href: "/ats/jobs", label: "Job Requirements", icon: Briefcase },
-  { href: "/ats/email-inbox", label: "Zoho Email Inbox", icon: Inbox },
-  { href: "/ats/recruiters", label: "Recruiters", icon: UserRound },
-  { href: "/ats/vendors", label: "Vendors", icon: Building2 },
-  { href: "/ats/clients", label: "Clients", icon: Building },
-  { href: "/ats/activities", label: "Activities", icon: Activity },
-  { href: "/ats/job-sends", label: "Job Sends", icon: Mail },
-  { href: "/ats/submissions", label: "Submissions", icon: Send },
-  { href: "/ats/interviews", label: "Interviews", icon: CalendarCheck },
-  { href: "/ats/offers", label: "Offers", icon: BadgeCheck },
-  { href: "/ats/onboarding", label: "Onboarding", icon: ClipboardList },
+  { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
+  { href: "/ats/email-inbox", label: "Zoho Inbox", icon: Inbox },
+  { href: "/ats/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/ats/employees", label: "Candidates", icon: Users },
+  { href: "/ats/submissions", label: "Pipeline", icon: Send },
+  { href: "/ats/contacts", label: "Contacts", icon: Contact },
+  { href: "/ats/reports", label: "Reports", icon: BarChart3 },
   { href: "/ats/settings", label: "Settings", icon: Settings },
 ];
 

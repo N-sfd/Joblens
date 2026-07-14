@@ -52,7 +52,7 @@ class AtsStaffUserOut(BaseModel):
 
 
 class AtsStaffRoleUpdate(BaseModel):
-    role: Literal["admin", "recruiter", "viewer"]
+    role: Literal["admin", "recruiter", "manager", "read_only"]
     organization_name: Optional[str] = Field(default=None, max_length=255)
     display_name: Optional[str] = Field(default=None, max_length=255)
     email: Optional[str] = Field(default=None, max_length=255)
@@ -60,7 +60,7 @@ class AtsStaffRoleUpdate(BaseModel):
 
 class AtsStaffCreate(BaseModel):
     clerk_user_id: str = Field(min_length=3, max_length=128)
-    role: Literal["admin", "recruiter", "viewer"] = "viewer"
+    role: Literal["admin", "recruiter", "manager", "read_only"] = "read_only"
     email: Optional[str] = None
     display_name: Optional[str] = None
     organization_name: Optional[str] = None
