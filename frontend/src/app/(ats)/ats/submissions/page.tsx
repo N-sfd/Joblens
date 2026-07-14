@@ -34,8 +34,13 @@ function SubmissionsPageInner() {
   const [error, setError] = useState<string | null>(null);
   const [filter, setFilter] = useState<string>(() => searchParams.get("status") || "active");
   const [updating, setUpdating] = useState<number | null>(null);
-  const [showForm, setShowForm] = useState(false);
-  const [form, setForm] = useState({ job_requirement_id: "", employee_id: "", submitted_rate: "", status: "Draft" });
+  const [showForm, setShowForm] = useState(() => !!searchParams.get("job_requirement_id"));
+  const [form, setForm] = useState(() => ({
+    job_requirement_id: searchParams.get("job_requirement_id") || "",
+    employee_id: "",
+    submitted_rate: "",
+    status: "Draft",
+  }));
   const [saving, setSaving] = useState(false);
 
   const load = useCallback(async () => {

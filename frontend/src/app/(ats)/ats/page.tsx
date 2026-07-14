@@ -54,8 +54,8 @@ type CardDef = {
 };
 
 const CARDS: CardDef[] = [
-  { key: "open_jobs", label: "Open Jobs", subtitle: "Currently open requirements", href: "/ats/jobs?status=Open", icon: Briefcase, tone: "bg-indigo-50 text-indigo-600" },
-  { key: "new_zoho_jobs", label: "New Zoho Jobs", subtitle: "Imported in the last 7 days", href: "/ats/jobs?source=Zoho+Mail", icon: Inbox, tone: "bg-blue-50 text-blue-600" },
+  { key: "open_jobs", label: "Open Jobs", subtitle: "Currently open requirements", href: "/ats/jobs?status_group=open", icon: Briefcase, tone: "bg-indigo-50 text-indigo-600" },
+  { key: "new_zoho_jobs", label: "New Zoho Jobs", subtitle: "Imported in the last 7 days", href: "/ats/jobs?source=zoho&created_within_days=7", icon: Inbox, tone: "bg-blue-50 text-blue-600" },
   { key: "active_candidates", label: "Active Candidates", subtitle: "Available for placement", href: "/ats/employees?status=Active", icon: Users, tone: "bg-emerald-50 text-emerald-600" },
   { key: "candidates_submitted", label: "Candidates Submitted", subtitle: "Currently with a client", href: "/ats/submissions?status=Submitted", icon: Send, tone: "bg-cyan-50 text-cyan-600" },
   { key: "interviews_scheduled", label: "Interviews Scheduled", subtitle: "Upcoming interviews", href: "/ats/interviews", icon: CalendarCheck, tone: "bg-teal-50 text-teal-600" },

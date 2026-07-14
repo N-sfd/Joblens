@@ -1576,14 +1576,28 @@ class JobRequirementResponse(JobRequirementBase):
     id: int
     job_title: str
     status: str
+    # Normalized display status (Draft/Open/On Hold/Filled/Closed) — derived
+    # from `status`, never stored. See services/job_status.py.
+    status_display: str = "Draft"
+    # Normalized source label (Zoho Email/Manual Entry/API Import/Other).
+    source_label: str = "Other"
     # Resolved names for linked CRM records (populated when *_id is set).
     vendor_name: Optional[str] = None
     client_name: Optional[str] = None
     end_client_name: Optional[str] = None
     recruiter_contact_name: Optional[str] = None
+    recruiter_link_status: Optional[str] = None
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Efficient aggregate counts — never populated by loading full child
+    # collections. Zero/None by default for freshly created jobs.
+    candidate_count: int = 0
+    submission_count: int = 0
+    interview_count: int = 0
+    offer_count: int = 0
+    placement_count: int = 0
+    last_activity_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -1594,6 +1608,10 @@ class JobRequirementListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class JobStatusUpdate(BaseModel):
+    status: str  # one of JOB_STATUS_GROUPS (Draft/Open/On Hold/Filled/Closed)
 
 
 # --- Public Job Matcher (candidate-facing browse of published ATS jobs) ---
@@ -1666,6 +1684,21 @@ class JobRequirementParseResponse(BaseModel):
     summary: str = ""
 
     model_config = {"from_attributes": True}
+
+
+class JobCandidateItem(BaseModel):
+    """A candidate connected to a job via a match/send, a submission, or both."""
+
+    employee_id: int
+    employee_name: str
+    current_title: Optional[str] = None
+    skills: list[str] = []
+    work_authorization: Optional[str] = None
+    match_score: Optional[int] = None
+    match_recommendation: Optional[str] = None
+    submission_id: Optional[int] = None
+    submission_status: Optional[str] = None
+    linked_via: list[str] = []
 
 
 class JobEmployeeMatchResult(BaseModel):

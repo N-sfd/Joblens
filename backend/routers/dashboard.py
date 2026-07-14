@@ -34,16 +34,16 @@ from models import (
     ZohoConnection,
 )
 from ats_auth import AtsPrincipal, get_current_ats_user
+from services.job_status import _ALL_KNOWN_RAW_STATUSES, raw_statuses_matching_group
 
 router = APIRouter()
 
 ORG_WIDE_ROLES = ("admin", "manager", "read_only")
 
-# Terminal/dead job states excluded from "Open Jobs". Includes "Draft" and
-# "Filled" pre-emptively — not yet real JobRequirement.status values in this
-# codebase (that simplification lands in a later Jobs-module phase), but
-# harmless to exclude now and correct automatically once they exist.
-CLOSED_JOB_STATUSES = {"Closed", "Duplicate", "Spam", "Rejected", "Selected", "Draft", "Filled"}
+# "Open Jobs" uses the exact same status-group definition as the Jobs
+# module's `status_group=open` filter (services/job_status.py) — the
+# Dashboard count and the Jobs list must never diverge.
+_OPEN_STATUSES, _OPEN_INCLUDES_UNMAPPED = raw_statuses_matching_group("open")
 
 SUBMITTED_OR_LATER_STATUSES = {"Submitted", "Client Review", "Interview", "Offer", "Selected"}
 ACTIVE_OFFER_STATUSES = {"Draft", "Extended", "Accepted"}
@@ -134,8 +134,13 @@ async def get_dashboard_summary(
             q = q.filter(model.created_by == owner)
         return q.scalar() or 0
 
+    open_jobs_filter = (
+        or_(JobRequirement.status.in_(_OPEN_STATUSES), ~JobRequirement.status.in_(_ALL_KNOWN_RAW_STATUSES))
+        if _OPEN_INCLUDES_UNMAPPED else JobRequirement.status.in_(_OPEN_STATUSES)
+    )
+
     counts = DashboardSummaryCounts(
-        open_jobs=scoped_count(JobRequirement, ~JobRequirement.status.in_(CLOSED_JOB_STATUSES)),
+        open_jobs=scoped_count(JobRequirement, open_jobs_filter),
         new_zoho_jobs=scoped_count(
             JobRequirement,
             JobRequirement.source.ilike("%zoho%"),

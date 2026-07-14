@@ -387,6 +387,12 @@ export const api = {
     request<import("@/types").JobEmployeeMatch[]>(
       `/api/job-requirements/${jobId}/matches${minScore != null ? `?min_score=${minScore}` : ""}`
     ),
+  getJobCandidates: (jobId: number) =>
+    request<import("@/types").JobCandidateItem[]>(`/api/job-requirements/${jobId}/candidates`),
+  updateJobStatus: (jobId: number, status: string) =>
+    request<import("@/types").JobRequirement>(`/api/job-requirements/${jobId}/status`, {
+      method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ status }),
+    }),
   getJobSends: (params?: { job_requirement_id?: number; employee_id?: number; employee_response?: string; delivery_status?: string }) =>
     request<import("@/types").JobSend[]>(`/api/job-sends/${qs(params)}`),
   getJobSendDraft: (jobRequirementId: number, employeeId: number) =>
@@ -421,7 +427,7 @@ export const api = {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
 
-  getInterviews: (params?: { submission_id?: number; status?: string }) =>
+  getInterviews: (params?: { submission_id?: number; job_requirement_id?: number; status?: string }) =>
     request<import("@/types").Interview[]>(`/api/interviews/${qs(params)}`),
   createInterview: (data: import("@/types").InterviewCreate) =>
     request<import("@/types").Interview>("/api/interviews/", {
@@ -432,7 +438,7 @@ export const api = {
       method: "PATCH", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
 
-  getOffers: (params?: { submission_id?: number; status?: string }) =>
+  getOffers: (params?: { submission_id?: number; job_requirement_id?: number; status?: string }) =>
     request<import("@/types").Offer[]>(`/api/offers/${qs(params)}`),
   createOffer: (data: import("@/types").OfferCreate) =>
     request<import("@/types").Offer>("/api/offers/", {
@@ -451,7 +457,8 @@ export const api = {
     request<import("@/types").JobRequirement>(`/api/job-requirements/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
-  deleteJobRequirement: (id: number) => request<{ message: string }>(`/api/job-requirements/${id}`, { method: "DELETE" }),
+  deleteJobRequirement: (id: number, confirm: boolean) =>
+    request<{ message: string }>(`/api/job-requirements/${id}${qs({ confirm })}`, { method: "DELETE" }),
   parseJobRequirement: (rawText: string) =>
     request<import("@/types").JobRequirementParseResult>("/api/job-requirements/parse", {
       method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify({ raw_text: rawText }),

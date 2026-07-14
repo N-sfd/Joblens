@@ -1,18 +1,22 @@
 import json
 import logging
+from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends, HTTPException, Query, Request
-from sqlalchemy import or_
+from sqlalchemy import func, or_
 from sqlalchemy.orm import Session
 
 logger = logging.getLogger(__name__)
 
 from database import get_db
 from models import (
+    CRMActivity,
     CRMContact,
     CRMOrganization,
     Employee,
     EmployeeResume,
+    Interview,
+    JobEmployeeSend,
     JobRequirement,
     JobRequirementCreate,
     JobRequirementUpdate,
@@ -20,17 +24,56 @@ from models import (
     JobRequirementListResponse,
     JobRequirementParseRequest,
     JobRequirementParseResponse,
+    JobCandidateItem,
     JobEmployeeMatchResult,
+    JobStatusUpdate,
+    Offer,
+    Submission,
 )
 from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
 from services.audit import log_audit
 from services.claude_service import parse_job_requirement
 from services.job_employee_match import match_employees_to_job
 from services.job_publish import publish_blockers, log_publish_decision
+from services.job_status import (
+    JOB_STATUS_GROUPS,
+    is_zoho_source,
+    matches_status_group,
+    normalize_job_status,
+    normalize_source_label,
+    raw_statuses_matching_group,
+)
+from services.job_status import _ALL_KNOWN_RAW_STATUSES
 from services.rate_limit import rate_limit_ai
 from services.ai_errors import raise_clean_ai_error
 
 router = APIRouter()
+
+ORG_WIDE_ROLES = ("admin", "manager", "read_only")
+SORT_OPTIONS = {
+    "newest_received": ("received_at", "desc"),
+    "recently_updated": ("updated_at", "desc"),
+    "job_title": ("job_title", "asc"),
+    "client": ("client", "asc"),
+    "status": ("status", "asc"),
+    "candidate_count": ("candidate_count", "desc"),
+    "submission_count": ("submission_count", "desc"),
+    "last_activity": ("last_activity", "desc"),
+}
+
+
+def _scope_owner(principal: AtsPrincipal) -> str | None:
+    """None = organization-wide; a Clerk user id = restrict to their own records."""
+    if principal.role in ORG_WIDE_ROLES:
+        return None
+    return principal.user_id
+
+
+def _domain_from_email(email: str | None) -> str | None:
+    if not email or "@" not in email:
+        return None
+    domain = email.strip().lower().split("@")[-1].strip()
+    return domain or None
 
 
 def _snapshot_for_publish(job: JobRequirement | None = None, data: dict | None = None) -> dict:
@@ -85,9 +128,34 @@ def _loads(value) -> list:
         return []
 
 
-def _to_response(job: JobRequirement) -> JobRequirementResponse:
+class _JobCounts:
+    __slots__ = ("candidate_count", "submission_count", "interview_count", "offer_count", "placement_count", "last_activity_at")
+
+    def __init__(self, candidate_count=0, submission_count=0, interview_count=0, offer_count=0, placement_count=0, last_activity_at=None):
+        self.candidate_count = candidate_count
+        self.submission_count = submission_count
+        self.interview_count = interview_count
+        self.offer_count = offer_count
+        self.placement_count = placement_count
+        self.last_activity_at = last_activity_at
+
+
+_EMPTY_COUNTS = _JobCounts()
+
+
+def _to_response(job: JobRequirement, counts: "_JobCounts | None" = None) -> JobRequirementResponse:
+    c = counts or _EMPTY_COUNTS
     return JobRequirementResponse(
         id=job.id,
+        status_display=normalize_job_status(job.status),
+        source_label=normalize_source_label(job.source),
+        recruiter_link_status="linked" if job.recruiter_contact_id else "incomplete",
+        candidate_count=c.candidate_count,
+        submission_count=c.submission_count,
+        interview_count=c.interview_count,
+        offer_count=c.offer_count,
+        placement_count=c.placement_count,
+        last_activity_at=c.last_activity_at,
         job_title=job.job_title,
         external_job_id=job.external_job_id,
         job_reference_number=job.job_reference_number,
@@ -150,9 +218,83 @@ def _contact_display(contact) -> str:
     return name or contact.email or f"Contact #{contact.id}"
 
 
+def _batch_job_counts(db: Session, job_ids: list[int]) -> dict[int, _JobCounts]:
+    """One bounded aggregate pass per metric across a page of job ids — never
+    loads full child collections just to count them."""
+    if not job_ids:
+        return {}
+    counts: dict[int, _JobCounts] = {jid: _JobCounts() for jid in job_ids}
+
+    for jid, status, cnt in (
+        db.query(Submission.job_requirement_id, Submission.status, func.count(Submission.id))
+        .filter(Submission.job_requirement_id.in_(job_ids))
+        .group_by(Submission.job_requirement_id, Submission.status)
+        .all()
+    ):
+        counts[jid].submission_count += cnt
+        if status == "Selected":
+            counts[jid].placement_count += cnt
+
+    candidate_sets: dict[int, set[int]] = {jid: set() for jid in job_ids}
+    for jid, emp_id in (
+        db.query(JobEmployeeSend.job_requirement_id, JobEmployeeSend.employee_id)
+        .filter(JobEmployeeSend.job_requirement_id.in_(job_ids))
+        .distinct()
+        .all()
+    ):
+        candidate_sets[jid].add(emp_id)
+    for jid, emp_id in (
+        db.query(Submission.job_requirement_id, Submission.employee_id)
+        .filter(Submission.job_requirement_id.in_(job_ids))
+        .distinct()
+        .all()
+    ):
+        candidate_sets[jid].add(emp_id)
+    for jid, emp_set in candidate_sets.items():
+        counts[jid].candidate_count = len(emp_set)
+
+    for jid, cnt in (
+        db.query(Submission.job_requirement_id, func.count(Interview.id))
+        .join(Interview, Interview.submission_id == Submission.id)
+        .filter(Submission.job_requirement_id.in_(job_ids))
+        .group_by(Submission.job_requirement_id)
+        .all()
+    ):
+        counts[jid].interview_count = cnt
+
+    for jid, cnt in (
+        db.query(Submission.job_requirement_id, func.count(Offer.id))
+        .join(Offer, Offer.submission_id == Submission.id)
+        .filter(Submission.job_requirement_id.in_(job_ids))
+        .group_by(Submission.job_requirement_id)
+        .all()
+    ):
+        counts[jid].offer_count = cnt
+
+    for jid, max_date in (
+        db.query(CRMActivity.job_requirement_id, func.max(CRMActivity.activity_date))
+        .filter(CRMActivity.job_requirement_id.in_(job_ids))
+        .group_by(CRMActivity.job_requirement_id)
+        .all()
+    ):
+        counts[jid].last_activity_at = max_date
+
+    return counts
+
+
 def _get_job_or_404(db: Session, job_id: int) -> JobRequirement:
     job = db.query(JobRequirement).filter(JobRequirement.id == job_id).first()
     if not job:
+        raise HTTPException(status_code=404, detail="Job requirement not found.")
+    return job
+
+
+def _get_scoped_job_or_404(db: Session, principal: AtsPrincipal, job_id: int) -> JobRequirement:
+    """404s (not 403) if the job exists but is out of a Recruiter's own scope
+    — avoids confirming the existence of jobs they shouldn't know about."""
+    job = _get_job_or_404(db, job_id)
+    owner = _scope_owner(principal)
+    if owner and job.created_by != owner:
         raise HTTPException(status_code=404, detail="Job requirement not found.")
     return job
 
@@ -234,14 +376,102 @@ def _find_contact(db: Session, email: str | None, name: str | None) -> CRMContac
     return None
 
 
-def _auto_link_crm(db: Session, data: dict) -> dict:
+def _find_or_create_org(
+    db: Session, *, name: str | None, email_domain: str | None, source: str, principal: AtsPrincipal,
+) -> CRMOrganization | None:
+    """Find a CRM organization by name (or email domain), else create one.
+
+    Only fills/creates when data is missing — never overwrites an existing,
+    already-populated org record.
+    """
+    if not name or not name.strip():
+        return None
+    org = _find_org_by_name(db, name)
+    if not org and email_domain:
+        org = db.query(CRMOrganization).filter(CRMOrganization.email_domain == email_domain).first()
+    if org:
+        if email_domain and not org.email_domain:
+            org.email_domain = email_domain
+        return org
+    org = CRMOrganization(
+        organization_name=name.strip(),
+        organization_type="Staffing Vendor",
+        email_domain=email_domain,
+        source=source,
+        needs_review=True,
+        created_by=principal.user_id,
+    )
+    db.add(org)
+    db.flush()
+    return org
+
+
+def _find_or_create_contact(
+    db: Session,
+    *,
+    email: str | None,
+    name: str | None,
+    phone: str | None,
+    organization_id: int | None,
+    source: str,
+    principal: AtsPrincipal,
+) -> CRMContact | None:
+    """Find a CRM contact by email/name, else create one (recruiter default)."""
+    if not (email and email.strip()) and not (name and name.strip()):
+        return None
+    contact = _find_contact(db, email, name)
+    if contact:
+        if phone and not contact.phone:
+            contact.phone = phone
+        if organization_id and not contact.organization_id:
+            contact.organization_id = organization_id
+        return contact
+    parts = (name or "").strip().split()
+    first_name = parts[0] if parts else None
+    last_name = " ".join(parts[1:]) if len(parts) > 1 else None
+    contact = CRMContact(
+        organization_id=organization_id,
+        first_name=first_name,
+        last_name=last_name,
+        email=email,
+        normalized_email=email.strip().lower() if email else None,
+        phone=phone,
+        contact_type="Recruiter",
+        source=source,
+        needs_review=True,
+        created_by=principal.user_id,
+    )
+    db.add(contact)
+    db.flush()
+    return contact
+
+
+def _auto_link_crm(
+    db: Session, data: dict, *, principal: AtsPrincipal, create_missing: bool = False,
+) -> dict:
     """Resolve CRM FK ids from provided names/emails when an id isn't set.
 
     Only fills a link when it's currently empty, so an explicit selection from
     the UI is never overridden. Exact (case-insensitive) name match for orgs.
+
+    When `create_missing=True` (job save flows), a recruiter/company with no
+    existing match is created rather than left unlinked — matching by
+    normalized email/name first so duplicates are never created. Client/end
+    client (the hiring company) are only ever linked, never auto-created —
+    lower confidence than the recruiter's own vendor company.
     """
+    link_source = data.get("source") or "Manual"
+
     if data.get("vendor_id") is None and data.get("vendor"):
         org = _find_org_by_name(db, data["vendor"])
+        if not org and create_missing:
+            org = _find_or_create_org(
+                db,
+                name=data["vendor"],
+                email_domain=_domain_from_email(data.get("recruiter_email")),
+                source=link_source,
+                principal=principal,
+            )
         if org:
             data["vendor_id"] = org.id
     if data.get("client_id") is None and data.get("client"):
@@ -254,6 +484,16 @@ def _auto_link_crm(db: Session, data: dict) -> dict:
             data["end_client_id"] = org.id
     if data.get("recruiter_contact_id") is None and (data.get("recruiter_email") or data.get("recruiter_name")):
         contact = _find_contact(db, data.get("recruiter_email"), data.get("recruiter_name"))
+        if not contact and create_missing:
+            contact = _find_or_create_contact(
+                db,
+                email=data.get("recruiter_email"),
+                name=data.get("recruiter_name"),
+                phone=data.get("recruiter_phone"),
+                organization_id=data.get("vendor_id"),
+                source=link_source,
+                principal=principal,
+            )
         if contact:
             data["recruiter_contact_id"] = contact.id
     return data
@@ -282,7 +522,7 @@ async def create_job_requirement(
     db: Session = Depends(get_db),
 ):
     data = _prepare_create_data(body.model_dump())
-    data = _auto_link_crm(db, data)
+    data = _auto_link_crm(db, data, principal=principal, create_missing=True)
     if principal.user_id:
         data["created_by"] = principal.user_id
     _enforce_publish_rules(data)
@@ -298,22 +538,38 @@ async def create_job_requirement(
 async def list_job_requirements(
     q: str | None = Query(None),
     status: str | None = Query(None),
+    status_display: str | None = Query(None, description="Exact canonical status: Draft/Open/On Hold/Filled/Closed"),
+    status_group: str | None = Query(None, description='"open" (Open+On Hold) or an exact canonical status'),
     work_type: str | None = Query(None),
     priority: str | None = Query(None),
-    source: str | None = Query(None),
+    source: str | None = Query(None, description="Substring match, e.g. 'zoho' or 'manual' — not case sensitive"),
+    created_within_days: int | None = Query(None, ge=1),
     vendor: str | None = Query(None),
     client: str | None = Query(None),
+    recruiter: str | None = Query(None, description="Search recruiter name/email"),
+    location: str | None = Query(None),
+    skills: str | None = Query(None, description="Substring match within required/preferred skills"),
+    received_from: datetime | None = Query(None),
+    received_to: datetime | None = Query(None),
+    created_by: str | None = Query(None),
+    has_candidates: bool | None = Query(None),
+    has_submissions: bool | None = Query(None),
     vendor_id: int | None = Query(None),
     client_id: int | None = Query(None),
     end_client_id: int | None = Query(None),
     recruiter_contact_id: int | None = Query(None),
     organization_id: int | None = Query(None, description="Match jobs where this org is vendor, client, or end client"),
+    sort: str = Query("last_activity", description=f"One of: {', '.join(SORT_OPTIONS)}"),
     page: int = Query(1, ge=1),
     page_size: int = Query(20, ge=1, le=100),
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
     query = db.query(JobRequirement)
+
+    owner = _scope_owner(principal)
+    if owner:
+        query = query.filter(JobRequirement.created_by == owner)
 
     if q:
         term = f"%{q.strip()}%"
@@ -328,12 +584,26 @@ async def list_job_requirements(
         ))
     if status:
         query = query.filter(JobRequirement.status == status)
+    if status_display:
+        known, includes_unmapped = raw_statuses_matching_group(status_display)
+        query = query.filter(
+            or_(JobRequirement.status.in_(known), ~JobRequirement.status.in_(_ALL_KNOWN_RAW_STATUSES))
+            if includes_unmapped else JobRequirement.status.in_(known)
+        )
+    if status_group:
+        known, includes_unmapped = raw_statuses_matching_group(status_group)
+        query = query.filter(
+            or_(JobRequirement.status.in_(known), ~JobRequirement.status.in_(_ALL_KNOWN_RAW_STATUSES))
+            if includes_unmapped else JobRequirement.status.in_(known)
+        )
     if work_type:
         query = query.filter(JobRequirement.work_type == work_type)
     if priority:
         query = query.filter(JobRequirement.priority == priority)
     if source:
-        query = query.filter(JobRequirement.source == source)
+        query = query.filter(JobRequirement.source.ilike(f"%{source.strip()}%"))
+    if created_within_days:
+        query = query.filter(JobRequirement.created_at >= datetime.utcnow() - timedelta(days=created_within_days))
     if vendor:
         query = query.filter(JobRequirement.vendor.ilike(f"%{vendor.strip()}%"))
     if client:
@@ -341,6 +611,20 @@ async def list_job_requirements(
             JobRequirement.client.ilike(f"%{client.strip()}%"),
             JobRequirement.end_client.ilike(f"%{client.strip()}%"),
         ))
+    if recruiter:
+        term = f"%{recruiter.strip()}%"
+        query = query.filter(or_(JobRequirement.recruiter_name.ilike(term), JobRequirement.recruiter_email.ilike(term)))
+    if location:
+        query = query.filter(JobRequirement.location.ilike(f"%{location.strip()}%"))
+    if skills:
+        term = f"%{skills.strip()}%"
+        query = query.filter(or_(JobRequirement.required_skills.ilike(term), JobRequirement.preferred_skills.ilike(term)))
+    if received_from:
+        query = query.filter(JobRequirement.received_at >= received_from)
+    if received_to:
+        query = query.filter(JobRequirement.received_at <= received_to)
+    if created_by:
+        query = query.filter(JobRequirement.created_by == created_by)
     if vendor_id is not None:
         query = query.filter(JobRequirement.vendor_id == vendor_id)
     if client_id is not None:
@@ -355,17 +639,61 @@ async def list_job_requirements(
             JobRequirement.client_id == organization_id,
             JobRequirement.end_client_id == organization_id,
         ))
+    if has_candidates is not None:
+        candidate_exists = or_(
+            db.query(JobEmployeeSend.id).filter(JobEmployeeSend.job_requirement_id == JobRequirement.id).exists(),
+            db.query(Submission.id).filter(Submission.job_requirement_id == JobRequirement.id).exists(),
+        )
+        query = query.filter(candidate_exists if has_candidates else ~candidate_exists)
+    if has_submissions is not None:
+        submission_exists = db.query(Submission.id).filter(Submission.job_requirement_id == JobRequirement.id).exists()
+        query = query.filter(submission_exists if has_submissions else ~submission_exists)
 
     total = query.count()
     total_pages = max(1, (total + page_size - 1) // page_size) if total else 1
-    jobs = (
-        query.order_by(JobRequirement.created_at.desc())
-        .offset((page - 1) * page_size)
-        .limit(page_size)
-        .all()
-    )
+
+    sort_key = sort if sort in SORT_OPTIONS else "last_activity"
+    if sort_key == "job_title":
+        query = query.order_by(JobRequirement.job_title.asc())
+    elif sort_key == "client":
+        query = query.order_by(JobRequirement.client.asc())
+    elif sort_key == "status":
+        query = query.order_by(JobRequirement.status.asc())
+    elif sort_key == "newest_received":
+        query = query.order_by(JobRequirement.received_at.desc())
+    elif sort_key == "recently_updated":
+        query = query.order_by(JobRequirement.updated_at.desc())
+    elif sort_key == "submission_count":
+        sub_count = (
+            db.query(func.count(Submission.id))
+            .filter(Submission.job_requirement_id == JobRequirement.id)
+            .correlate(JobRequirement)
+            .scalar_subquery()
+        )
+        query = query.order_by(sub_count.desc())
+    elif sort_key == "candidate_count":
+        # Approximates the exact display count (sends ∪ submissions) with
+        # submission-linked candidates only, for tractable SQL-level sorting.
+        cand_count = (
+            db.query(func.count(func.distinct(Submission.employee_id)))
+            .filter(Submission.job_requirement_id == JobRequirement.id)
+            .correlate(JobRequirement)
+            .scalar_subquery()
+        )
+        query = query.order_by(cand_count.desc())
+    else:  # last_activity (default)
+        last_activity = (
+            db.query(func.max(CRMActivity.activity_date))
+            .filter(CRMActivity.job_requirement_id == JobRequirement.id)
+            .correlate(JobRequirement)
+            .scalar_subquery()
+        )
+        query = query.order_by(func.coalesce(last_activity, JobRequirement.updated_at).desc())
+
+    jobs = query.offset((page - 1) * page_size).limit(page_size).all()
+    counts_by_id = _batch_job_counts(db, [j.id for j in jobs])
     return JobRequirementListResponse(
-        items=[_to_response(j) for j in jobs],
+        items=[_to_response(j, counts_by_id.get(j.id)) for j in jobs],
         total=total,
         page=page,
         page_size=page_size,
@@ -376,20 +704,47 @@ async def list_job_requirements(
 @router.get("/{job_id}", response_model=JobRequirementResponse)
 async def get_job_requirement(
     job_id: int,
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
-    return _to_response(_get_job_or_404(db, job_id))
+    job = _get_scoped_job_or_404(db, principal, job_id)
+    counts = _batch_job_counts(db, [job.id]).get(job.id)
+    return _to_response(job, counts)
+
+
+@router.patch("/{job_id}/status", response_model=JobRequirementResponse)
+async def update_job_status(
+    job_id: int,
+    body: JobStatusUpdate,
+    principal: AtsPrincipal = Depends(require_writer),
+    db: Session = Depends(get_db),
+):
+    if body.status not in JOB_STATUS_GROUPS:
+        raise HTTPException(status_code=422, detail=f"Status must be one of: {', '.join(JOB_STATUS_GROUPS)}")
+    job = _get_scoped_job_or_404(db, principal, job_id)
+    previous = job.status
+    job.status = body.status
+    db.add(CRMActivity(
+        activity_type="Status Changed",
+        subject=f"Job status changed: {normalize_job_status(previous)} → {body.status}",
+        job_requirement_id=job.id,
+        created_by=principal.user_id,
+    ))
+    db.commit()
+    db.refresh(job)
+    log_audit(db, "job.status_changed", "job_requirement", job.id, f"{previous} -> {body.status}", principal.user_id)
+    counts = _batch_job_counts(db, [job.id]).get(job.id)
+    return _to_response(job, counts)
 
 
 @router.get("/{job_id}/matches", response_model=list[JobEmployeeMatchResult])
 async def get_job_employee_matches(
     job_id: int,
     min_score: int = Query(0, ge=0, le=100),
-    _: AtsPrincipal = Depends(get_current_ats_user),
+    principal: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
-    job = _get_job_or_404(db, job_id)
+    job = _get_scoped_job_or_404(db, principal, job_id)
     employees = db.query(Employee).all()
 
     # Primary resume per employee (or most recent).
@@ -412,6 +767,86 @@ async def get_job_employee_matches(
     return [JobEmployeeMatchResult(**m) for m in matches]
 
 
+def _employee_display_name(emp: Employee) -> str:
+    return " ".join(p for p in [emp.first_name, emp.last_name] if p).strip() or emp.name
+
+
+def _match_recommendation(score: int | None) -> str | None:
+    if score is None:
+        return None
+    if score >= 75:
+        return "Strong Match"
+    if score >= 50:
+        return "Possible Match"
+    return "Weak Match"
+
+
+@router.get("/{job_id}/candidates", response_model=list[JobCandidateItem])
+async def get_job_candidates(
+    job_id: int,
+    principal: AtsPrincipal = Depends(get_current_ats_user),
+    db: Session = Depends(get_db),
+):
+    """Candidates connected to this job via a match/send, a submission, or both."""
+    _get_scoped_job_or_404(db, principal, job_id)
+
+    sends = (
+        db.query(JobEmployeeSend)
+        .filter(JobEmployeeSend.job_requirement_id == job_id)
+        .order_by(JobEmployeeSend.created_at.desc())
+        .all()
+    )
+    submissions = (
+        db.query(Submission)
+        .filter(Submission.job_requirement_id == job_id)
+        .order_by(Submission.created_at.desc())
+        .all()
+    )
+
+    employee_ids = {s.employee_id for s in sends} | {s.employee_id for s in submissions}
+    if not employee_ids:
+        return []
+
+    employees = {e.id: e for e in db.query(Employee).filter(Employee.id.in_(employee_ids)).all()}
+    best_send: dict[int, JobEmployeeSend] = {}
+    for s in sends:
+        current = best_send.get(s.employee_id)
+        if current is None or (s.match_score_at_send or -1) > (current.match_score_at_send or -1):
+            best_send[s.employee_id] = s
+    latest_submission: dict[int, Submission] = {}
+    for sub in submissions:
+        latest_submission.setdefault(sub.employee_id, sub)  # already ordered newest-first
+
+    items: list[JobCandidateItem] = []
+    for emp_id in employee_ids:
+        emp = employees.get(emp_id)
+        if not emp:
+            continue
+        send = best_send.get(emp_id)
+        sub = latest_submission.get(emp_id)
+        linked_via = [v for v, present in (("match", send), ("submission", sub)) if present]
+        skills = [emp.primary_skill] if emp.primary_skill else []
+        try:
+            skills.extend(json.loads(emp.secondary_skills) if emp.secondary_skills else [])
+        except (json.JSONDecodeError, TypeError):
+            pass
+        score = send.match_score_at_send if send else None
+        items.append(JobCandidateItem(
+            employee_id=emp_id,
+            employee_name=_employee_display_name(emp),
+            current_title=emp.current_job_title,
+            skills=skills,
+            work_authorization=emp.work_authorization,
+            match_score=score,
+            match_recommendation=_match_recommendation(score),
+            submission_id=sub.id if sub else None,
+            submission_status=sub.status if sub else None,
+            linked_via=linked_via,
+        ))
+    items.sort(key=lambda i: (i.match_score is None, -(i.match_score or 0)))
+    return items
+
+
 @router.put("/{job_id}", response_model=JobRequirementResponse)
 async def update_job_requirement(
     job_id: int,
@@ -419,20 +854,28 @@ async def update_job_requirement(
     principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
-    job = _get_job_or_404(db, job_id)
+    job = _get_scoped_job_or_404(db, principal, job_id)
     data = _prepare_update_data(body.model_dump(exclude_unset=True))
     for key, value in data.items():
         setattr(job, key, value)
 
     # Re-resolve CRM links from the job's current names/emails for any link
-    # that is still empty (explicit ids set above are preserved).
-    resolved = _auto_link_crm(db, {
-        "vendor": job.vendor, "vendor_id": job.vendor_id,
-        "client": job.client, "client_id": job.client_id,
-        "end_client": job.end_client, "end_client_id": job.end_client_id,
-        "recruiter_name": job.recruiter_name, "recruiter_email": job.recruiter_email,
-        "recruiter_contact_id": job.recruiter_contact_id,
-    })
+    # that is still empty (explicit ids set above are preserved). Creates a
+    # missing recruiter/company the same way the initial save does.
+    resolved = _auto_link_crm(
+        db,
+        {
+            "vendor": job.vendor, "vendor_id": job.vendor_id,
+            "client": job.client, "client_id": job.client_id,
+            "end_client": job.end_client, "end_client_id": job.end_client_id,
+            "recruiter_name": job.recruiter_name, "recruiter_email": job.recruiter_email,
+            "recruiter_phone": job.recruiter_phone,
+            "recruiter_contact_id": job.recruiter_contact_id,
+            "source": job.source,
+        },
+        principal=principal,
+        create_missing=True,
+    )
     job.vendor_id = resolved.get("vendor_id")
     job.client_id = resolved.get("client_id")
     job.end_client_id = resolved.get("end_client_id")
@@ -443,16 +886,34 @@ async def update_job_requirement(
     db.commit()
     db.refresh(job)
     log_audit(db, "job.updated", "job_requirement", job.id, f"Updated job {job.job_title}", principal.user_id)
-    return _to_response(job)
+    counts = _batch_job_counts(db, [job.id]).get(job.id)
+    return _to_response(job, counts)
 
 
 @router.delete("/{job_id}")
 async def delete_job_requirement(
     job_id: int,
+    confirm: bool = Query(False, description="Must be true to hard-delete — the caller's explicit confirmation"),
     principal: AtsPrincipal = Depends(require_admin),
     db: Session = Depends(get_db),
 ):
     job = _get_job_or_404(db, job_id)
+
+    has_dependents = (
+        db.query(Submission.id).filter(Submission.job_requirement_id == job_id).first() is not None
+        or db.query(JobEmployeeSend.id).filter(JobEmployeeSend.job_requirement_id == job_id).first() is not None
+        or db.query(CRMActivity.id).filter(CRMActivity.job_requirement_id == job_id).first() is not None
+    )
+    if has_dependents:
+        raise HTTPException(
+            status_code=409,
+            detail="This job has candidate matches, submissions, or activity — close it instead of deleting.",
+        )
+    if normalize_job_status(job.status) != "Draft":
+        raise HTTPException(status_code=409, detail="Only Draft jobs can be permanently deleted — close it instead.")
+    if not confirm:
+        raise HTTPException(status_code=409, detail="Deletion requires explicit confirmation (confirm=true).")
+
     title = job.job_title
     db.delete(job)
     db.commit()

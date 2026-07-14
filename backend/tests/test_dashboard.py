@@ -90,12 +90,17 @@ def test_dashboard_empty_state(client, db_session, as_role):
     assert all(stage["count"] == 0 for stage in body["pipeline"])
 
 
-def test_open_jobs_excludes_closed_statuses(client, db_session, as_role):
+def test_open_jobs_excludes_draft_closed_filled(client, db_session, as_role):
+    """Open Jobs = normalized status in {Open, On Hold} — excludes Draft/Filled/Closed
+    (services/job_status.py), the same definition the Jobs module's
+    status_group=open filter uses (see test_job_requirements_jobs_module.py)."""
     as_role("admin")
     make_job(db_session, job_title="Open Role", status="Open")
-    make_job(db_session, job_title="New Role", status="New")
+    make_job(db_session, job_title="On Hold Role", status="On Hold")
+    make_job(db_session, job_title="New Role (Draft)", status="New")
+    make_job(db_session, job_title="Selected Role (Filled)", status="Selected")
     make_job(db_session, job_title="Closed Role", status="Closed")
-    make_job(db_session, job_title="Duplicate Role", status="Duplicate")
+    make_job(db_session, job_title="Duplicate Role (Closed)", status="Duplicate")
 
     res = client.get("/api/dashboard/summary")
     assert res.json()["counts"]["open_jobs"] == 2

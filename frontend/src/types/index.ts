@@ -753,29 +753,81 @@ export interface JobRequirement {
   // `status` (the operational pipeline) and `published_for_matching` (the
   // publish toggle) — all three must align for public visibility.
   review_status: string;
+  // Unified Jobs module additions — all derived/aggregated, response-only.
+  status_display: string; // Draft | Open | On Hold | Filled | Closed
+  source_label: string; // Zoho Email | Manual Entry | API Import | Other
+  recruiter_link_status: "linked" | "incomplete" | null;
+  candidate_count: number;
+  submission_count: number;
+  interview_count: number;
+  offer_count: number;
+  placement_count: number;
+  last_activity_at: string | null;
 }
+
+export const JOB_STATUS_GROUPS = ["Draft", "Open", "On Hold", "Filled", "Closed"] as const;
+export type JobStatusGroup = typeof JOB_STATUS_GROUPS[number];
 
 export type JobRequirementCreate = Omit<
   JobRequirement,
-  "id" | "created_at" | "updated_at" | "created_by" | "vendor_name" | "client_name" | "end_client_name" | "recruiter_contact_name"
+  | "id" | "created_at" | "updated_at" | "created_by"
+  | "vendor_name" | "client_name" | "end_client_name" | "recruiter_contact_name"
+  | "status_display" | "source_label" | "recruiter_link_status"
+  | "candidate_count" | "submission_count" | "interview_count" | "offer_count" | "placement_count" | "last_activity_at"
 >;
 export type JobRequirementUpdate = Partial<JobRequirementCreate>;
 
 export interface JobRequirementListParams {
   q?: string;
   status?: string;
+  status_display?: string;
+  status_group?: string;
   work_type?: string;
   priority?: string;
   source?: string;
+  created_within_days?: number;
   vendor?: string;
   client?: string;
+  recruiter?: string;
+  location?: string;
+  skills?: string;
+  received_from?: string;
+  received_to?: string;
+  created_by?: string;
+  has_candidates?: boolean;
+  has_submissions?: boolean;
   vendor_id?: number;
   client_id?: number;
   end_client_id?: number;
   recruiter_contact_id?: number;
   organization_id?: number;
+  sort?: string;
   page?: number;
   page_size?: number;
+}
+
+export const JOB_SORT_OPTIONS = [
+  ["last_activity", "Last activity, newest first"],
+  ["newest_received", "Newest received"],
+  ["recently_updated", "Recently updated"],
+  ["job_title", "Job title"],
+  ["client", "Client"],
+  ["status", "Status"],
+  ["candidate_count", "Candidate count"],
+  ["submission_count", "Submission count"],
+] as const;
+
+export interface JobCandidateItem {
+  employee_id: number;
+  employee_name: string;
+  current_title: string | null;
+  skills: string[];
+  work_authorization: string | null;
+  match_score: number | null;
+  match_recommendation: string | null;
+  submission_id: number | null;
+  submission_status: string | null;
+  linked_via: string[];
 }
 
 export interface JobRequirementListResponse {

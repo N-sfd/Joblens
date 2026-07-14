@@ -63,6 +63,7 @@ def _get_or_404(db: Session, interview_id: int) -> Interview:
 @router.get("/", response_model=list[InterviewResponse])
 async def list_interviews(
     submission_id: int | None = Query(None),
+    job_requirement_id: int | None = Query(None),
     status: str | None = Query(None),
     limit: int = Query(100, ge=1, le=200),
     _: AtsPrincipal = Depends(get_current_ats_user),
@@ -71,6 +72,10 @@ async def list_interviews(
     q = db.query(Interview)
     if submission_id is not None:
         q = q.filter(Interview.submission_id == submission_id)
+    if job_requirement_id is not None:
+        q = q.join(Submission, Submission.id == Interview.submission_id).filter(
+            Submission.job_requirement_id == job_requirement_id
+        )
     if status:
         q = q.filter(Interview.status == status)
     rows = q.order_by(Interview.scheduled_at.desc(), Interview.created_at.desc()).limit(limit).all()

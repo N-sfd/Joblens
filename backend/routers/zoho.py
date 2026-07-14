@@ -13,8 +13,6 @@ from database import get_db
 from models import (
     CreateJobFromEmailResponse,
     CRMActivity,
-    CRMContact,
-    CRMOrganization,
     EmailClassificationResponse,
     EmailClassifyBatchResponse,
     ImportedEmail,
@@ -33,7 +31,7 @@ from models import (
     ZohoSyncResponse,
 )
 from ats_auth import AtsPrincipal, get_current_ats_user, require_admin, require_writer
-from routers.job_requirements import _auto_link_crm, _find_contact, _find_org_by_name, _prepare_create_data, _to_response
+from routers.job_requirements import _auto_link_crm, _prepare_create_data, _to_response
 from services.audit import log_audit
 from services.ai_errors import log_ai_error, raise_clean_ai_error
 from services.claude_service import parse_job_requirement
@@ -391,82 +389,6 @@ def _email_list_response(email: ImportedEmail) -> ImportedEmailResponse:
     return resp
 
 
-def _domain_from_email(email: str | None) -> str | None:
-    if not email or "@" not in email:
-        return None
-    domain = email.strip().lower().split("@")[-1].strip()
-    return domain or None
-
-
-def _find_or_create_org(
-    db: Session, *, name: str | None, email_domain: str | None, principal: AtsPrincipal,
-) -> CRMOrganization | None:
-    """Find a CRM organization by name (or email domain), else create one.
-
-    Only fills/creates when data is missing — never overwrites an existing,
-    already-populated org record. Mirrors `_auto_link_crm`'s fill-only rule.
-    """
-    if not name or not name.strip():
-        return None
-    org = _find_org_by_name(db, name)
-    if not org and email_domain:
-        org = db.query(CRMOrganization).filter(CRMOrganization.email_domain == email_domain).first()
-    if org:
-        if email_domain and not org.email_domain:
-            org.email_domain = email_domain
-        return org
-    org = CRMOrganization(
-        organization_name=name.strip(),
-        organization_type="Staffing Vendor",
-        email_domain=email_domain,
-        source="Zoho Mail",
-        needs_review=True,
-        created_by=principal.user_id,
-    )
-    db.add(org)
-    db.flush()
-    return org
-
-
-def _find_or_create_contact(
-    db: Session,
-    *,
-    email: str | None,
-    name: str | None,
-    phone: str | None,
-    organization_id: int | None,
-    principal: AtsPrincipal,
-) -> CRMContact | None:
-    """Find a CRM contact by email/name, else create one (recruiter default)."""
-    if not (email and email.strip()) and not (name and name.strip()):
-        return None
-    contact = _find_contact(db, email, name)
-    if contact:
-        if phone and not contact.phone:
-            contact.phone = phone
-        if organization_id and not contact.organization_id:
-            contact.organization_id = organization_id
-        return contact
-    parts = (name or "").strip().split()
-    first_name = parts[0] if parts else None
-    last_name = " ".join(parts[1:]) if len(parts) > 1 else None
-    contact = CRMContact(
-        organization_id=organization_id,
-        first_name=first_name,
-        last_name=last_name,
-        email=email,
-        normalized_email=email.strip().lower() if email else None,
-        phone=phone,
-        contact_type="Recruiter",
-        source="Zoho Mail",
-        needs_review=True,
-        created_by=principal.user_id,
-    )
-    db.add(contact)
-    db.flush()
-    return contact
-
-
 def _get_owned_email(db: Session, principal: AtsPrincipal, email_id: int) -> ImportedEmail:
     conn = _get_connection(db, _user_key(principal))
     if not conn:
@@ -617,36 +539,14 @@ async def create_job_from_email(
             )
 
     data = _prepare_create_data(body.model_dump())
-
-    # Create-or-update the recruiter and their company (vendor) before the
-    # generic find-only auto-link fills in client/end-client — an explicit
-    # vendor_id/recruiter_contact_id from the review form always wins.
-    org = None
-    if not data.get("vendor_id") and data.get("vendor"):
-        org = _find_or_create_org(
-            db,
-            name=data["vendor"],
-            email_domain=_domain_from_email(data.get("recruiter_email") or email.from_address),
-            principal=principal,
-        )
-        if org:
-            data["vendor_id"] = org.id
-    contact = None
-    if not data.get("recruiter_contact_id") and (data.get("recruiter_email") or data.get("recruiter_name")):
-        contact = _find_or_create_contact(
-            db,
-            email=data.get("recruiter_email"),
-            name=data.get("recruiter_name"),
-            phone=data.get("recruiter_phone"),
-            organization_id=data.get("vendor_id"),
-            principal=principal,
-        )
-        if contact:
-            data["recruiter_contact_id"] = contact.id
-
-    data = _auto_link_crm(db, data)
+    if not data.get("recruiter_email") and email.from_address:
+        data["recruiter_email"] = email.from_address
     if not data.get("source"):
         data["source"] = "Zoho Mail"
+
+    # Create-or-update the recruiter and their company (vendor), preferring an
+    # explicit vendor_id/recruiter_contact_id from the review form untouched.
+    data = _auto_link_crm(db, data, principal=principal, create_missing=True)
     if not data.get("raw_email_text"):
         data["raw_email_text"] = _email_raw_text(email)
     if not data.get("received_at"):
