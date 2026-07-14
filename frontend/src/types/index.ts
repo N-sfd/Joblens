@@ -1609,3 +1609,95 @@ export const IMPORT_STATUSES = [
   "pending", "imported", "linked", "ignored", "archived", "failed",
 ] as const;
 export type EmailClassification = typeof EMAIL_CLASSIFICATIONS[number];
+
+// Phase 7 Reports
+export const REPORT_DATE_PRESETS = [
+  "today",
+  "last_7_days",
+  "last_30_days",
+  "this_month",
+  "last_month",
+  "this_quarter",
+  "this_year",
+  "custom",
+] as const;
+export type ReportDatePreset = (typeof REPORT_DATE_PRESETS)[number];
+
+export const REPORT_TABS = [
+  "overview",
+  "jobs",
+  "candidates",
+  "pipeline",
+  "contacts",
+  "activity",
+  "follow-ups",
+] as const;
+export type ReportTab = (typeof REPORT_TABS)[number];
+
+export interface ReportFilterParams {
+  preset?: ReportDatePreset | string;
+  date_from?: string;
+  date_to?: string;
+  owner?: string;
+  organization_id?: number | string;
+  recruiter_contact_id?: number | string;
+  client_id?: number | string;
+  job_id?: number | string;
+  job_source?: string;
+  job_status?: string;
+  candidate_source?: string;
+  stage_group?: string;
+  stage?: string;
+}
+
+export interface ReportDateRange {
+  preset: string;
+  date_from?: string | null;
+  date_to?: string | null;
+}
+
+export interface ReportOverviewSummary {
+  jobs_created?: number;
+  open_jobs?: number;
+  candidates_added?: number;
+  active_candidates?: number;
+  candidates_submitted?: number;
+  candidates_submitted_current?: number;
+  interviews_completed?: number;
+  interviews_scheduled?: number;
+  offers_extended?: number;
+  offers?: number;
+  placements?: number;
+  overdue_follow_ups?: number;
+  follow_ups_due?: number;
+  [key: string]: number | undefined;
+}
+
+export interface ReportStageCount {
+  stage: string;
+  count: number;
+}
+
+export interface ReportStatusCount {
+  status: string;
+  count: number;
+  [key: string]: string | number | null | undefined;
+}
+
+export interface ReportActivityTypeCount {
+  activity_type: string;
+  count: number;
+}
+
+/** Flexible report payload — sections/rows vary by endpoint. */
+export interface ReportEnvelope {
+  report_type: string;
+  scope: "organization" | "own" | string;
+  generated_at: string;
+  date_range: ReportDateRange;
+  date_basis: Record<string, string>;
+  filters_applied: Record<string, unknown>;
+  summary: ReportOverviewSummary | Record<string, unknown>;
+  sections: Record<string, unknown>;
+  rows: Record<string, unknown>[];
+}

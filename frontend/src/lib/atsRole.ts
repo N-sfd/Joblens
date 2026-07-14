@@ -113,7 +113,7 @@ export function useAtsRole(): AtsMeState {
     isAdmin: role === "admin",
     canWrite: role === "admin" || role === "recruiter" || role === "manager",
     isReadOnly: role === "read_only",
-    hasAtsAccess: role === "admin" || role === "recruiter" || role === "manager",
+    hasAtsAccess: role === "admin" || role === "recruiter" || role === "manager" || role === "read_only",
     displayName:
       displayName ||
       user?.fullName ||

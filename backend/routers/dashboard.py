@@ -5,6 +5,9 @@ data). Role scoping is enforced here, not just hidden in the frontend:
 Admin/Manager/Read Only see organization-wide data; Recruiter sees only
 records they created (the closest existing proxy for "assigned to me" —
 there is no separate ownership/assignment column on these tables yet).
+
+Shared count helpers live in services.metric_counts so Dashboard and Reports
+never diverge.
 """
 
 from __future__ import annotations
@@ -12,7 +15,7 @@ from __future__ import annotations
 from datetime import datetime, timedelta
 
 from fastapi import APIRouter, Depends
-from sqlalchemy import and_, func, or_
+from sqlalchemy import func
 from sqlalchemy.orm import Session
 
 from database import get_db
@@ -33,51 +36,30 @@ from models import (
     ZohoConnection,
 )
 from ats_auth import AtsPrincipal, get_current_ats_user
-from services.job_status import _ALL_KNOWN_RAW_STATUSES, raw_statuses_matching_group
-from services.candidate_status import (
-    raw_statuses_matching_group as candidate_raw_statuses_matching_group,
-    _STATUS_DISPLAY_MAP as _CANDIDATE_STATUS_MAP,
+from services.metric_counts import (
+    count_active_candidates,
+    count_follow_ups_due,
+    count_interviews_scheduled,
+    count_offers,
+    count_open_jobs,
+    count_placements,
+    count_submitted,
+    follow_ups_due_query,
+    scope_owner,
 )
 from services.pipeline_status import (
     PIPELINE_STAGES,
     normalize_pipeline_stage,
-    raw_statuses_matching_group as pipeline_raw_statuses_matching_group,
-    _STATUS_DISPLAY_MAP as _PIPELINE_STATUS_MAP,
 )
 
 router = APIRouter()
 
-ORG_WIDE_ROLES = ("admin", "manager", "read_only")
-
-# "Open Jobs" uses the exact same status-group definition as the Jobs
-# module's `status_group=open` filter (services/job_status.py) — the
-# Dashboard count and the Jobs list must never diverge.
-_OPEN_STATUSES, _OPEN_INCLUDES_UNMAPPED = raw_statuses_matching_group("open")
-
-# "Active Candidates" matches Candidates list `status_group=active`.
-_ACTIVE_CAND_STATUSES, _ACTIVE_CAND_INCLUDES_UNMAPPED = candidate_raw_statuses_matching_group("active")
-_ALL_KNOWN_CAND_RAW = set(_CANDIDATE_STATUS_MAP.keys())
-
-# Pipeline stage groups — same definitions as /api/pipeline?stage_group=…
-_SUBMITTED_STATUSES, _SUBMITTED_INCLUDES_UNMAPPED = pipeline_raw_statuses_matching_group("submitted")
-_OFFER_STATUSES, _ = pipeline_raw_statuses_matching_group("offer")
-_PLACED_STATUSES, _ = pipeline_raw_statuses_matching_group("placed")
-_ALL_KNOWN_PIPELINE_RAW = set(_PIPELINE_STATUS_MAP.keys())
-
 PIPELINE_STAGE_ORDER = list(PIPELINE_STAGES)
-
 
 NEW_JOB_WINDOW_DAYS = 7
 RECENT_LIMIT = 10
 FOLLOW_UP_LIMIT = 8
 ZOHO_JOB_LIMIT = 8
-
-
-def _scope_owner(principal: AtsPrincipal) -> str | None:
-    """None = organization-wide; a Clerk user id = restrict to their own records."""
-    if principal.role in ORG_WIDE_ROLES:
-        return None
-    return principal.user_id
 
 
 def _employee_name(emp: Employee | None) -> str | None:
@@ -125,7 +107,7 @@ async def get_dashboard_summary(
     principal: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
 ):
-    owner = _scope_owner(principal)
+    owner = scope_owner(principal)
     now = datetime.utcnow()
     week_ago = now - timedelta(days=NEW_JOB_WINDOW_DAYS)
 
@@ -135,56 +117,19 @@ async def get_dashboard_summary(
             q = q.filter(model.created_by == owner)
         return q.scalar() or 0
 
-    open_jobs_filter = (
-        or_(JobRequirement.status.in_(_OPEN_STATUSES), ~JobRequirement.status.in_(_ALL_KNOWN_RAW_STATUSES))
-        if _OPEN_INCLUDES_UNMAPPED else JobRequirement.status.in_(_OPEN_STATUSES)
-    )
-    active_candidates_filter = (
-        or_(
-            Employee.status.in_(list(_ACTIVE_CAND_STATUSES)),
-            ~Employee.status.in_(list(_ALL_KNOWN_CAND_RAW)),
-            Employee.status.is_(None),
-        )
-        if _ACTIVE_CAND_INCLUDES_UNMAPPED
-        else Employee.status.in_(list(_ACTIVE_CAND_STATUSES))
-    )
-
-    submitted_filter = (
-        or_(Submission.status.in_(list(_SUBMITTED_STATUSES)), ~Submission.status.in_(list(_ALL_KNOWN_PIPELINE_RAW)))
-        if _SUBMITTED_INCLUDES_UNMAPPED
-        else Submission.status.in_(list(_SUBMITTED_STATUSES))
-    )
-
-    # Interview Scheduled stage — parity with /ats/pipeline?stage=interview_scheduled.
-    # Same split as pipeline overview: Interview-status rows minus those counted as Completed.
-    interview_raw = {"Interview", "Interviewing", "Scheduled", "Interview Scheduled"}
-    interview_subs_q = db.query(func.count(Submission.id)).filter(Submission.status.in_(list(interview_raw)))
-    if owner:
-        interview_subs_q = interview_subs_q.filter(Submission.created_by == owner)
-    interview_subs = interview_subs_q.scalar() or 0
-    interview_completed_for_stage_q = (
-        db.query(func.count(func.distinct(Interview.submission_id)))
-        .join(Submission, Submission.id == Interview.submission_id)
-        .filter(Submission.status.in_(list(interview_raw)), Interview.status == "Completed")
-    )
-    if owner:
-        interview_completed_for_stage_q = interview_completed_for_stage_q.filter(Submission.created_by == owner)
-    interview_completed_for_stage = interview_completed_for_stage_q.scalar() or 0
-    interviews_scheduled_count = max(0, interview_subs - min(interview_completed_for_stage, interview_subs))
-
     counts = DashboardSummaryCounts(
-        open_jobs=scoped_count(JobRequirement, open_jobs_filter),
+        open_jobs=count_open_jobs(db, owner),
         new_zoho_jobs=scoped_count(
             JobRequirement,
             JobRequirement.source.ilike("%zoho%"),
             JobRequirement.created_at >= week_ago,
         ),
-        active_candidates=scoped_count(Employee, active_candidates_filter),
-        candidates_submitted=scoped_count(Submission, submitted_filter),
-        interviews_scheduled=interviews_scheduled_count,
-        offers=scoped_count(Submission, Submission.status.in_(list(_OFFER_STATUSES))),
-        placements=scoped_count(Submission, Submission.status.in_(list(_PLACED_STATUSES))),
-        follow_ups_due=0,  # filled in below alongside the list, to share one filter
+        active_candidates=count_active_candidates(db, owner),
+        candidates_submitted=count_submitted(db, owner),
+        interviews_scheduled=count_interviews_scheduled(db, owner),
+        offers=count_offers(db, owner),
+        placements=count_placements(db, owner),
+        follow_ups_due=count_follow_ups_due(db, owner),
     )
 
     # --- Recent activity (unified across job/candidate/contact/submission) ---
@@ -214,13 +159,8 @@ async def get_dashboard_summary(
         for a in acts
     ]
 
-    # --- Follow-ups due (CRMActivity rows with a due_date, status=Open) ---
-    follow_ups_q = db.query(CRMActivity).filter(CRMActivity.due_date.isnot(None), CRMActivity.status == "Open")
-    if owner:
-        follow_ups_q = follow_ups_q.filter(
-            or_(CRMActivity.assigned_to == owner, and_(CRMActivity.assigned_to.is_(None), CRMActivity.created_by == owner))
-        )
-    counts.follow_ups_due = follow_ups_q.count()
+    # --- Follow-ups due (list shares the same scoped query as the count) ---
+    follow_ups_q = follow_ups_due_query(db, owner)
     follow_up_rows = follow_ups_q.order_by(CRMActivity.due_date.asc()).limit(FOLLOW_UP_LIMIT).all()
     fu_links = _resolve_links(db, follow_up_rows)
     follow_ups_due = [

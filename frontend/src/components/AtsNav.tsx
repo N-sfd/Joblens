@@ -7,10 +7,7 @@ import {
   LayoutDashboard, Users, Briefcase, Inbox, Send, Contact, BarChart3, Settings,
 } from "lucide-react";
 
-// Consolidated 8-item nav (Recruitment CRM + ATS):
-//   - Candidates -> /ats/candidates (Employees + resume workflows)
-//   - Pipeline -> /ats/pipeline (submissions, interviews, offers)
-//   - Reports -> stub page until the Reports phase
+// Consolidated 8-item nav (Recruitment CRM + ATS)
 const NAV: { href: string; label: string; icon: React.ElementType }[] = [
   { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
   { href: "/ats/email-inbox", label: "Zoho Inbox", icon: Inbox },

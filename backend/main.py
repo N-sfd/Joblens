@@ -14,7 +14,7 @@ SEEKER_PRODUCT_ENABLED = os.getenv("SEEKER_PRODUCT_ENABLED", "true").strip().low
 )
 
 from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, pipeline, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, pipeline, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, reports, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
 from services.extension_config import validate_extension_config_at_startup
@@ -137,6 +137,7 @@ app.include_router(crm_contacts.router, prefix="/api/contacts", tags=["Contacts 
 app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
 app.include_router(ats_dashboard.router, prefix="/api/ats", tags=["ATS Dashboard"])
 app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard (CRM + ATS)"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Reports (CRM + ATS)"])
 app.include_router(ats_staff.router, prefix="/api/ats", tags=["ATS Staff Access"])
 app.include_router(zoho.router, prefix="/api/zoho", tags=["Zoho Mail (ATS)"])
 

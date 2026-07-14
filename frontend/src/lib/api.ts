@@ -73,7 +73,7 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
 
 // Private ATS/CRM endpoints — these carry the Clerk session JWT for backend
 // verification (see ats_auth.py). Public job-seeker endpoints do not.
-const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/pipeline", "/api/interviews", "/api/offers", "/api/crm", "/api/contacts", "/api/companies", "/api/ats", "/api/zoho", "/api/dashboard"];
+const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/pipeline", "/api/interviews", "/api/offers", "/api/crm", "/api/contacts", "/api/companies", "/api/ats", "/api/zoho", "/api/dashboard", "/api/reports"];
 
 async function request<T>(path: string, init?: RequestInit): Promise<T> {
   const base = getApiBase();
@@ -863,4 +863,71 @@ export const api = {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
     }),
   deleteActivity: (id: number) => request<{ message: string }>(`/api/crm/activities/${id}`, { method: "DELETE" }),
+
+  // Reports (Phase 7)
+  getReportsOverview: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/overview${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  getReportsJobs: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/jobs${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  getReportsCandidates: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/candidates${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  getReportsPipeline: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/pipeline${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  getReportsContacts: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/contacts${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  getReportsActivity: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/activity${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  getReportsFollowUps: (params?: import("@/types").ReportFilterParams) =>
+    request<import("@/types").ReportEnvelope>(
+      `/api/reports/follow-ups${qs(params as Record<string, string | number | boolean | undefined> | undefined)}`,
+    ),
+  exportReport: async (
+    reportType: import("@/types").ReportTab | string,
+    params?: import("@/types").ReportFilterParams,
+  ) => {
+    const base = getApiBase();
+    const token = (await getClerkToken(2000)) || (await waitForClerkToken({ attempts: 15, delayMs: 100, timeoutMs: 2000 }));
+    if (!token) throw new Error("Your session has expired. Please sign in again.");
+    const query = qs({
+      ...(params as Record<string, string | number | boolean | undefined> | undefined),
+      report_type: reportType,
+      format: "csv",
+    });
+    const res = await fetch(`${base}/api/reports/export${query}`, {
+      headers: { Authorization: `Bearer ${token}` },
+      credentials: "include",
+    });
+    if (!res.ok) {
+      const body = await res.text();
+      let detail: unknown = body;
+      try { detail = JSON.parse(body)?.detail ?? body; } catch { /* keep text */ }
+      throw new ApiError(formatApiErrorDetail(detail, body || `Export failed: ${res.status}`), res.status, detail);
+    }
+    const blob = await res.blob();
+    const cd = res.headers.get("Content-Disposition") || "";
+    const match = /filename\*?=(?:UTF-8''|")?([^\";]+)/i.exec(cd);
+    const filename = match
+      ? decodeURIComponent(match[1].replace(/["']/g, ""))
+      : `joblens_${String(reportType).replace(/-/g, "_")}_export.csv`;
+    const url = URL.createObjectURL(blob);
+    const a = document.createElement("a");
+    a.href = url;
+    a.download = filename;
+    document.body.appendChild(a);
+    a.click();
+    a.remove();
+    URL.revokeObjectURL(url);
+  },
 };

@@ -3,7 +3,7 @@ from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
 from pydantic import BaseModel, EmailStr, Field, field_validator
-from typing import Optional
+from typing import Any, Optional
 from datetime import datetime
 
 
@@ -2461,3 +2461,26 @@ class DashboardSummaryResponse(BaseModel):
     follow_ups_due: list[DashboardFollowUpItem]
     recent_zoho_jobs: list[DashboardZohoJobItem]
     pipeline: list[DashboardPipelineStage]
+
+
+# --- Reports (Phase 7) ---
+
+class ReportDateRange(BaseModel):
+    preset: str
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+
+
+class ReportEnvelope(BaseModel):
+    """Flexible report payload — sections vary by endpoint."""
+
+    report_type: str
+    scope: str  # "organization" | "own"
+    generated_at: datetime
+    date_range: ReportDateRange
+    date_basis: dict[str, str] = {}
+    filters_applied: dict[str, Any] = {}
+    summary: dict[str, Any] = {}
+    sections: dict[str, Any] = {}
+    rows: list[dict[str, Any]] = []
+
