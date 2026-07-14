@@ -4,9 +4,9 @@ import Link from "next/link";
 import { SignOutButton } from "@clerk/nextjs";
 import { Loader2, ShieldAlert } from "lucide-react";
 import { useAtsRole } from "@/lib/atsRole";
+import { isClerkConfigured } from "@/lib/clerkConfigured";
 
-/** Blocks ATS write/parse UI until backend confirms recruiter/admin access. */
-export default function AtsAccessGate({ children }: { children: React.ReactNode }) {
+function AtsAccessGateInner({ children }: { children: React.ReactNode }) {
   const { loading, hasAtsAccess, error, displayName, email, role, refresh } = useAtsRole();
 
   if (loading) {
@@ -79,4 +79,12 @@ export default function AtsAccessGate({ children }: { children: React.ReactNode 
   }
 
   return <>{children}</>;
+}
+
+/** Blocks ATS UI until backend confirms access. Safe without Clerk at build. */
+export default function AtsAccessGate({ children }: { children: React.ReactNode }) {
+  if (!isClerkConfigured()) {
+    return <>{children}</>;
+  }
+  return <AtsAccessGateInner>{children}</AtsAccessGateInner>;
 }

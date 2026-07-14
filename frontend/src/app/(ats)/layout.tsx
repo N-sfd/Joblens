@@ -4,6 +4,9 @@ import AtsAuthBridge from "@/components/AtsAuthBridge";
 import AtsAccessGate from "@/components/AtsAccessGate";
 import AtsHeaderAccount from "@/components/AtsHeaderAccount";
 
+// Auth-gated shell — never statically prerender signed-in CRM pages.
+export const dynamic = "force-dynamic";
+
 // PROTECTED layout — every page under this (ats) group is gated by the
 // middleware.ts route matcher. If you add new ATS pages, no extra protection
 // code is needed here; just confirm the path is covered by isProtectedAtsRoute.

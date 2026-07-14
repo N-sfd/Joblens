@@ -7,19 +7,15 @@ import {
   LayoutDashboard, Users, Briefcase, Inbox, Send, Contact, BarChart3, Settings,
 } from "lucide-react";
 import { useAtsRole, type AtsRole } from "@/lib/atsRole";
+import { isClerkConfigured } from "@/lib/clerkConfigured";
 
 type NavItem = {
   href: string;
   label: string;
   icon: React.ElementType;
-  /** Roles that may see this item. All four roles when omitted. */
   roles?: readonly AtsRole[];
 };
 
-// Consolidated primary navigation for Recruitment CRM + ATS.
-// Obsolete modules (Employees, Job Requirements, Submissions, Recruiters,
-// Clients, Vendors, separate Interviews/Offers, seeker tools) stay out of
-// this list — legacy URLs redirect via middleware.
 const NAV: NavItem[] = [
   { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
   {
@@ -51,20 +47,14 @@ function isActive(pathname: string, href: string): boolean {
   return pathname === href || pathname.startsWith(`${href}/`);
 }
 
-export default function AtsNav({ compact = false }: { compact?: boolean }) {
+function NavLinks({
+  compact,
+  items,
+}: {
+  compact: boolean;
+  items: { href: string; label: string; icon: React.ElementType }[];
+}) {
   const pathname = usePathname();
-  const { role, loading } = useAtsRole();
-
-  const items = NAV.filter((item) => {
-    if (!item.roles) return true;
-    if (loading) return item.roles.includes("read_only") || item.href === "/ats";
-    return item.roles.includes(role);
-  }).map((item) =>
-    item.href === "/ats/settings"
-      ? { ...item, label: settingsLabel(loading ? "read_only" : role) }
-      : item
-  );
-
   return (
     <nav
       className={clsx(
@@ -97,4 +87,40 @@ export default function AtsNav({ compact = false }: { compact?: boolean }) {
       })}
     </nav>
   );
+}
+
+function AtsNavWithRole({ compact }: { compact: boolean }) {
+  const pathname = usePathname();
+  const { role, loading } = useAtsRole();
+
+  const items = NAV.filter((item) => {
+    if (!item.roles) return true;
+    if (loading) return item.roles.includes("read_only") || item.href === "/ats";
+    return item.roles.includes(role);
+  }).map((item) =>
+    item.href === "/ats/settings"
+      ? { ...item, label: settingsLabel(loading ? "read_only" : role) }
+      : item
+  );
+
+  // pathname kept for active highlighting inside NavLinks
+  void pathname;
+  return <NavLinks compact={compact} items={items} />;
+}
+
+/** Role-aware ATS nav. Safe to prerender when Clerk env is unset. */
+export default function AtsNav({ compact = false }: { compact?: boolean }) {
+  if (!isClerkConfigured()) {
+    return (
+      <NavLinks
+        compact={compact}
+        items={NAV.map((item) => ({
+          href: item.href,
+          label: item.href === "/ats/settings" ? "Settings" : item.label,
+          icon: item.icon,
+        }))}
+      />
+    );
+  }
+  return <AtsNavWithRole compact={compact} />;
 }

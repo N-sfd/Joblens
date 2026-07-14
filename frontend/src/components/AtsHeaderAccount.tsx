@@ -3,6 +3,7 @@
 import { UserButton } from "@clerk/nextjs";
 import Link from "next/link";
 import { useAtsRole } from "@/lib/atsRole";
+import { isClerkConfigured } from "@/lib/clerkConfigured";
 
 function roleLabel(role: string) {
   if (role === "admin") return "Admin";
@@ -11,7 +12,7 @@ function roleLabel(role: string) {
   return "Read Only";
 }
 
-export default function AtsHeaderAccount() {
+function AtsHeaderAccountInner() {
   const { displayName, role, organizationName, loading } = useAtsRole();
   const name = displayName || "Signed in";
 
@@ -33,4 +34,17 @@ export default function AtsHeaderAccount() {
       <UserButton afterSignOutUrl="/" />
     </div>
   );
+}
+
+export default function AtsHeaderAccount() {
+  if (!isClerkConfigured()) {
+    return (
+      <div className="ml-auto flex items-center gap-4">
+        <Link href="/sign-in" className="text-sm text-indigo-600 hover:underline">
+          Sign in
+        </Link>
+      </div>
+    );
+  }
+  return <AtsHeaderAccountInner />;
 }
