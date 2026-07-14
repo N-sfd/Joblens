@@ -98,18 +98,34 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       throw new Error("Your session has expired. Please sign in again.");
     }
   }
+  const timeoutMs = 20_000;
+  const controller = new AbortController();
+  const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
+  if (init?.signal) {
+    if (init.signal.aborted) controller.abort();
+    else init.signal.addEventListener("abort", () => controller.abort(), { once: true });
+  }
   let res: Response;
   try {
-    res = await fetch(`${base}${path}`, { ...init, headers, credentials: "include" });
+    res = await fetch(`${base}${path}`, {
+      ...init,
+      headers,
+      credentials: "include",
+      signal: controller.signal,
+    });
   } catch (e) {
-    const hint =
-      typeof window !== "undefined" &&
-      window.location.hostname !== "localhost" &&
-      !process.env.NEXT_PUBLIC_API_URL
-        ? " Configure BACKEND_URL on Vercel (same-origin proxy) or NEXT_PUBLIC_API_URL to your API URL."
-        : " Is the backend running and reachable? Check NEXT_PUBLIC_API_URL / CORS.";
-    const msg = e instanceof Error ? e.message : "Network error";
+    const aborted = e instanceof Error && e.name === "AbortError";
+    const host = typeof window !== "undefined" ? window.location.hostname : "";
+    const onDeployed = Boolean(host) && host !== "localhost" && host !== "127.0.0.1";
+    const hint = aborted
+      ? " The API did not respond in time. Check that BACKEND_URL points at this CRM FastAPI and the Render service is awake."
+      : onDeployed
+        ? " Check BACKEND_URL on Vercel (same-origin /api proxy) and that ALLOWED_ORIGINS includes this site."
+        : " Is the backend running? Start it on :8000 or set NEXT_PUBLIC_API_URL.";
+    const msg = aborted ? "Request timed out" : e instanceof Error ? e.message : "Network error";
     throw new Error(`${msg}.${hint}`);
+  } finally {
+    clearTimeout(timeoutId);
   }
   if (!res.ok) {
     const body = await res.text();
@@ -121,7 +137,15 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       detail,
     );
   }
-  return res.json();
+  const text = await res.text();
+  if (!text.trim()) {
+    throw new ApiError("Empty response from API.", res.status);
+  }
+  try {
+    return JSON.parse(text) as T;
+  } catch {
+    throw new ApiError("Invalid JSON from API.", res.status, text.slice(0, 200));
+  }
 }
 
 function normalizeSubmissionList(

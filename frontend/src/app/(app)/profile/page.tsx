@@ -132,6 +132,19 @@ export default function ProfilePage() {
 
   useEffect(() => { load(); }, [load]);
 
+  // Hard stop so "Loading profile…" cannot spin forever when the API hangs.
+  useEffect(() => {
+    if (!loading) return;
+    const t = window.setTimeout(() => {
+      setLoading(false);
+      setLoadError((prev) =>
+        prev ||
+        "Profile is taking too long to load. The backend may be unreachable — check BACKEND_URL, or open Job Matcher to upload a resume without a profile.",
+      );
+    }, 22_000);
+    return () => window.clearTimeout(t);
+  }, [loading]);
+
   const goSection = (key: SectionKey) => {
     setSection(key);
     setFieldError(null);
@@ -273,13 +286,21 @@ export default function ProfilePage() {
             Sign in with your JobLens account (email/password) to view and edit your profile.
             This is separate from Clerk sign-in used for the ATS.
           </p>
-          <button
-            type="button"
-            onClick={() => setShowAuth(true)}
-            className="btn-primary"
-          >
-            Log in
-          </button>
+          <div className="flex flex-wrap gap-3">
+            <button
+              type="button"
+              onClick={() => setShowAuth(true)}
+              className="btn-primary"
+            >
+              Log in
+            </button>
+            <Link href="/match" className="btn-secondary inline-flex items-center">
+              Job Matcher — Your Resume / Upload file
+            </Link>
+            <Link href="/ats" className="text-sm text-indigo-600 hover:underline self-center">
+              Staffing CRM (/ats)
+            </Link>
+          </div>
         </div>
         {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
       </div>
