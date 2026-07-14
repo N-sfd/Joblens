@@ -1,10 +1,21 @@
 "use client";
 
-import { useParams } from "next/navigation";
-import OrganizationDetail from "@/components/crm/OrganizationDetail";
+import { useParams, useRouter } from "next/navigation";
+import { useEffect } from "react";
+import { Loader2 } from "lucide-react";
 
-export default function VendorDetailPage() {
+export default function VendorDetailRedirect() {
   const params = useParams();
-  const id = Number(params.id);
-  return <OrganizationDetail id={id} backPath="/ats/vendors" />;
+  const router = useRouter();
+  const id = params.id;
+
+  useEffect(() => {
+    if (id) router.replace(`/ats/contacts/companies/${id}`);
+  }, [id, router]);
+
+  return (
+    <div className="flex items-center justify-center py-32">
+      <Loader2 size={24} className="animate-spin text-indigo-500" />
+    </div>
+  );
 }

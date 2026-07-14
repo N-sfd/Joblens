@@ -7,12 +7,21 @@ import os
 
 load_dotenv(Path(__file__).resolve().parent / ".env", override=True)
 
-from database import create_tables
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, submissions, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
+SEEKER_PRODUCT_ENABLED = os.getenv("SEEKER_PRODUCT_ENABLED", "true").strip().lower() not in (
+    "false",
+    "0",
+    "no",
+)
+
+from database import create_tables, SessionLocal, DATABASE_URL
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, pipeline, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, reports, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
 from services.extension_config import validate_extension_config_at_startup
+from services.prod_config import validate_production_env
+from services.http_middleware import RequestIdMiddleware, SecurityHeadersMiddleware
 import logging
+from sqlalchemy import text
 
 logger = logging.getLogger(__name__)
 
@@ -37,11 +46,12 @@ async def lifespan(app: FastAPI):
             "API would boot unauthenticated. Set ATS_AUTH_ENFORCE=true (and the Clerk env "
             "vars) on Render before deploying."
         )
+    validate_production_env(enforce_auth=ENFORCE)
     validate_storage_config()
     validate_extension_config_at_startup()
     if env == "production" and STORAGE_PROVIDER == "local":
         logger.warning(
-            "STORAGE_PROVIDER=local in production — uploaded employee resumes will be lost "
+            "STORAGE_PROVIDER=local in production — uploaded candidate resumes will be lost "
             "on every redeploy (Render's disk is ephemeral). Set STORAGE_PROVIDER=supabase."
         )
     if not os.getenv("GROQ_API_KEY", "").strip():
@@ -51,8 +61,8 @@ async def lifespan(app: FastAPI):
 
 
 app = FastAPI(
-    title="JobLens API",
-    description="Resume analysis, job matching, cover letter generation, and job tracking.",
+    title="JobLens CRM + ATS API",
+    description="Unified Recruitment CRM and ATS — jobs, candidates, pipeline, contacts, reports.",
     version="1.0.0",
     lifespan=lifespan,
 )
@@ -90,43 +100,114 @@ app.add_middleware(
     allow_methods=["*"],
     allow_headers=["*"],
 )
+app.add_middleware(SecurityHeadersMiddleware)
+app.add_middleware(RequestIdMiddleware)
 
-app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
-app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
-app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
-app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
-app.include_router(applications.router, prefix="/api/applications", tags=["Application Status"])
-app.include_router(extension.router, prefix="/api/extension", tags=["Browser Extension"])
-app.include_router(extension_upload.router, prefix="/api/extension", tags=["Browser Extension Uploads"])
-app.include_router(extension_pilot.router, prefix="/api/extension", tags=["Browser Extension Pilot"])
-app.include_router(match.router, prefix="/api/match", tags=["Match"])
-app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
-app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
-app.include_router(account.router, prefix="/api/account", tags=["Account"])
-# CRM/ATS → JobLens job publishing surface (routers/public_jobs.py). Public —
-# guest_id/user pattern, not Clerk-gated — since JobLens calls it directly.
-app.include_router(public_jobs.router, prefix="/api/integrations/joblens/jobs", tags=["JobLens Integration"])
+# Job-seeker product ("JobLens") — gated behind SEEKER_PRODUCT_ENABLED so it can
+# be turned off without deleting code while the app consolidates onto the
+# Recruitment CRM + ATS product. Defaults to enabled; flip to false once the
+# consolidated ATS nav/pages are confirmed stable.
+if SEEKER_PRODUCT_ENABLED:
+    app.include_router(auth.router, prefix="/api/auth", tags=["Auth"])
+    app.include_router(profile.router, prefix="/api/profile", tags=["Profile"])
+    app.include_router(resume.router, prefix="/api/resume", tags=["Resume"])
+    app.include_router(jobs.router, prefix="/api/jobs", tags=["Jobs"])
+    app.include_router(applications.router, prefix="/api/applications", tags=["Application Status"])
+    app.include_router(extension.router, prefix="/api/extension", tags=["Browser Extension"])
+    app.include_router(extension_upload.router, prefix="/api/extension", tags=["Browser Extension Uploads"])
+    app.include_router(extension_pilot.router, prefix="/api/extension", tags=["Browser Extension Pilot"])
+    app.include_router(match.router, prefix="/api/match", tags=["Match"])
+    app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
+    app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
+    app.include_router(account.router, prefix="/api/account", tags=["Account"])
+    # CRM/ATS → JobLens job publishing surface (routers/public_jobs.py). Public —
+    # guest_id/user pattern, not Clerk-gated — since JobLens calls it directly.
+    # Only the seeker-side Discover Jobs UI consumes this; folded into the same flag.
+    app.include_router(public_jobs.router, prefix="/api/integrations/joblens/jobs", tags=["JobLens Integration"])
 # Private ATS data — Clerk JWT verification via ats_auth.py (set ATS_AUTH_ENFORCE=true in production).
 app.include_router(employees.router, prefix="/api/employees", tags=["Employees (ATS)"])
 app.include_router(employee_resumes.router, prefix="/api/employees", tags=["Employee Resumes (ATS)"])
+# Unified Candidates aliases — same Employee entity, no parallel table.
+app.include_router(employees.router, prefix="/api/candidates", tags=["Candidates (ATS)"])
+app.include_router(employee_resumes.router, prefix="/api/candidates", tags=["Candidate Resumes (ATS)"])
 app.include_router(job_requirements.router, prefix="/api/job-requirements", tags=["Job Requirements (ATS)"])
 app.include_router(job_sends.router, prefix="/api/job-sends", tags=["Job Sends (ATS)"])
-app.include_router(submissions.router, prefix="/api/submissions", tags=["Submissions (ATS)"])
+app.include_router(pipeline.router, prefix="/api/pipeline", tags=["Pipeline (ATS)"])
+app.include_router(pipeline.router, prefix="/api/submissions", tags=["Submissions (ATS)"])
 app.include_router(interviews.router, prefix="/api/interviews", tags=["Interviews (ATS)"])
 app.include_router(offers.router, prefix="/api/offers", tags=["Offers (ATS)"])
 app.include_router(crm_organizations.router, prefix="/api/crm/organizations", tags=["CRM Organizations (ATS)"])
 app.include_router(crm_contacts.router, prefix="/api/crm/contacts", tags=["CRM Contacts (ATS)"])
+app.include_router(crm_organizations.router, prefix="/api/companies", tags=["Companies (ATS)"])
+app.include_router(crm_contacts.router, prefix="/api/contacts", tags=["Contacts (ATS)"])
 app.include_router(crm_activities.router, prefix="/api/crm/activities", tags=["CRM Activities (ATS)"])
 app.include_router(ats_dashboard.router, prefix="/api/ats", tags=["ATS Dashboard"])
+app.include_router(dashboard.router, prefix="/api/dashboard", tags=["Dashboard (CRM + ATS)"])
+app.include_router(reports.router, prefix="/api/reports", tags=["Reports (CRM + ATS)"])
 app.include_router(ats_staff.router, prefix="/api/ats", tags=["ATS Staff Access"])
 app.include_router(zoho.router, prefix="/api/zoho", tags=["Zoho Mail (ATS)"])
 
 
 @app.get("/", tags=["Health"])
 async def root():
-    return {"message": "JobLens API", "status": "running", "version": "1.0.0"}
+    return {"message": "JobLens CRM + ATS API", "status": "running", "version": "1.0.0"}
 
 
 @app.get("/health", tags=["Health"])
 async def health():
+    """Liveness — process is running (does not check dependencies)."""
     return {"status": "healthy"}
+
+
+@app.get("/health/ready", tags=["Health"])
+async def health_ready():
+    """Readiness — database reachable and required production config present.
+
+    Never returns secret values.
+    """
+    checks: dict[str, str] = {}
+    ready = True
+
+    try:
+        db = SessionLocal()
+        try:
+            db.execute(text("SELECT 1"))
+            checks["database"] = "ok"
+        finally:
+            db.close()
+    except Exception:
+        checks["database"] = "error"
+        ready = False
+
+    env = os.getenv("ENV", "development").strip().lower()
+    if env == "production":
+        if not ENFORCE:
+            checks["auth_enforce"] = "missing"
+            ready = False
+        else:
+            checks["auth_enforce"] = "ok"
+        if not CLERK_JWKS_URL or not CLERK_ISSUER:
+            checks["clerk"] = "missing"
+            ready = False
+        else:
+            checks["clerk"] = "ok"
+        if not allowed_origins or any(o == "*" for o in allowed_origins):
+            checks["cors"] = "unsafe"
+            ready = False
+        else:
+            checks["cors"] = "ok"
+        if "sqlite" in (DATABASE_URL or "").lower():
+            checks["database_engine"] = "sqlite_not_recommended"
+            # Soft warning — still allow ready if SELECT 1 passed
+        else:
+            checks["database_engine"] = "ok"
+    else:
+        checks["environment"] = env or "development"
+
+    status_code = 200 if ready else 503
+    from fastapi.responses import JSONResponse
+
+    return JSONResponse(
+        status_code=status_code,
+        content={"status": "ready" if ready else "not_ready", "checks": checks},
+    )

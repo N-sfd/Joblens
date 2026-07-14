@@ -21,7 +21,9 @@ def test_normalize_role_aliases():
     assert normalize_ats_role("Admin") == "admin"
     assert normalize_ats_role("Recruiter") == "recruiter"
     assert normalize_ats_role("hr_admin") == "admin"
-    assert normalize_ats_role("unknown") == "viewer"
+    assert normalize_ats_role("unknown") == "read_only"
+    assert normalize_ats_role("viewer") == "read_only"
+    assert normalize_ats_role("Manager") == "manager"
 
 
 def test_db_role_allows_writer(db_session, monkeypatch):
@@ -44,7 +46,7 @@ def test_db_role_allows_writer(db_session, monkeypatch):
 
 
 def test_require_writer_message_when_enforced(monkeypatch):
-    """When ENFORCE is on and role is viewer, structured 403 is raised."""
+    """When ENFORCE is on and role is read_only, structured 403 is raised."""
     import ats_auth
     from fastapi import HTTPException
 
@@ -61,7 +63,7 @@ def test_require_writer_message_when_enforced(monkeypatch):
             self.headers = type("H", (), {"get": lambda self, k, d=None: None})()
 
     principal = AtsPrincipal(user_id="user_test", claims={})
-    principal._resolved_role = "viewer"
+    principal._resolved_role = "read_only"
     principal.role_source = "database"
     principal.email = "viewer@example.com"
 
@@ -78,7 +80,7 @@ def test_ats_me_and_staff_admin_flow(client, db_session, monkeypatch):
     r = client.get("/api/ats/me")
     assert r.status_code == 200
     body = r.json()
-    assert body["role"] in ("admin", "recruiter", "viewer")
+    assert body["role"] in ("admin", "recruiter", "manager", "read_only")
     assert "can_write" in body
     assert "has_ats_access" in body
 

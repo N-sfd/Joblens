@@ -393,6 +393,7 @@ export type EmployeeStatus = "Active" | "Inactive" | "On Project" | "Bench" | "D
 export interface Employee {
   id: number;
   name: string;
+  status_display?: string | null;
   employee_code: string | null;
   first_name: string | null;
   middle_name: string | null;
@@ -476,6 +477,11 @@ export interface EmployeeListItem extends Employee {
   resume_count: number;
   resume_status: "None" | "Parsed" | "Failed";
   has_primary_resume: boolean;
+  match_count?: number;
+  submission_count?: number;
+  interview_count?: number;
+  offer_count?: number;
+  last_activity_at?: string | null;
 }
 
 export interface EmployeeListResponse {
@@ -488,19 +494,66 @@ export interface EmployeeListResponse {
 
 export interface EmployeeListParams {
   q?: string;
+  email?: string;
+  phone?: string;
   status?: string;
+  status_group?: string;
   availability?: string;
   work_authorization?: string;
+  visa_status?: string;
   primary_skill?: string;
   location?: string;
   employment_type?: string;
+  source?: string;
+  has_resume?: boolean;
+  has_matches?: boolean;
+  has_submissions?: boolean;
   archived?: boolean;
+  sort?: string;
   page?: number;
   page_size?: number;
 }
 
+export interface CandidateDuplicateMatch {
+  id: number;
+  name: string;
+  email: string;
+  phone?: string | null;
+  status: string;
+  status_display: string;
+  match_reason: string;
+}
+
+export interface CandidateDuplicateCheckResponse {
+  matches: CandidateDuplicateMatch[];
+  blocked: boolean;
+}
+
+export interface CandidateCounts {
+  resumes: number;
+  matches: number;
+  active_submissions: number;
+  interviews: number;
+  offers: number;
+  placements: number;
+  open_follow_ups: number;
+}
+
 export const EMPLOYEE_STATUSES = [
   "Active", "Bench", "On Project", "Available Soon", "Inactive", "Do Not Contact", "Former Employee",
+] as const;
+export const CANDIDATE_DISPLAY_STATUSES = [
+  "New", "Active", "Submitted", "Interviewing", "Offered", "Placed", "Rejected", "Inactive",
+] as const;
+export const CANDIDATE_SORT_OPTIONS = [
+  ["last_activity", "Last activity"],
+  ["newest", "Newest"],
+  ["name", "Name"],
+  ["title", "Current title"],
+  ["experience", "Experience"],
+  ["matches", "Match count"],
+  ["submissions", "Submission count"],
+  ["availability", "Availability"],
 ] as const;
 export const EMPLOYMENT_TYPES = [
   "W2 Employee", "C2C Consultant", "1099 Consultant", "Contractor", "Candidate", "Internal Employee",
@@ -509,24 +562,59 @@ export const EMPLOYEE_AVAILABILITIES = [
   "Immediate", "One Week", "Two Weeks", "Thirty Days", "On Project", "Not Available",
 ] as const;
 
-// CRM
+// CRM / Unified Contacts (Phase 6)
 export const ORGANIZATION_TYPES = [
-  "Staffing Vendor", "Direct Client", "End Client", "Implementation Partner",
-  "Managed Service Provider", "Government Agency", "Other",
+  "Client", "Vendor", "End Client", "Recruiting Agency", "Employer", "Partner", "Other",
+  // Legacy stored values (still accepted by API)
+  "Staffing Vendor", "Direct Client", "Implementation Partner",
+  "Managed Service Provider", "Government Agency",
 ] as const;
 export const ORGANIZATION_STATUSES = [
-  "Active", "Prospect", "Inactive", "Blocked", "Do Not Work With",
+  "Active", "Inactive", "Archived", "Prospect", "Blocked", "Do Not Work With",
 ] as const;
 export const CONTACT_TYPES = [
-  "Recruiter", "Account Manager", "Client Manager", "Hiring Manager",
-  "Vendor Manager", "HR Contact", "Other",
+  "Recruiter", "Hiring Manager", "Client Contact", "Vendor Contact", "Candidate Contact", "Other",
+  // Legacy stored values
+  "Account Manager", "Client Manager", "Vendor Manager", "HR Contact",
 ] as const;
 export const CONTACT_STATUSES = [
-  "Active", "Inactive", "Do Not Contact", "Bounced Email", "Unsubscribed",
+  "Active", "Inactive", "Archived", "Do Not Contact", "Bounced Email", "Unsubscribed",
 ] as const;
+
+/** Display labels used in filters / badges (normalized by backend). */
+export const CONTACT_DISPLAY_TYPES = [
+  "Recruiter", "Hiring Manager", "Client Contact", "Vendor Contact", "Candidate Contact", "Other",
+] as const;
+export const CONTACT_DISPLAY_STATUSES = ["Active", "Inactive", "Archived"] as const;
+export const COMPANY_DISPLAY_TYPES = [
+  "Client", "Vendor", "End Client", "Recruiting Agency", "Employer", "Partner", "Other",
+] as const;
+export const COMPANY_DISPLAY_STATUSES = ["Active", "Inactive", "Archived"] as const;
+export const CONTACT_SORT_OPTIONS = [
+  { value: "last_activity", label: "Last activity" },
+  { value: "name", label: "Name" },
+  { value: "newest", label: "Newest" },
+  { value: "updated", label: "Recently updated" },
+] as const;
+export const COMPANY_SORT_OPTIONS = [
+  { value: "last_activity", label: "Last activity" },
+  { value: "name", label: "Name" },
+  { value: "newest", label: "Newest" },
+  { value: "updated", label: "Recently updated" },
+] as const;
+export const CONTACT_METHODS = [
+  { value: "email", label: "Email" },
+  { value: "phone", label: "Phone" },
+  { value: "sms", label: "SMS" },
+  { value: "linkedin", label: "LinkedIn" },
+  { value: "meeting", label: "Meeting" },
+  { value: "other", label: "Other" },
+] as const;
+
 export const ACTIVITY_TYPES = [
   "Email Received", "Email Sent", "Phone Call", "Follow-Up", "Meeting", "Note",
   "Job Received", "Resume Sent", "Interview Scheduled", "Feedback Received", "Other",
+  "SMS", "LinkedIn Message",
 ] as const;
 
 export interface CRMOrganization {
@@ -552,12 +640,66 @@ export interface CRMOrganization {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 6 display + counts
+  organization_type_display?: string | null;
+  status_display?: string | null;
+  source_display?: string | null;
+  contact_count?: number;
+  open_job_count?: number;
+  active_pipeline_count?: number;
+  interview_count?: number;
+  offer_count?: number;
+  placement_count?: number;
+  primary_contact_name?: string | null;
+  next_follow_up_at?: string | null;
+  follow_up_overdue?: boolean;
+  last_activity_at?: string | null;
 }
 
 export type CRMOrganizationCreate = Partial<Omit<CRMOrganization, "id" | "created_at" | "updated_at" | "created_by" | "needs_review" | "source">> & {
   organization_name: string;
 };
 export type CRMOrganizationUpdate = Partial<CRMOrganizationCreate> & { needs_review?: boolean };
+
+export interface CRMOrganizationListResponse {
+  items: CRMOrganization[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CRMOrganizationListParams {
+  q?: string;
+  type?: string;
+  organization_type?: string;
+  status?: string;
+  source?: string;
+  has_open_jobs?: boolean;
+  has_active_pipeline?: boolean;
+  has_placements?: boolean;
+  overdue_follow_up?: boolean;
+  needs_review?: boolean;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface CompanyDuplicateMatch {
+  id: number;
+  organization_name: string;
+  organization_type?: string | null;
+  organization_type_display?: string | null;
+  email_domain?: string | null;
+  status?: string | null;
+  status_display?: string | null;
+  match_reason: string;
+}
+
+export interface CompanyDuplicateCheckResponse {
+  matches: CompanyDuplicateMatch[];
+  blocked?: boolean;
+}
 
 export interface CRMContact {
   id: number;
@@ -580,10 +722,70 @@ export interface CRMContact {
   created_by: string | null;
   created_at: string;
   updated_at: string;
+  // Phase 6 display + counts
+  contact_type_display?: string | null;
+  status_display?: string | null;
+  source_display?: string | null;
+  open_job_count?: number;
+  active_pipeline_count?: number;
+  next_follow_up_at?: string | null;
+  follow_up_overdue?: boolean;
+  last_activity_at?: string | null;
+  display_name?: string | null;
 }
 
 export type CRMContactCreate = Partial<Omit<CRMContact, "id" | "created_at" | "updated_at" | "created_by" | "needs_review" | "source" | "organization_name" | "last_contacted_at">>;
 export type CRMContactUpdate = Partial<CRMContactCreate> & { needs_review?: boolean };
+
+export interface CRMContactListResponse {
+  items: CRMContact[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface CRMContactListParams {
+  q?: string;
+  organization_id?: number;
+  contact_type?: string;
+  type?: string;
+  status?: string;
+  source?: string;
+  has_open_jobs?: boolean;
+  has_pipeline?: boolean;
+  overdue_follow_up?: boolean;
+  needs_review?: boolean;
+  sort?: string;
+  page?: number;
+  page_size?: number;
+}
+
+export interface ContactDuplicateMatch {
+  id: number;
+  display_name: string;
+  email?: string | null;
+  phone?: string | null;
+  contact_type?: string | null;
+  contact_type_display?: string | null;
+  status?: string | null;
+  status_display?: string | null;
+  organization_id?: number | null;
+  match_reason: string;
+}
+
+export interface ContactDuplicateCheckResponse {
+  matches: ContactDuplicateMatch[];
+  blocked?: boolean;
+}
+
+export interface MarkContactedPayload {
+  method: string;
+  contacted_at?: string | null;
+  subject?: string | null;
+  notes?: string | null;
+  complete_follow_up_id?: number | null;
+}
 
 export interface CRMActivity {
   id: number;
@@ -753,29 +955,81 @@ export interface JobRequirement {
   // `status` (the operational pipeline) and `published_for_matching` (the
   // publish toggle) — all three must align for public visibility.
   review_status: string;
+  // Unified Jobs module additions — all derived/aggregated, response-only.
+  status_display: string; // Draft | Open | On Hold | Filled | Closed
+  source_label: string; // Zoho Email | Manual Entry | API Import | Other
+  recruiter_link_status: "linked" | "incomplete" | null;
+  candidate_count: number;
+  submission_count: number;
+  interview_count: number;
+  offer_count: number;
+  placement_count: number;
+  last_activity_at: string | null;
 }
+
+export const JOB_STATUS_GROUPS = ["Draft", "Open", "On Hold", "Filled", "Closed"] as const;
+export type JobStatusGroup = typeof JOB_STATUS_GROUPS[number];
 
 export type JobRequirementCreate = Omit<
   JobRequirement,
-  "id" | "created_at" | "updated_at" | "created_by" | "vendor_name" | "client_name" | "end_client_name" | "recruiter_contact_name"
+  | "id" | "created_at" | "updated_at" | "created_by"
+  | "vendor_name" | "client_name" | "end_client_name" | "recruiter_contact_name"
+  | "status_display" | "source_label" | "recruiter_link_status"
+  | "candidate_count" | "submission_count" | "interview_count" | "offer_count" | "placement_count" | "last_activity_at"
 >;
 export type JobRequirementUpdate = Partial<JobRequirementCreate>;
 
 export interface JobRequirementListParams {
   q?: string;
   status?: string;
+  status_display?: string;
+  status_group?: string;
   work_type?: string;
   priority?: string;
   source?: string;
+  created_within_days?: number;
   vendor?: string;
   client?: string;
+  recruiter?: string;
+  location?: string;
+  skills?: string;
+  received_from?: string;
+  received_to?: string;
+  created_by?: string;
+  has_candidates?: boolean;
+  has_submissions?: boolean;
   vendor_id?: number;
   client_id?: number;
   end_client_id?: number;
   recruiter_contact_id?: number;
   organization_id?: number;
+  sort?: string;
   page?: number;
   page_size?: number;
+}
+
+export const JOB_SORT_OPTIONS = [
+  ["last_activity", "Last activity, newest first"],
+  ["newest_received", "Newest received"],
+  ["recently_updated", "Recently updated"],
+  ["job_title", "Job title"],
+  ["client", "Client"],
+  ["status", "Status"],
+  ["candidate_count", "Candidate count"],
+  ["submission_count", "Submission count"],
+] as const;
+
+export interface JobCandidateItem {
+  employee_id: number;
+  employee_name: string;
+  current_title: string | null;
+  skills: string[];
+  work_authorization: string | null;
+  match_score: number | null;
+  match_recommendation: string | null;
+  submission_id: number | null;
+  submission_status: string | null;
+  linked_via: string[];
 }
 
 export interface JobRequirementListResponse {
@@ -917,6 +1171,51 @@ export const SUBMISSION_STATUSES = [
 ] as const;
 export type SubmissionStatus = typeof SUBMISSION_STATUSES[number];
 
+/** Canonical display stages for the unified Pipeline module. */
+export const PIPELINE_STAGES = [
+  "Identified",
+  "Contacted",
+  "Interested",
+  "Submitted",
+  "Client Review",
+  "Interview Scheduled",
+  "Interview Completed",
+  "Offer",
+  "Placed",
+  "Rejected",
+  "Withdrawn",
+] as const;
+export type PipelineStage = typeof PIPELINE_STAGES[number];
+
+export const PIPELINE_ACTIVE_STAGES = PIPELINE_STAGES.filter(
+  (s) => s !== "Placed" && s !== "Rejected" && s !== "Withdrawn",
+);
+
+export const PIPELINE_CREATE_STAGES = [
+  "Identified", "Contacted", "Interested", "Submitted",
+] as const;
+
+export const PIPELINE_STAGE_GROUPS = [
+  "active",
+  "pre_submission",
+  "submitted",
+  "interview",
+  "offer",
+  "placed",
+  "closed",
+] as const;
+export type PipelineStageGroup = typeof PIPELINE_STAGE_GROUPS[number];
+
+export const PIPELINE_STAGE_GROUP_LABELS: Record<PipelineStageGroup, string> = {
+  active: "Active",
+  pre_submission: "Pre-submission",
+  submitted: "Submitted",
+  interview: "Interview",
+  offer: "Offer",
+  placed: "Placed",
+  closed: "Closed",
+};
+
 export interface Submission {
   id: number;
   job_requirement_id: number;
@@ -934,9 +1233,53 @@ export interface Submission {
   employee_name: string | null;
   vendor_name: string | null;
   recruiter_name: string | null;
+  client_name?: string | null;
+  client_id?: number | null;
+  status_display?: string | null;
+  status_group?: string | null;
+  stage_order?: number | null;
+  match_score?: number | null;
+  resume_filename?: string | null;
+  next_interview_at?: string | null;
+  offer_status?: string | null;
+  next_follow_up_at?: string | null;
+  follow_up_overdue?: boolean;
+  last_activity_at?: string | null;
   created_by: string | null;
   created_at: string;
   updated_at: string;
+}
+
+export interface SubmissionListResponse {
+  items: Submission[];
+  total: number;
+  page: number;
+  page_size: number;
+  total_pages: number;
+}
+
+export interface PipelineSummaryCounts {
+  active: number;
+  submitted: number;
+  interview: number;
+  offer: number;
+  placed: number;
+  follow_ups_due: number;
+}
+
+export interface PipelineListParams {
+  q?: string;
+  job_requirement_id?: number;
+  employee_id?: number;
+  status?: string;
+  stage?: string;
+  stage_group?: string;
+  active_only?: boolean;
+  follow_up?: string;
+  sort?: string;
+  created_by?: string;
+  page?: number;
+  page_size?: number;
 }
 
 export interface SubmissionCreate {
@@ -962,6 +1305,13 @@ export interface SubmissionUpdate {
   status?: string;
   vendor_reference?: string | null;
   notes?: string | null;
+}
+
+export interface PipelineStageUpdate {
+  stage: string;
+  reason?: string | null;
+  confirmed?: boolean;
+  resume_override_reason?: string | null;
 }
 
 export const INTERVIEW_STATUSES = ["Scheduled", "Completed", "Cancelled", "No Show"] as const;
@@ -1129,6 +1479,76 @@ export interface AtsDashboardStats {
   recent_activities?: AtsDashboardActivityItem[];
 }
 
+// Unified Recruitment CRM + ATS dashboard (backend/routers/dashboard.py)
+export interface DashboardSummaryCounts {
+  open_jobs: number;
+  new_zoho_jobs: number;
+  active_candidates: number;
+  candidates_submitted: number;
+  interviews_scheduled: number;
+  offers: number;
+  placements: number;
+  follow_ups_due: number;
+}
+
+export interface DashboardActivityItem {
+  id: number;
+  activity_type: string;
+  subject: string | null;
+  description: string | null;
+  activity_date: string;
+  created_by: string | null;
+  job_requirement_id: number | null;
+  job_title: string | null;
+  contact_id: number | null;
+  contact_name: string | null;
+  organization_id: number | null;
+  organization_name: string | null;
+  employee_id: number | null;
+  employee_name: string | null;
+  submission_id: number | null;
+}
+
+export interface DashboardFollowUpItem {
+  id: number;
+  subject: string | null;
+  due_date: string | null;
+  overdue: boolean;
+  job_requirement_id: number | null;
+  job_title: string | null;
+  contact_id: number | null;
+  contact_name: string | null;
+  organization_id: number | null;
+  organization_name: string | null;
+  employee_id: number | null;
+  employee_name: string | null;
+}
+
+export interface DashboardZohoJobItem {
+  id: number;
+  job_title: string;
+  recruiter_name: string | null;
+  company: string | null;
+  received_at: string | null;
+  review_status: string;
+  status: string;
+}
+
+export interface DashboardPipelineStage {
+  stage: string;
+  count: number;
+}
+
+export interface DashboardSummaryResponse {
+  scope: "organization" | "own";
+  zoho_connected: boolean;
+  counts: DashboardSummaryCounts;
+  recent_activities: DashboardActivityItem[];
+  follow_ups_due: DashboardFollowUpItem[];
+  recent_zoho_jobs: DashboardZohoJobItem[];
+  pipeline: DashboardPipelineStage[];
+}
+
 export interface ZohoConnectionStatus {
   connected: boolean;
   status: string;
@@ -1154,6 +1574,8 @@ export interface ImportedEmail {
   classification: string;
   needs_review: boolean;
   job_requirement_id: number | null;
+  import_status: string;
+  preview: string | null;
   imported_at: string;
 }
 
@@ -1182,4 +1604,100 @@ export interface CreateJobFromEmailResult {
 export const EMAIL_CLASSIFICATIONS = [
   "unclassified", "job_req", "candidate", "spam", "other",
 ] as const;
+
+export const IMPORT_STATUSES = [
+  "pending", "imported", "linked", "ignored", "archived", "failed",
+] as const;
 export type EmailClassification = typeof EMAIL_CLASSIFICATIONS[number];
+
+// Phase 7 Reports
+export const REPORT_DATE_PRESETS = [
+  "today",
+  "last_7_days",
+  "last_30_days",
+  "this_month",
+  "last_month",
+  "this_quarter",
+  "this_year",
+  "custom",
+] as const;
+export type ReportDatePreset = (typeof REPORT_DATE_PRESETS)[number];
+
+export const REPORT_TABS = [
+  "overview",
+  "jobs",
+  "candidates",
+  "pipeline",
+  "contacts",
+  "activity",
+  "follow-ups",
+] as const;
+export type ReportTab = (typeof REPORT_TABS)[number];
+
+export interface ReportFilterParams {
+  preset?: ReportDatePreset | string;
+  date_from?: string;
+  date_to?: string;
+  owner?: string;
+  organization_id?: number | string;
+  recruiter_contact_id?: number | string;
+  client_id?: number | string;
+  job_id?: number | string;
+  job_source?: string;
+  job_status?: string;
+  candidate_source?: string;
+  stage_group?: string;
+  stage?: string;
+}
+
+export interface ReportDateRange {
+  preset: string;
+  date_from?: string | null;
+  date_to?: string | null;
+}
+
+export interface ReportOverviewSummary {
+  jobs_created?: number;
+  open_jobs?: number;
+  candidates_added?: number;
+  active_candidates?: number;
+  candidates_submitted?: number;
+  candidates_submitted_current?: number;
+  interviews_completed?: number;
+  interviews_scheduled?: number;
+  offers_extended?: number;
+  offers?: number;
+  placements?: number;
+  overdue_follow_ups?: number;
+  follow_ups_due?: number;
+  [key: string]: number | undefined;
+}
+
+export interface ReportStageCount {
+  stage: string;
+  count: number;
+}
+
+export interface ReportStatusCount {
+  status: string;
+  count: number;
+  [key: string]: string | number | null | undefined;
+}
+
+export interface ReportActivityTypeCount {
+  activity_type: string;
+  count: number;
+}
+
+/** Flexible report payload — sections/rows vary by endpoint. */
+export interface ReportEnvelope {
+  report_type: string;
+  scope: "organization" | "own" | string;
+  generated_at: string;
+  date_range: ReportDateRange;
+  date_basis: Record<string, string>;
+  filters_applied: Record<string, unknown>;
+  summary: ReportOverviewSummary | Record<string, unknown>;
+  sections: Record<string, unknown>;
+  rows: Record<string, unknown>[];
+}

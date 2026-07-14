@@ -12,6 +12,7 @@ from sqlalchemy.orm import Session
 from database import get_db
 from models import (
     CreateJobFromEmailResponse,
+    CRMActivity,
     EmailClassificationResponse,
     EmailClassifyBatchResponse,
     ImportedEmail,
@@ -21,6 +22,7 @@ from models import (
     JobRequirement,
     JobRequirementCreate,
     JobRequirementParseResponse,
+    LinkEmailToJobRequest,
     ZohoAuthorizeResponse,
     ZohoConnection,
     ZohoConnectionStatus,
@@ -322,6 +324,8 @@ async def zoho_sync(
 async def list_imported_emails(
     classification: str | None = Query(None),
     needs_review: bool | None = Query(None),
+    import_status: str | None = Query(None),
+    q_text: str | None = Query(None, alias="q"),
     limit: int = Query(50, ge=1, le=200),
     principal: AtsPrincipal = Depends(get_current_ats_user),
     db: Session = Depends(get_db),
@@ -335,8 +339,17 @@ async def list_imported_emails(
         q = q.filter(ImportedEmail.classification == classification)
     if needs_review is not None:
         q = q.filter(ImportedEmail.needs_review == needs_review)
+    if import_status:
+        q = q.filter(ImportedEmail.import_status == import_status)
+    if q_text and q_text.strip():
+        like = f"%{q_text.strip()}%"
+        q = q.filter(
+            (ImportedEmail.subject.ilike(like))
+            | (ImportedEmail.from_address.ilike(like))
+            | (ImportedEmail.from_name.ilike(like))
+        )
     rows = q.order_by(ImportedEmail.received_at.desc(), ImportedEmail.id.desc()).limit(limit).all()
-    return [ImportedEmailResponse.model_validate(r) for r in rows]
+    return [_email_list_response(r) for r in rows]
 
 
 def _strip_html(html: str | None) -> str:
@@ -361,6 +374,19 @@ def _email_raw_text(email: ImportedEmail) -> str:
     if body:
         parts.append(body)
     return "\n\n".join(parts)
+
+
+def _preview_text(email: ImportedEmail, length: int = 160) -> str:
+    text = " ".join(_email_body_text(email).split())
+    if len(text) > length:
+        return text[: length].rstrip() + "…"
+    return text
+
+
+def _email_list_response(email: ImportedEmail) -> ImportedEmailResponse:
+    resp = ImportedEmailResponse.model_validate(email)
+    resp.preview = _preview_text(email)
+    return resp
 
 
 def _get_owned_email(db: Session, principal: AtsPrincipal, email_id: int) -> ImportedEmail:
@@ -513,9 +539,14 @@ async def create_job_from_email(
             )
 
     data = _prepare_create_data(body.model_dump())
-    data = _auto_link_crm(db, data)
+    if not data.get("recruiter_email") and email.from_address:
+        data["recruiter_email"] = email.from_address
     if not data.get("source"):
         data["source"] = "Zoho Mail"
+
+    # Create-or-update the recruiter and their company (vendor), preferring an
+    # explicit vendor_id/recruiter_contact_id from the review form untouched.
+    data = _auto_link_crm(db, data, principal=principal, create_missing=True)
     if not data.get("raw_email_text"):
         data["raw_email_text"] = _email_raw_text(email)
     if not data.get("received_at"):
@@ -535,6 +566,16 @@ async def create_job_from_email(
     email.job_requirement_id = job.id
     email.classification = "job_req"
     email.needs_review = False
+    email.import_status = "imported"
+    db.add(CRMActivity(
+        activity_type="Job Received",
+        subject=f"Job created from Zoho email: {job.job_title}",
+        description=f"From {email.from_name or email.from_address or 'unknown sender'} — {email.subject or '(no subject)'}",
+        organization_id=data.get("vendor_id"),
+        contact_id=data.get("recruiter_contact_id"),
+        job_requirement_id=job.id,
+        created_by=principal.user_id,
+    ))
     db.commit()
     db.refresh(job)
     db.refresh(email)
@@ -543,7 +584,7 @@ async def create_job_from_email(
         f"Created job from email #{email_id}: {job.job_title}", principal.user_id,
     )
     return CreateJobFromEmailResponse(
-        email=ImportedEmailResponse.model_validate(email),
+        email=_email_list_response(email),
         job=_to_response(job),
     )
 
@@ -562,4 +603,73 @@ async def update_imported_email(
         email.needs_review = body.needs_review
     db.commit()
     db.refresh(email)
-    return ImportedEmailResponse.model_validate(email)
+    return _email_list_response(email)
+
+
+@router.post("/emails/{email_id}/link-job", response_model=CreateJobFromEmailResponse)
+async def link_email_to_job(
+    email_id: int,
+    body: LinkEmailToJobRequest,
+    principal: AtsPrincipal = Depends(require_writer),
+    db: Session = Depends(get_db),
+):
+    """Attach an already-imported email to an existing job (no new job created)."""
+    email = _get_owned_email(db, principal, email_id)
+    if email.job_requirement_id and email.job_requirement_id != body.job_requirement_id:
+        raise HTTPException(
+            status_code=409,
+            detail=f"This email is already linked to job #{email.job_requirement_id}.",
+        )
+    job = db.query(JobRequirement).filter(JobRequirement.id == body.job_requirement_id).first()
+    if not job:
+        raise HTTPException(status_code=404, detail="Job requirement not found.")
+
+    email.job_requirement_id = job.id
+    email.classification = "job_req"
+    email.needs_review = False
+    email.import_status = "linked"
+    db.add(CRMActivity(
+        activity_type="Job Received",
+        subject=f"Zoho email linked to job: {job.job_title}",
+        description=f"From {email.from_name or email.from_address or 'unknown sender'} — {email.subject or '(no subject)'}",
+        job_requirement_id=job.id,
+        created_by=principal.user_id,
+    ))
+    db.commit()
+    db.refresh(email)
+    db.refresh(job)
+    log_audit(
+        db, "zoho.email_linked", "job_requirement", job.id,
+        f"Linked email #{email_id} to job #{job.id}", principal.user_id,
+    )
+    return CreateJobFromEmailResponse(email=_email_list_response(email), job=_to_response(job))
+
+
+@router.post("/emails/{email_id}/ignore", response_model=ImportedEmailResponse)
+async def ignore_imported_email(
+    email_id: int,
+    principal: AtsPrincipal = Depends(require_writer),
+    db: Session = Depends(get_db),
+):
+    email = _get_owned_email(db, principal, email_id)
+    email.import_status = "ignored"
+    email.needs_review = False
+    db.commit()
+    db.refresh(email)
+    log_audit(db, "zoho.email_ignored", "imported_email", email.id, email.subject or "", principal.user_id)
+    return _email_list_response(email)
+
+
+@router.post("/emails/{email_id}/archive", response_model=ImportedEmailResponse)
+async def archive_imported_email(
+    email_id: int,
+    principal: AtsPrincipal = Depends(require_writer),
+    db: Session = Depends(get_db),
+):
+    email = _get_owned_email(db, principal, email_id)
+    email.import_status = "archived"
+    email.needs_review = False
+    db.commit()
+    db.refresh(email)
+    log_audit(db, "zoho.email_archived", "imported_email", email.id, email.subject or "", principal.user_id)
+    return _email_list_response(email)

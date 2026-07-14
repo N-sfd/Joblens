@@ -2,8 +2,8 @@ from sqlalchemy import Column, Integer, String, Text, DateTime, Float, Boolean, 
 from sqlalchemy.orm import relationship
 from sqlalchemy.sql import func
 from database import Base
-from pydantic import BaseModel, EmailStr, field_validator
-from typing import Optional
+from pydantic import BaseModel, EmailStr, Field, field_validator
+from typing import Any, Optional
 from datetime import datetime
 
 
@@ -686,6 +686,9 @@ class ImportedEmail(Base):
     classification = Column(String(50), default="unclassified")
     job_requirement_id = Column(Integer, ForeignKey("job_requirements.id"), nullable=True, index=True)
     needs_review = Column(Boolean, default=False)
+    # Workflow state, distinct from `classification` (AI content type):
+    # pending | imported | linked | ignored | archived | failed
+    import_status = Column(String(20), nullable=False, default="pending", index=True)
     imported_at = Column(DateTime, default=func.now())
 
     connection = relationship("ZohoConnection", back_populates="imported_emails")
@@ -831,7 +834,7 @@ class AtsStaffUser(Base):
     clerk_user_id = Column(String(128), unique=True, nullable=False, index=True)
     email = Column(String(255), nullable=True, index=True)
     display_name = Column(String(255), nullable=True)
-    role = Column(String(40), nullable=False, default="viewer", index=True)
+    role = Column(String(40), nullable=False, default="read_only", index=True)
     organization_name = Column(String(255), nullable=True)
     role_updated_at = Column(DateTime, nullable=True)
     role_updated_by = Column(String(128), nullable=True)
@@ -1408,6 +1411,8 @@ class EmployeeResponse(EmployeeBase):
     name: str
     email: str
     status: str
+    # Display-layer status (services/candidate_status.py) — never rewrites `status`.
+    status_display: Optional[str] = None
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
@@ -1416,11 +1421,16 @@ class EmployeeResponse(EmployeeBase):
 
 
 class EmployeeListItem(EmployeeResponse):
-    """Employee row for the ATS list view — includes resume summary metadata."""
+    """Candidate/Employee row for the unified Candidates list — counts only, no resume text."""
 
     resume_count: int = 0
     resume_status: str = "None"  # None | Parsed | Failed
     has_primary_resume: bool = False
+    match_count: int = 0
+    submission_count: int = 0
+    interview_count: int = 0
+    offer_count: int = 0
+    last_activity_at: Optional[datetime] = None
 
 
 class EmployeeListResponse(BaseModel):
@@ -1433,6 +1443,31 @@ class EmployeeListResponse(BaseModel):
 
 class EmployeeStatusUpdate(BaseModel):
     status: str
+
+
+class CandidateDuplicateMatch(BaseModel):
+    id: int
+    name: str
+    email: str
+    phone: Optional[str] = None
+    status: str
+    status_display: str
+    match_reason: str  # email | phone | external_id | name_phone | name_email
+
+
+class CandidateDuplicateCheckResponse(BaseModel):
+    matches: list[CandidateDuplicateMatch]
+    blocked: bool = False  # True when exact email/phone match (prefer open existing)
+
+
+class CandidateCounts(BaseModel):
+    resumes: int = 0
+    matches: int = 0
+    active_submissions: int = 0
+    interviews: int = 0
+    offers: int = 0
+    placements: int = 0
+    open_follow_ups: int = 0
 
 
 # --- Employee Resume (ATS) schemas ---
@@ -1573,14 +1608,28 @@ class JobRequirementResponse(JobRequirementBase):
     id: int
     job_title: str
     status: str
+    # Normalized display status (Draft/Open/On Hold/Filled/Closed) — derived
+    # from `status`, never stored. See services/job_status.py.
+    status_display: str = "Draft"
+    # Normalized source label (Zoho Email/Manual Entry/API Import/Other).
+    source_label: str = "Other"
     # Resolved names for linked CRM records (populated when *_id is set).
     vendor_name: Optional[str] = None
     client_name: Optional[str] = None
     end_client_name: Optional[str] = None
     recruiter_contact_name: Optional[str] = None
+    recruiter_link_status: Optional[str] = None
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Efficient aggregate counts — never populated by loading full child
+    # collections. Zero/None by default for freshly created jobs.
+    candidate_count: int = 0
+    submission_count: int = 0
+    interview_count: int = 0
+    offer_count: int = 0
+    placement_count: int = 0
+    last_activity_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
 
@@ -1591,6 +1640,10 @@ class JobRequirementListResponse(BaseModel):
     page: int
     page_size: int
     total_pages: int
+
+
+class JobStatusUpdate(BaseModel):
+    status: str  # one of JOB_STATUS_GROUPS (Draft/Open/On Hold/Filled/Closed)
 
 
 # --- Public Job Matcher (candidate-facing browse of published ATS jobs) ---
@@ -1663,6 +1716,21 @@ class JobRequirementParseResponse(BaseModel):
     summary: str = ""
 
     model_config = {"from_attributes": True}
+
+
+class JobCandidateItem(BaseModel):
+    """A candidate connected to a job via a match/send, a submission, or both."""
+
+    employee_id: int
+    employee_name: str
+    current_title: Optional[str] = None
+    skills: list[str] = []
+    work_authorization: Optional[str] = None
+    match_score: Optional[int] = None
+    match_recommendation: Optional[str] = None
+    submission_id: Optional[int] = None
+    submission_status: Optional[str] = None
+    linked_via: list[str] = []
 
 
 class JobEmployeeMatchResult(BaseModel):
@@ -1785,8 +1853,60 @@ class CRMOrganizationResponse(CRMOrganizationBase):
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
+    # Phase 6 Unified Contacts — display + relationship counts
+    organization_type_display: Optional[str] = None
+    status_display: Optional[str] = None
+    source_display: Optional[str] = None
+    contact_count: int = 0
+    open_job_count: int = 0
+    active_pipeline_count: int = 0
+    interview_count: int = 0
+    offer_count: int = 0
+    placement_count: int = 0
+    primary_contact_name: Optional[str] = None
+    next_follow_up_at: Optional[datetime] = None
+    follow_up_overdue: bool = False
+    last_activity_at: Optional[datetime] = None
 
     model_config = {"from_attributes": True}
+
+
+class CRMOrganizationListItem(CRMOrganizationResponse):
+    """Company list row — notes omitted from serialization."""
+
+    notes: Optional[str] = Field(default=None, exclude=True)
+
+
+class CRMOrganizationListResponse(BaseModel):
+    items: list[CRMOrganizationListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class CompanyDuplicateMatch(BaseModel):
+    id: int
+    organization_name: str
+    organization_type: Optional[str] = None
+    organization_type_display: Optional[str] = None
+    email_domain: Optional[str] = None
+    status: Optional[str] = None
+    status_display: Optional[str] = None
+    match_reason: str  # domain | name
+
+
+class CompanyDuplicateCheckResponse(BaseModel):
+    matches: list[CompanyDuplicateMatch]
+    blocked: bool = False
+
+
+class OrganizationStatusUpdate(BaseModel):
+    status: str
+
+
+class LinkContactBody(BaseModel):
+    contact_id: int
 
 
 # --- CRM Contact schemas ---
@@ -1845,8 +1965,62 @@ class CRMContactResponse(CRMContactBase):
     created_at: datetime
     updated_at: datetime
     organization_name: Optional[str] = None
+    # Phase 6 Unified Contacts
+    contact_type_display: Optional[str] = None
+    status_display: Optional[str] = None
+    source_display: Optional[str] = None
+    open_job_count: int = 0
+    active_pipeline_count: int = 0
+    next_follow_up_at: Optional[datetime] = None
+    follow_up_overdue: bool = False
+    last_activity_at: Optional[datetime] = None
+    display_name: Optional[str] = None
 
     model_config = {"from_attributes": True}
+
+
+class CRMContactListItem(CRMContactResponse):
+    """Contact list row — notes omitted from serialization."""
+
+    notes: Optional[str] = Field(default=None, exclude=True)
+
+
+class CRMContactListResponse(BaseModel):
+    items: list[CRMContactListItem]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class ContactDuplicateMatch(BaseModel):
+    id: int
+    display_name: str
+    email: Optional[str] = None
+    phone: Optional[str] = None
+    contact_type: Optional[str] = None
+    contact_type_display: Optional[str] = None
+    status: Optional[str] = None
+    status_display: Optional[str] = None
+    organization_id: Optional[int] = None
+    match_reason: str  # email | phone
+
+
+class ContactDuplicateCheckResponse(BaseModel):
+    matches: list[ContactDuplicateMatch]
+    blocked: bool = False
+
+
+class MarkContactedBody(BaseModel):
+    method: str  # email | phone | sms | linkedin | meeting | other
+    contacted_at: Optional[datetime] = None
+    subject: Optional[str] = None
+    notes: Optional[str] = None
+    complete_follow_up_id: Optional[int] = None
+
+
+class ContactStatusUpdate(BaseModel):
+    status: str
 
 
 # --- CRM Activity schemas ---
@@ -1925,11 +2099,68 @@ class SubmissionResponse(SubmissionBase):
     employee_name: Optional[str] = None
     vendor_name: Optional[str] = None
     recruiter_name: Optional[str] = None
+    client_name: Optional[str] = None
+    # Pipeline display (services/pipeline_status.py) — never rewrites `status`.
+    status_display: Optional[str] = None
+    status_group: Optional[str] = None
+    stage_order: Optional[int] = None
+    match_score: Optional[int] = None
+    resume_filename: Optional[str] = None
+    next_interview_at: Optional[datetime] = None
+    offer_status: Optional[str] = None
+    next_follow_up_at: Optional[datetime] = None
+    follow_up_overdue: bool = False
+    last_activity_at: Optional[datetime] = None
     created_by: Optional[str] = None
     created_at: datetime
     updated_at: datetime
 
     model_config = {"from_attributes": True}
+
+
+class SubmissionListResponse(BaseModel):
+    items: list[SubmissionResponse]
+    total: int
+    page: int
+    page_size: int
+    total_pages: int
+
+
+class PipelineSummaryCounts(BaseModel):
+    active: int = 0
+    submitted: int = 0
+    interview: int = 0
+    offer: int = 0
+    placed: int = 0
+    follow_ups_due: int = 0
+
+
+class PipelineStageUpdate(BaseModel):
+    stage: str
+    reason: Optional[str] = None
+    confirmed: bool = False
+    resume_override_reason: Optional[str] = None  # admin when moving to Submitted without resume
+
+
+class PipelineRejectBody(BaseModel):
+    reason: str
+    notes: Optional[str] = None
+    stage: str = "Rejected"
+
+
+class PipelineWithdrawBody(BaseModel):
+    reason: str
+    notes: Optional[str] = None
+    effective_date: Optional[datetime] = None
+
+
+class PipelinePlaceBody(BaseModel):
+    confirmed: bool = True
+    start_date: Optional[str] = None
+    final_rate: Optional[str] = None
+    fill_job: bool = False
+    offer_id: Optional[int] = None
+    override_reason: Optional[str] = None
 
 
 class InterviewBase(BaseModel):
@@ -2123,6 +2354,8 @@ class ImportedEmailResponse(BaseModel):
     classification: str
     needs_review: bool
     job_requirement_id: Optional[int] = None
+    import_status: str = "pending"
+    preview: Optional[str] = None
     imported_at: datetime
 
     model_config = {"from_attributes": True}
@@ -2153,3 +2386,101 @@ class CreateJobFromEmailResponse(BaseModel):
 class ImportedEmailUpdate(BaseModel):
     classification: Optional[str] = None
     needs_review: Optional[bool] = None
+
+
+class LinkEmailToJobRequest(BaseModel):
+    job_requirement_id: int
+
+
+# --- Unified Dashboard (Recruitment CRM + ATS) ---
+
+class DashboardSummaryCounts(BaseModel):
+    open_jobs: int
+    new_zoho_jobs: int
+    active_candidates: int
+    candidates_submitted: int
+    interviews_scheduled: int
+    offers: int
+    placements: int
+    follow_ups_due: int
+
+
+class DashboardActivityItem(BaseModel):
+    id: int
+    activity_type: str
+    subject: Optional[str] = None
+    description: Optional[str] = None
+    activity_date: datetime
+    created_by: Optional[str] = None
+    job_requirement_id: Optional[int] = None
+    job_title: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    submission_id: Optional[int] = None
+
+
+class DashboardFollowUpItem(BaseModel):
+    id: int
+    subject: Optional[str] = None
+    due_date: Optional[datetime] = None
+    overdue: bool
+    job_requirement_id: Optional[int] = None
+    job_title: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+
+
+class DashboardZohoJobItem(BaseModel):
+    id: int
+    job_title: str
+    recruiter_name: Optional[str] = None
+    company: Optional[str] = None
+    received_at: Optional[datetime] = None
+    review_status: str
+    status: str
+
+
+class DashboardPipelineStage(BaseModel):
+    stage: str
+    count: int
+
+
+class DashboardSummaryResponse(BaseModel):
+    scope: str  # "organization" | "own"
+    zoho_connected: bool
+    counts: DashboardSummaryCounts
+    recent_activities: list[DashboardActivityItem]
+    follow_ups_due: list[DashboardFollowUpItem]
+    recent_zoho_jobs: list[DashboardZohoJobItem]
+    pipeline: list[DashboardPipelineStage]
+
+
+# --- Reports (Phase 7) ---
+
+class ReportDateRange(BaseModel):
+    preset: str
+    date_from: Optional[datetime] = None
+    date_to: Optional[datetime] = None
+
+
+class ReportEnvelope(BaseModel):
+    """Flexible report payload — sections vary by endpoint."""
+
+    report_type: str
+    scope: str  # "organization" | "own"
+    generated_at: datetime
+    date_range: ReportDateRange
+    date_basis: dict[str, str] = {}
+    filters_applied: dict[str, Any] = {}
+    summary: dict[str, Any] = {}
+    sections: dict[str, Any] = {}
+    rows: list[dict[str, Any]] = []
+

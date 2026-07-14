@@ -41,20 +41,37 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
   }
 
   const sub = path?.length ? path.join("/") : "";
-  const pathname = sub ? `/api/${sub}` : "/api";
+  // FastAPI liveness is `/health` (not under `/api`). Map the proxy path for probes.
+  const pathname =
+    sub === "health" || sub === "health/ready"
+      ? `/${sub}`
+      : sub
+        ? `/api/${sub}`
+        : "/api";
   const target = new URL(pathname + req.nextUrl.search, origin);
 
-  const headers = new Headers();
-  copyHeaders(req.headers, headers);
+  let upstream: Response;
+  try {
+    const headers = new Headers();
+    copyHeaders(req.headers, headers);
 
-  const body =
-    req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
+    const body =
+      req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
 
-  const upstream = await fetch(target, {
-    method: req.method,
-    headers,
-    body: body && body.byteLength > 0 ? body : undefined,
-  });
+    upstream = await fetch(target, {
+      method: req.method,
+      headers,
+      body: body && body.byteLength > 0 ? body : undefined,
+    });
+  } catch (e) {
+    const msg = e instanceof Error ? e.message : "upstream unreachable";
+    return NextResponse.json(
+      {
+        detail: `Backend unreachable at ${origin}${pathname} (${msg}). Check BACKEND_URL on Vercel and that the Render service is awake.`,
+      },
+      { status: 502 },
+    );
+  }
 
   const outHeaders = new Headers();
   copyHeaders(upstream.headers, outHeaders);

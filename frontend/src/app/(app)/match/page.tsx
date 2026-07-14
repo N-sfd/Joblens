@@ -201,7 +201,13 @@ function MatchPageContent() {
       setAtsJobsTotal(res.total);
       setLastRefreshed(new Date());
     } catch (e) {
-      setAtsJobsError(e instanceof Error ? e.message : "Couldn't reach the job source.");
+      const raw = e instanceof Error ? e.message : "Couldn't reach the job source.";
+      const isMissingRoute = /not found|404|Request failed: 404/i.test(raw);
+      setAtsJobsError(
+        isMissingRoute
+          ? "Published jobs API is not available on this backend (404). Set Vercel BACKEND_URL to this JobLens CRM FastAPI with SEEKER_PRODUCT_ENABLED=true, or use Paste Manually / ATS Jobs."
+          : raw,
+      );
     } finally {
       setAtsJobsLoading(false);
     }
@@ -221,6 +227,20 @@ function MatchPageContent() {
     if (mode === "saved") loadSavedJobs();
     // eslint-disable-next-line react-hooks/exhaustive-deps
   }, [mode]);
+
+  // Hard stop: do not leave "Loading published jobs…" forever when the proxy hangs.
+  useEffect(() => {
+    if (!atsJobsLoading) return;
+    const t = window.setTimeout(() => {
+      setAtsJobsLoading(false);
+      setAtsJobsError(
+        (prev) =>
+          prev ||
+          "Published jobs timed out. Check BACKEND_URL, or use Paste Job Manually / ATS Jobs.",
+      );
+    }, 22_000);
+    return () => window.clearTimeout(t);
+  }, [atsJobsLoading]);
 
   const filtersActive = !!(atsSearch || atsLocation || atsWorkType || atsEmploymentType || atsClient || atsSkills || atsSource);
 
@@ -644,13 +664,23 @@ function MatchPageContent() {
                   <Loader2 size={16} className="animate-spin" /> Loading published jobs…
                 </div>
               ) : atsJobsError ? (
-                <div className="text-center py-6">
+                <div className="text-center py-6 px-2">
                   <WifiOff size={28} className="mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm text-slate-600 dark:text-slate-400">External job source unavailable.</p>
-                  <p className="text-xs text-slate-400 mt-0.5">{atsJobsError}</p>
-                  <button type="button" onClick={() => loadAtsJobs()} className="btn-secondary text-xs mt-3">
-                    <RefreshCw size={12} className="inline mr-1" /> Retry connection
-                  </button>
+                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
+                    Select Published Job cannot load jobs right now
+                  </p>
+                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{atsJobsError}</p>
+                  <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
+                    <button type="button" onClick={() => loadAtsJobs()} className="btn-secondary text-xs">
+                      <RefreshCw size={12} className="inline mr-1" /> Retry
+                    </button>
+                    <button type="button" onClick={() => setMode("manual")} className="btn-primary text-xs">
+                      Paste Job Manually
+                    </button>
+                    <a href="/ats/jobs" className="text-xs text-indigo-600 hover:underline">
+                      Open ATS Jobs
+                    </a>
+                  </div>
                 </div>
               ) : atsJobs.length === 0 ? (
                 <div className="text-center py-6">

@@ -69,7 +69,7 @@ function JobSendsPageInner() {
     setCreatingSubmission(sendId);
     try {
       const sub = await api.createSubmissionFromJobSend(sendId);
-      window.location.href = `/ats/submissions?highlight=${sub.id}`;
+      window.location.href = `/ats/pipeline?highlight=${sub.id}`;
     } catch (e) {
       setError(e instanceof Error ? e.message : "Failed to create submission.");
     } finally {
@@ -126,7 +126,7 @@ function JobSendsPageInner() {
                     </Link>
                   </td>
                   <td className="px-4 py-3">
-                    <Link href={`/ats/employees/${s.employee_id}`} className="text-slate-800 hover:text-indigo-600">
+                    <Link href={`/ats/candidates/${s.employee_id}`} className="text-slate-800 hover:text-indigo-600">
                       {s.employee_name ?? `Employee #${s.employee_id}`}
                     </Link>
                     {s.employee_email && <p className="text-xs text-slate-400">{s.employee_email}</p>}

@@ -3,7 +3,7 @@
 Usage (from backend/):
   python scripts/set_clerk_role.py admin
   python scripts/set_clerk_role.py recruiter --user-id user_xxx
-  python scripts/set_clerk_role.py viewer --email hr@consultamerica.com
+  python scripts/set_clerk_role.py read_only --email hr@consultamerica.com
 
 Requires CLERK_SECRET_KEY in backend/.env (or environment).
 """
@@ -20,9 +20,12 @@ from pathlib import Path
 
 from dotenv import load_dotenv
 
-load_dotenv(Path(__file__).resolve().parents[1] / ".env")
+BACKEND = Path(__file__).resolve().parents[1]
+sys.path.insert(0, str(BACKEND))
+load_dotenv(BACKEND / ".env")
 
-ATS_ROLES = ("admin", "recruiter", "viewer")
+from ats_auth import ATS_ROLES  # noqa: E402
+
 API = "https://api.clerk.com/v1"
 
 

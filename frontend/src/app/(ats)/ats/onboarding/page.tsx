@@ -83,14 +83,14 @@ export default function OnboardingPage() {
         <div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>
       ) : rows.length === 0 ? (
         <div className="card p-10 text-center text-slate-500">
-          No onboarding records yet. Accept an <Link href="/ats/offers" className="text-indigo-600 hover:underline">offer</Link> to start onboarding.
+          No onboarding records yet. Accept an <Link href="/ats/pipeline?stage_group=offer" className="text-indigo-600 hover:underline">offer</Link> to start onboarding.
         </div>
       ) : (
         <div className="card overflow-hidden">
           <table className="w-full text-sm">
             <thead className="bg-slate-50 border-b border-slate-100">
               <tr>
-                {["Job", "Employee", "Rate", "Start", "Offer Date", "Onboarding", "Update"].map((h) => (
+                {["Job", "Candidate", "Rate", "Start", "Offer Date", "Onboarding", "Update"].map((h) => (
                   <th key={h} className="text-left px-4 py-3 font-semibold text-slate-600">{h}</th>
                 ))}
               </tr>

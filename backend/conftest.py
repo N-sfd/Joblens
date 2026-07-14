@@ -31,6 +31,14 @@ from models import User
 import models  # noqa: F401 — register all ORM tables
 from main import app
 
+# main.py's load_dotenv(override=True) can re-load a local backend/.env with
+# ATS_AUTH_ENFORCE=true (e.g. from real Clerk testing) after the block above
+# already set it to "false" — since ats_auth.ENFORCE is a module-level
+# constant baked in at first import, force it back to the test default here.
+import ats_auth as _ats_auth
+
+_ats_auth.ENFORCE = False
+
 
 @pytest.fixture(autouse=True)
 def _clear_rate_limits():

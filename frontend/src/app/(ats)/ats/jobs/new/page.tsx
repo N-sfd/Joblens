@@ -3,7 +3,7 @@
 import { Suspense, useEffect, useState } from "react";
 import { useRouter, useSearchParams } from "next/navigation";
 import Link from "next/link";
-import { Loader2, Sparkles, ArrowLeft } from "lucide-react";
+import { Loader2, Sparkles, ArrowLeft, Inbox, PenLine } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
 import ErrorBanner from "@/components/ErrorBanner";
@@ -19,7 +19,11 @@ function NewJobRequirementPageInner() {
   const emailIdParam = searchParams.get("emailId");
   const emailId = emailIdParam ? Number(emailIdParam) : null;
 
-  const [mode, setMode] = useState<Mode>(emailId ? "paste" : "paste");
+  const [mode, setMode] = useState<Mode>("paste");
+  // Two-option Add Job workflow: "Import from Zoho" (navigates away) or "Add
+  // Manually" (reveals the reusable JobRequirementForm below). Skipped when
+  // arriving from Zoho Inbox's Parse Job action (emailId already chosen).
+  const [chooserStep, setChooserStep] = useState(!emailId);
   const [rawText, setRawText] = useState("");
   const [parsing, setParsing] = useState(false);
   const [parseError, setParseError] = useState<string | null>(null);
@@ -146,16 +150,36 @@ function NewJobRequirementPageInner() {
 
       <div className="mb-6">
         <p className="page-kicker">ATS</p>
-        <h1 className="page-title">{emailId ? "Create Job from Email" : "Add Job Requirement"}</h1>
+        <h1 className="page-title">{emailId ? "Create Job from Email" : "Add Job"}</h1>
         <p className="page-subtitle">
           {emailId
             ? "Review parsed fields from the Zoho email, then save."
-            : "Paste a recruiter email or enter job details manually."}
+            : chooserStep
+              ? "Import a job from Zoho, or add one manually."
+              : "Paste a job email/description to parse, or enter details manually below."}
         </p>
       </div>
 
-      {!emailId && (
-        <div className="flex gap-2 mb-5">
+      {!emailId && chooserStep && (
+        <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 mb-5">
+          <Link href="/ats/email-inbox" className="card p-6 hover:shadow-md transition-shadow text-left">
+            <Inbox size={20} className="text-indigo-600 mb-2" />
+            <h2 className="font-bold text-slate-800">Import from Zoho</h2>
+            <p className="text-sm text-slate-500 mt-1">Review recruiter emails in the Zoho Inbox and parse a job from one.</p>
+          </Link>
+          <button type="button" onClick={() => setChooserStep(false)} className="card p-6 hover:shadow-md transition-shadow text-left">
+            <PenLine size={20} className="text-indigo-600 mb-2" />
+            <h2 className="font-bold text-slate-800">Add Manually</h2>
+            <p className="text-sm text-slate-500 mt-1">Paste a job description to parse, or enter job details by hand.</p>
+          </button>
+        </div>
+      )}
+
+      {!emailId && !chooserStep && (
+        <div className="flex items-center gap-2 mb-5">
+          <button type="button" onClick={() => setChooserStep(true)} className="text-xs text-slate-500 hover:text-slate-800 mr-2">
+            ← Choose a different method
+          </button>
           {(["paste", "manual"] as Mode[]).map((m) => (
             <button
               key={m}
@@ -169,13 +193,13 @@ function NewJobRequirementPageInner() {
                 mode === m ? "bg-indigo-600 text-white" : "bg-slate-100 text-slate-600 hover:bg-slate-200"
               )}
             >
-              {m === "paste" ? "Paste Recruiter Email" : "Manual Entry"}
+              {m === "paste" ? "Paste & Parse" : "Manual Entry"}
             </button>
           ))}
         </div>
       )}
 
-      {mode === "paste" && (
+      {(emailId || !chooserStep) && mode === "paste" && (
         <div className="card p-6 mb-5">
           <h2 className="font-bold text-slate-800 mb-1">
             {emailId ? "Source Email" : "Paste Job Email / Job Description"}
@@ -200,18 +224,22 @@ function NewJobRequirementPageInner() {
         </div>
       )}
 
-      <div className="card p-6">
-        <h2 className="font-bold text-slate-800 mb-4">Job Requirement Details</h2>
-        {saveError && <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} className="mb-4" />}
-        <JobRequirementForm form={form} onChange={update} />
-      </div>
+      {(emailId || !chooserStep) && (
+        <>
+          <div className="card p-6">
+            <h2 className="font-bold text-slate-800 mb-4">Job Details</h2>
+            {saveError && <ErrorBanner message={saveError} onDismiss={() => setSaveError(null)} className="mb-4" />}
+            <JobRequirementForm form={form} onChange={update} />
+          </div>
 
-      <div className="flex gap-3 justify-end mt-5">
-        <button type="button" onClick={() => router.push(emailId ? `/ats/email-inbox/${emailId}` : "/ats/jobs")} className="btn-secondary">Cancel</button>
-        <button type="button" onClick={handleSave} disabled={saving || !form.job_title.trim()} className="btn-primary flex items-center gap-2">
-          {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save Job Requirement"}
-        </button>
-      </div>
+          <div className="flex gap-3 justify-end mt-5">
+            <button type="button" onClick={() => router.push(emailId ? `/ats/email-inbox/${emailId}` : "/ats/jobs")} className="btn-secondary">Cancel</button>
+            <button type="button" onClick={handleSave} disabled={saving || !form.job_title.trim()} className="btn-primary flex items-center gap-2">
+              {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save Job"}
+            </button>
+          </div>
+        </>
+      )}
     </div>
   );
 }

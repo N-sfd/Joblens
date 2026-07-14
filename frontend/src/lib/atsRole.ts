@@ -7,28 +7,36 @@ import { useCallback, useEffect, useState } from "react";
 import { useAuth, useUser } from "@clerk/nextjs";
 import { api } from "@/lib/api";
 
-export type AtsRole = "admin" | "recruiter" | "viewer";
+export type AtsRole = "admin" | "recruiter" | "manager" | "read_only";
 
 const ROLE_ALIASES: Record<string, AtsRole> = {
   administrator: "admin",
   recruiters: "recruiter",
-  view: "viewer",
-  readonly: "viewer",
+  managers: "manager",
+  view: "read_only",
+  viewer: "read_only",
+  readonly: "read_only",
+  "read-only": "read_only",
   hr_admin: "admin",
 };
 
+const VALID_ROLES: readonly AtsRole[] = ["admin", "recruiter", "manager", "read_only"];
+
+/** Compile-time: NEXT_PUBLIC_* is inlined per deployment — hook graph never switches mid-session. */
+const CLERK_CONFIGURED = Boolean(process.env.NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY?.trim());
+
 function normalizeRole(raw: unknown): AtsRole {
-  if (typeof raw !== "string" || !raw.trim()) return "viewer";
+  if (typeof raw !== "string" || !raw.trim()) return "read_only";
   const role = raw.trim().toLowerCase().replace(/[\s-]+/g, "_");
   const aliased = ROLE_ALIASES[role] ?? role;
-  return aliased === "admin" || aliased === "recruiter" || aliased === "viewer" ? aliased : "viewer";
+  return (VALID_ROLES as readonly string[]).includes(aliased) ? (aliased as AtsRole) : "read_only";
 }
 
 export type AtsMeState = {
   role: AtsRole;
   isAdmin: boolean;
   canWrite: boolean;
-  isViewer: boolean;
+  isReadOnly: boolean;
   hasAtsAccess: boolean;
   displayName: string | null;
   email: string | null;
@@ -39,7 +47,47 @@ export type AtsMeState = {
   refresh: () => Promise<void>;
 };
 
-export function useAtsRole(): AtsMeState {
+function pack(
+  role: AtsRole,
+  rest: {
+    displayName?: string | null;
+    email?: string | null;
+    organizationName?: string | null;
+    roleSource?: string | null;
+    loading?: boolean;
+    error?: string | null;
+    refresh: () => Promise<void>;
+  },
+): AtsMeState {
+  return {
+    role,
+    isAdmin: role === "admin",
+    canWrite: role === "admin" || role === "recruiter" || role === "manager",
+    isReadOnly: role === "read_only",
+    hasAtsAccess: true,
+    displayName: rest.displayName ?? null,
+    email: rest.email ?? null,
+    organizationName: rest.organizationName ?? null,
+    roleSource: rest.roleSource ?? null,
+    loading: rest.loading ?? false,
+    error: rest.error ?? null,
+    refresh: rest.refresh,
+  };
+}
+
+function useAtsRoleWithoutClerk(): AtsMeState {
+  const refresh = useCallback(async () => {}, []);
+  return pack("admin", {
+    loading: false,
+    error:
+      "Clerk is not configured. Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY on Vercel, then redeploy. Zoho Inbox can still open; API auth will fail until Clerk is set.",
+    roleSource: "clerk_missing",
+    displayName: "Unauthenticated",
+    refresh,
+  });
+}
+
+function useAtsRoleWithClerk(): AtsMeState {
   const { user, isLoaded: userLoaded } = useUser();
   const { isSignedIn, isLoaded: authLoaded } = useAuth();
   const clerkFallback = normalizeRole(user?.publicMetadata?.role);
@@ -54,7 +102,7 @@ export function useAtsRole(): AtsMeState {
   const refresh = useCallback(async () => {
     if (!authLoaded || !userLoaded) return;
     if (!isSignedIn) {
-      setRole("viewer");
+      setRole("read_only");
       setLoading(false);
       setError(null);
       return;
@@ -70,8 +118,6 @@ export function useAtsRole(): AtsMeState {
       setRoleSource(me.role_source);
     } catch (e) {
       setError(e instanceof Error ? e.message : "Could not load ATS permissions.");
-      // Prefer elevated Clerk metadata if present so a transient API blip
-      // does not lock the whole ATS shell behind the access gate.
       setRole(clerkFallback);
     } finally {
       setLoading(false);
@@ -90,25 +136,19 @@ export function useAtsRole(): AtsMeState {
     void refresh();
   }, [authLoaded, userLoaded, isSignedIn, user?.id, refresh]);
 
-  // Hard stop so "Checking ATS permissions…" cannot spin forever.
   useEffect(() => {
     if (!loading) return;
     const t = window.setTimeout(() => {
       setLoading(false);
       setError((prev) => prev || "Timed out checking ATS permissions. Try again or sign out and sign back in.");
-      if (clerkFallback === "admin" || clerkFallback === "recruiter") {
+      if (clerkFallback === "admin" || clerkFallback === "recruiter" || clerkFallback === "manager") {
         setRole(clerkFallback);
       }
     }, 12000);
     return () => window.clearTimeout(t);
   }, [loading, clerkFallback]);
 
-  return {
-    role,
-    isAdmin: role === "admin",
-    canWrite: role === "admin" || role === "recruiter",
-    isViewer: role === "viewer",
-    hasAtsAccess: role === "admin" || role === "recruiter",
+  return pack(role, {
     displayName:
       displayName ||
       user?.fullName ||
@@ -120,5 +160,9 @@ export function useAtsRole(): AtsMeState {
     loading: loading && !(authLoaded && userLoaded && !isSignedIn),
     error,
     refresh,
-  };
+  });
 }
+
+export const useAtsRole: () => AtsMeState = CLERK_CONFIGURED
+  ? useAtsRoleWithClerk
+  : useAtsRoleWithoutClerk;

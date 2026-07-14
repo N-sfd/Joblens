@@ -45,6 +45,8 @@ EXT_DOCUMENT_RETRIEVE_LIMIT = _limit("EXT_DOCUMENT_RETRIEVE_PER_MINUTE", 10)
 EXT_SUBMISSION_CONFIRM_LIMIT = _limit("EXT_SUBMISSION_CONFIRM_PER_MINUTE", 10)
 EXT_FEEDBACK_LIMIT = _limit("EXT_FEEDBACK_PER_MINUTE", 8)
 EXT_INVALID_TOKEN_LIMIT = _limit("EXT_INVALID_TOKEN_PER_MINUTE", 5)
+CSV_EXPORT_LIMIT = _limit("CSV_EXPORT_PER_MINUTE", 10)
+REPORTS_LIMIT = _limit("REPORTS_PER_MINUTE", 60)
 
 
 def _client_key(request: Request, user_id: str | None = None) -> str:
@@ -152,3 +154,11 @@ def rate_limit_ext_submission(request: Request, user_id: str | None = None) -> N
 
 def rate_limit_ext_feedback(request: Request, user_id: str | None = None) -> None:
     rate_limit_extension(request, bucket="feedback", limit=EXT_FEEDBACK_LIMIT, user_id=user_id)
+
+
+def rate_limit_csv_export(request: Request, user_id: str | None = None) -> None:
+    check_rate_limit(request, bucket="csv_export", limit=CSV_EXPORT_LIMIT, user_id=user_id)
+
+
+def rate_limit_reports(request: Request, user_id: str | None = None) -> None:
+    check_rate_limit(request, bucket="reports", limit=REPORTS_LIMIT, user_id=user_id)

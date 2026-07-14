@@ -65,6 +65,7 @@ def _get_or_404(db: Session, offer_id: int) -> Offer:
 @router.get("/", response_model=list[OfferResponse])
 async def list_offers(
     submission_id: int | None = Query(None),
+    job_requirement_id: int | None = Query(None),
     status: str | None = Query(None),
     limit: int = Query(100, ge=1, le=200),
     _: AtsPrincipal = Depends(get_current_ats_user),
@@ -73,6 +74,10 @@ async def list_offers(
     q = db.query(Offer)
     if submission_id is not None:
         q = q.filter(Offer.submission_id == submission_id)
+    if job_requirement_id is not None:
+        q = q.join(Submission, Submission.id == Offer.submission_id).filter(
+            Submission.job_requirement_id == job_requirement_id
+        )
     if status:
         q = q.filter(Offer.status == status)
     rows = q.order_by(Offer.offer_date.desc(), Offer.created_at.desc()).limit(limit).all()

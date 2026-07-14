@@ -4,50 +4,123 @@ import Link from "next/link";
 import { usePathname } from "next/navigation";
 import clsx from "clsx";
 import {
-  LayoutDashboard, Users, FileText, Briefcase, Inbox, UserRound,
-  Building2, Building, Send, Mail, CalendarCheck, BadgeCheck, Settings, Activity, ClipboardList,
+  LayoutDashboard, Users, Briefcase, Inbox, Send, Contact, BarChart3, Settings,
 } from "lucide-react";
+import { useAtsRole, type AtsRole } from "@/lib/atsRole";
+import { isClerkConfigured } from "@/lib/clerkConfigured";
 
-const NAV: { href: string; label: string; icon: React.ElementType }[] = [
-  { href: "/ats", label: "ATS Dashboard", icon: LayoutDashboard },
-  { href: "/ats/employees", label: "Employees", icon: Users },
-  { href: "/ats/employee-resumes", label: "Employee Resumes", icon: FileText },
-  { href: "/ats/jobs", label: "Job Requirements", icon: Briefcase },
-  { href: "/ats/email-inbox", label: "Zoho Email Inbox", icon: Inbox },
-  { href: "/ats/recruiters", label: "Recruiters", icon: UserRound },
-  { href: "/ats/vendors", label: "Vendors", icon: Building2 },
-  { href: "/ats/clients", label: "Clients", icon: Building },
-  { href: "/ats/activities", label: "Activities", icon: Activity },
-  { href: "/ats/job-sends", label: "Job Sends", icon: Mail },
-  { href: "/ats/submissions", label: "Submissions", icon: Send },
-  { href: "/ats/interviews", label: "Interviews", icon: CalendarCheck },
-  { href: "/ats/offers", label: "Offers", icon: BadgeCheck },
-  { href: "/ats/onboarding", label: "Onboarding", icon: ClipboardList },
-  { href: "/ats/settings", label: "Settings", icon: Settings },
+type NavItem = {
+  href: string;
+  label: string;
+  icon: React.ElementType;
+  roles?: readonly AtsRole[];
+};
+
+const NAV: NavItem[] = [
+  { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
+  {
+    href: "/ats/email-inbox",
+    label: "Zoho Inbox",
+    icon: Inbox,
+    roles: ["admin", "manager", "recruiter"],
+  },
+  { href: "/ats/jobs", label: "Jobs", icon: Briefcase },
+  { href: "/ats/candidates", label: "Candidates", icon: Users },
+  { href: "/ats/pipeline", label: "Pipeline", icon: Send },
+  { href: "/ats/contacts", label: "Contacts", icon: Contact },
+  { href: "/ats/reports", label: "Reports", icon: BarChart3 },
+  {
+    href: "/ats/settings",
+    label: "Settings",
+    icon: Settings,
+    roles: ["admin", "manager", "recruiter", "read_only"],
+  },
 ];
 
-export default function AtsNav() {
+function settingsLabel(role: AtsRole): string {
+  if (role === "admin" || role === "manager") return "Settings";
+  return "Personal Settings";
+}
+
+function isActive(pathname: string, href: string): boolean {
+  if (href === "/ats") return pathname === "/ats";
+  return pathname === href || pathname.startsWith(`${href}/`);
+}
+
+function NavLinks({
+  compact,
+  items,
+}: {
+  compact: boolean;
+  items: { href: string; label: string; icon: React.ElementType }[];
+}) {
   const pathname = usePathname();
   return (
-    <nav className="flex flex-col gap-0.5 p-3">
-      {NAV.map(({ href, label, icon: Icon }) => {
-        const active = href === "/ats" ? pathname === "/ats" : (pathname === href || pathname.startsWith(href + "/"));
+    <nav
+      className={clsx(
+        compact
+          ? "flex md:hidden gap-1 overflow-x-auto px-3 py-2 border-b border-slate-200 bg-white"
+          : "flex flex-col gap-0.5 p-3"
+      )}
+      aria-label="Primary"
+    >
+      {items.map(({ href, label, icon: Icon }) => {
+        const active = isActive(pathname, href);
         return (
           <Link
             key={href}
             href={href}
             className={clsx(
-              "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
+              compact
+                ? "shrink-0 px-3 py-1.5 rounded-lg text-xs font-medium whitespace-nowrap"
+                : "flex items-center gap-2.5 px-3 py-2 rounded-lg text-sm font-medium transition-colors",
               active
                 ? "bg-indigo-50 text-indigo-700"
                 : "text-slate-600 hover:bg-slate-100 hover:text-slate-900"
             )}
+            aria-current={active ? "page" : undefined}
           >
-            <Icon size={17} className="shrink-0" />
+            {!compact && <Icon size={17} className="shrink-0" aria-hidden />}
             <span className="truncate">{label}</span>
           </Link>
         );
       })}
     </nav>
   );
+}
+
+function AtsNavWithRole({ compact }: { compact: boolean }) {
+  const pathname = usePathname();
+  const { role, loading } = useAtsRole();
+
+  const items = NAV.filter((item) => {
+    if (!item.roles) return true;
+    if (loading) return item.roles.includes("read_only") || item.href === "/ats";
+    return item.roles.includes(role);
+  }).map((item) =>
+    item.href === "/ats/settings"
+      ? { ...item, label: settingsLabel(loading ? "read_only" : role) }
+      : item
+  );
+
+  // pathname kept for active highlighting inside NavLinks
+  void pathname;
+  return <NavLinks compact={compact} items={items} />;
+}
+
+/** Role-aware ATS nav. Safe to prerender when Clerk env is unset. */
+export default function AtsNav({ compact = false }: { compact?: boolean }) {
+  if (!isClerkConfigured()) {
+    return (
+      <NavLinks
+        compact={compact}
+        items={NAV.map((item) => ({
+          href: item.href,
+          label: item.href === "/ats/settings" ? "Settings" : item.label,
+          icon: item.icon,
+        }))}
+      />
+    );
+  }
+  return <AtsNavWithRole compact={compact} />;
 }

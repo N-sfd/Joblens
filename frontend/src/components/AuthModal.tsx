@@ -57,7 +57,12 @@ export default function AuthModal({ onClose }: Props) {
       }
       onClose();
     } catch (err) {
-      setError(err instanceof Error ? err.message : "Something went wrong.");
+      const raw = err instanceof Error ? err.message : "Something went wrong.";
+      const hint =
+        /timed out|Failed to fetch|Empty response|Not Found|502|unreachable/i.test(raw)
+          ? " Job-seeker sign-in needs the CRM FastAPI behind BACKEND_URL. For Consult America staffing CRM, use ATS sign-in at /sign-in → /ats instead."
+          : "";
+      setError(`${raw}${hint}`);
     } finally {
       setLoading(false);
     }
@@ -88,6 +93,11 @@ export default function AuthModal({ onClose }: Props) {
         </h3>
         <p className="text-sm text-slate-500 dark:text-slate-400 mt-1.5 mb-6">
           Save your applications, resume scores, cover letters, and reminders.
+          Staffing team?{" "}
+          <a href="/sign-in" className="text-indigo-600 font-medium hover:underline">
+            Sign in to ATS
+          </a>
+          .
         </p>
 
         <form onSubmit={submit} className="space-y-4">
