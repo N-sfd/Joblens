@@ -159,11 +159,8 @@ function publicMiddleware(req: NextRequest) {
   if (gated) return gated;
   const redirected = applyLegacyRedirects(req);
   if (redirected) return redirected;
-  if (isProtectedAtsRoute(req)) {
-    const signInUrl = new URL("/sign-in", req.url);
-    signInUrl.searchParams.set("redirect_url", req.nextUrl.pathname);
-    return NextResponse.redirect(signInUrl);
-  }
+  // Without Clerk keys, do not redirect ATS → /sign-in (Clerk <SignIn /> would crash).
+  // Let ATS pages render so ops can see config/API errors; backend still enforces auth when enabled.
   return NextResponse.next();
 }
 
