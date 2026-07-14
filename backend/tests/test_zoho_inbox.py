@@ -69,7 +69,7 @@ def test_create_job_from_email_creates_recruiter_and_company(client, db_session)
     org = db_session.query(CRMOrganization).filter(CRMOrganization.id == job["vendor_id"]).first()
     assert org is not None
     assert org.organization_name == "Staffing Co"
-    assert org.source == "Zoho Mail"
+    assert org.source == "Zoho Email"
     assert org.needs_review is True
 
     contact = db_session.query(CRMContact).filter(CRMContact.id == job["recruiter_contact_id"]).first()
@@ -115,6 +115,10 @@ def test_create_job_from_email_twice_returns_409(client, db_session):
     assert first.status_code == 201
     second = client.post(f"/api/zoho/emails/{email.id}/create-job", json=make_job_payload())
     assert second.status_code == 409
+    detail = second.json()["detail"]
+    assert detail["code"] == "already_imported"
+    assert detail["message"] == "Already imported"
+    assert detail["job_id"] == first.json()["job"]["id"]
 
 
 def test_link_email_to_existing_job(client, db_session):

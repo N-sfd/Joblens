@@ -1,5 +1,7 @@
 import { getGuestId } from "./guestId";
-import { getClerkToken, waitForClerkToken } from "./clerkToken";
+import { getClerkToken, waitForClerkSession } from "./clerkToken";
+import { mapAtsHttpError, type AtsErrorContext } from "./atsApiErrors";
+import { isClerkConfigured } from "./clerkConfigured";
 
 /** Origin only (no /api). Avoids https://host/api + /api/jobs → /api/api/jobs (404). */
 function normalizeOrigin(url: string): string {
@@ -33,12 +35,15 @@ export class ApiError extends Error {
   status: number;
   detail: unknown;
   submissionId?: number;
+  requestId?: string | null;
+  authRetried?: boolean;
 
-  constructor(message: string, status: number, detail?: unknown) {
+  constructor(message: string, status: number, detail?: unknown, requestId?: string | null) {
     super(message);
     this.name = "ApiError";
     this.status = status;
     this.detail = detail;
+    this.requestId = requestId ?? null;
     if (detail && typeof detail === "object" && "submission_id" in detail) {
       const id = Number((detail as { submission_id: unknown }).submission_id);
       if (Number.isFinite(id)) this.submissionId = id;
@@ -46,27 +51,52 @@ export class ApiError extends Error {
   }
 }
 
-function formatApiErrorDetail(detail: unknown, fallback: string): string {
-  if (typeof detail === "string" && detail.trim()) return detail;
-  if (Array.isArray(detail)) {
-    const msgs = detail
-      .map((item) => {
-        if (typeof item === "string") return item;
-        if (item && typeof item === "object" && "msg" in item) return String((item as { msg: unknown }).msg);
-        return null;
-      })
-      .filter(Boolean);
-    if (msgs.length) return msgs.join("; ");
+function errorContextForPath(path: string): AtsErrorContext {
+  if (path.includes("/check-duplicates")) return "candidate_duplicate";
+  if (path.includes("/resumes") || path.includes("parse-resume")) return "candidate_resume";
+  if (path.startsWith("/api/candidates") || path.startsWith("/api/employees")) return "candidate_create";
+  return "generic";
+}
+
+function redirectToSignInOnce(): void {
+  if (typeof window === "undefined") return;
+  const path = window.location.pathname + window.location.search;
+  if (path.startsWith("/sign-in")) return;
+  const url = new URL("/sign-in", window.location.origin);
+  url.searchParams.set("redirect_url", path);
+  window.location.assign(url.toString());
+}
+
+async function resolveAtsBearerToken(opts?: { skipCache?: boolean }): Promise<string> {
+  if (!isClerkConfigured()) {
+    throw new ApiError(
+      "Clerk is not configured. Set NEXT_PUBLIC_CLERK_PUBLISHABLE_KEY and CLERK_SECRET_KEY, then redeploy.",
+      401,
+    );
   }
-  if (detail && typeof detail === "object") {
-    if ("message" in detail && typeof (detail as { message: unknown }).message === "string") {
-      return String((detail as { message: string }).message);
+  if (opts?.skipCache) {
+    const token = await getClerkToken({ skipCache: true, timeoutMs: 8000 });
+    if (!token) {
+      throw new ApiError("Your session has expired. Please sign in again.", 401);
     }
-    if ("msg" in detail) {
-      return String((detail as { msg: unknown }).msg);
-    }
+    return token;
   }
-  return fallback;
+  const waited = await waitForClerkSession({ attempts: 40, delayMs: 100, requireSignedIn: true });
+  if (waited.status === "signed_out") {
+    throw new ApiError("Your session has expired. Please sign in again.", 401);
+  }
+  if (waited.status === "unavailable") {
+    throw new ApiError(
+      "Verifying your session… Authentication is not ready yet. Please wait a moment and try again.",
+      401,
+    );
+  }
+  if (waited.token) return waited.token;
+  const late = await getClerkToken({ timeoutMs: 8000 });
+  if (!late) {
+    throw new ApiError("Your session has expired. Please sign in again.", 401);
+  }
+  return late;
 }
 
 function qs(params?: Record<string, string | number | boolean | undefined | null>): string {
@@ -83,21 +113,22 @@ function qs(params?: Record<string, string | number | boolean | undefined | null
 // verification (see ats_auth.py). Public job-seeker endpoints do not.
 const ATS_PREFIXES = ["/api/candidates", "/api/employees", "/api/job-requirements", "/api/job-sends", "/api/submissions", "/api/pipeline", "/api/interviews", "/api/offers", "/api/crm", "/api/contacts", "/api/companies", "/api/ats", "/api/zoho", "/api/dashboard", "/api/reports"];
 
-async function request<T>(path: string, init?: RequestInit): Promise<T> {
+async function sendOnce(path: string, init: RequestInit | undefined, token: string | null): Promise<Response> {
   const base = getApiBase();
   const headers = new Headers(init?.headers);
   if (typeof window !== "undefined" && OWNED_PREFIXES.some((p) => path.startsWith(p))) {
     headers.set("X-Guest-Id", getGuestId());
   }
-  if (typeof window !== "undefined" && ATS_PREFIXES.some((p) => path.startsWith(p))) {
-    // Wait for AtsAuthBridge + Clerk getToken (avoids infinite "Checking ATS permissions…").
-    const token = (await getClerkToken(2000)) || (await waitForClerkToken({ attempts: 15, delayMs: 100, timeoutMs: 2000 }));
-    if (token) {
-      headers.set("Authorization", `Bearer ${token}`);
-    } else {
-      throw new Error("Your session has expired. Please sign in again.");
-    }
+  if (token) {
+    headers.set("Authorization", `Bearer ${token}`);
+  } else {
+    headers.delete("Authorization");
   }
+  // Let the browser set multipart boundary for FormData — never force Content-Type.
+  if (typeof FormData !== "undefined" && init?.body instanceof FormData) {
+    headers.delete("Content-Type");
+  }
+
   const timeoutMs = 20_000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
@@ -105,14 +136,30 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     if (init.signal.aborted) controller.abort();
     else init.signal.addEventListener("abort", () => controller.abort(), { once: true });
   }
-  let res: Response;
   try {
-    res = await fetch(`${base}${path}`, {
+    return await fetch(`${base}${path}`, {
       ...init,
       headers,
       credentials: "include",
       signal: controller.signal,
     });
+  } finally {
+    clearTimeout(timeoutId);
+  }
+}
+
+async function request<T>(path: string, init?: RequestInit): Promise<T> {
+  const needsAtsAuth =
+    typeof window !== "undefined" && ATS_PREFIXES.some((p) => path.startsWith(p));
+
+  let token: string | null = null;
+  if (needsAtsAuth) {
+    token = await resolveAtsBearerToken();
+  }
+
+  let res: Response;
+  try {
+    res = await sendOnce(path, init, token);
   } catch (e) {
     const aborted = e instanceof Error && e.name === "AbortError";
     const host = typeof window !== "undefined" ? window.location.hostname : "";
@@ -122,24 +169,63 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       : onDeployed
         ? " Check BACKEND_URL on Vercel (same-origin /api proxy) and that ALLOWED_ORIGINS includes this site."
         : " Is the backend running? Start it on :8000 or set NEXT_PUBLIC_API_URL.";
-    const msg = aborted ? "Request timed out" : e instanceof Error ? e.message : "Network error";
-    throw new Error(`${msg}.${hint}`);
-  } finally {
-    clearTimeout(timeoutId);
+    throw new ApiError(
+      mapAtsHttpError({ status: 0, networkFailure: true }) + hint,
+      0,
+    );
   }
+
+  // One safe refresh retry after an expired/invalid session token.
+  if (needsAtsAuth && res.status === 401) {
+    const fresh = await resolveAtsBearerToken({ skipCache: true });
+    try {
+      res = await sendOnce(path, init, fresh);
+    } catch {
+      throw new ApiError(mapAtsHttpError({ status: 0, networkFailure: true }), 0);
+    }
+    if (res.status === 401) {
+      const body = await res.text();
+      let detail: unknown = body;
+      try { detail = JSON.parse(body)?.detail ?? body; } catch { /* keep */ }
+      const requestId = res.headers.get("X-Request-ID") || res.headers.get("x-request-id");
+      const err = new ApiError(
+        mapAtsHttpError({
+          status: 401,
+          detail,
+          requestId,
+          context: errorContextForPath(path),
+        }),
+        401,
+        detail,
+        requestId,
+      );
+      err.authRetried = true;
+      redirectToSignInOnce();
+      throw err;
+    }
+  }
+
   if (!res.ok) {
     const body = await res.text();
     let detail: unknown = body;
-    try { detail = JSON.parse(body)?.detail ?? body; } catch {}
+    try { detail = JSON.parse(body)?.detail ?? body; } catch { /* keep */ }
+    const requestId = res.headers.get("X-Request-ID") || res.headers.get("x-request-id");
     throw new ApiError(
-      formatApiErrorDetail(detail, body || `Request failed: ${res.status}`),
+      mapAtsHttpError({
+        status: res.status,
+        detail,
+        requestId,
+        context: errorContextForPath(path),
+      }),
       res.status,
       detail,
+      requestId,
     );
   }
+
   const text = await res.text();
   if (!text.trim()) {
-    throw new ApiError("Empty response from API.", res.status);
+    throw new ApiError("Empty response from API.", res.status, null, res.headers.get("X-Request-ID"));
   }
   try {
     return JSON.parse(text) as T;
@@ -387,9 +473,14 @@ export const api = {
     ),
   getCandidate: (id: number) => request<import("@/types").Employee>(`/api/candidates/${id}`),
   createCandidate: (data: import("@/types").EmployeeCreate, opts?: { forceNew?: boolean }) =>
-    request<import("@/types").Employee>(`/api/candidates/${opts?.forceNew ? "?force_new=true" : ""}`, {
-      method: "POST", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
-    }),
+    request<import("@/types").Employee>(
+      `/api/candidates/${qs({ force_new: opts?.forceNew ? true : undefined })}`,
+      {
+        method: "POST",
+        headers: { "Content-Type": "application/json" },
+        body: JSON.stringify(data),
+      },
+    ),
   updateCandidate: (id: number, data: import("@/types").EmployeeUpdate) =>
     request<import("@/types").Employee>(`/api/candidates/${id}`, {
       method: "PUT", headers: { "Content-Type": "application/json" }, body: JSON.stringify(data),
@@ -486,15 +577,17 @@ export const api = {
   // Authenticated download: fetch as blob (Authorization header required), then
   // trigger a browser download so resume files are never publicly linkable.
   downloadEmployeeResume: async (employeeId: number, resumeId: number, filename: string) => {
-    const base =
-      process.env.NEXT_PUBLIC_API_URL?.trim().replace(/\/$/, "").replace(/\/api\/?$/i, "") ||
-      (typeof window !== "undefined" && window.location.hostname === "localhost" ? "http://localhost:8000" : "");
-    const token = await getClerkToken();
-    const res = await fetch(`${base}/api/employees/${employeeId}/resumes/${resumeId}/download`, {
-      headers: token ? { Authorization: `Bearer ${token}` } : {},
-      credentials: "include",
-    });
-    if (!res.ok) throw new Error("Failed to download resume.");
+    const token = await resolveAtsBearerToken();
+    let res = await sendOnce(`/api/employees/${employeeId}/resumes/${resumeId}/download`, undefined, token);
+    if (res.status === 401) {
+      const fresh = await resolveAtsBearerToken({ skipCache: true });
+      res = await sendOnce(`/api/employees/${employeeId}/resumes/${resumeId}/download`, undefined, fresh);
+      if (res.status === 401) {
+        redirectToSignInOnce();
+        throw new ApiError("Your session has expired. Please sign in again.", 401);
+      }
+    }
+    if (!res.ok) throw new ApiError("Failed to download resume.", res.status);
     const blob = await res.blob();
     const url = URL.createObjectURL(blob);
     const a = document.createElement("a");
@@ -726,6 +819,8 @@ export const api = {
   // Zoho Mail (ATS — private)
   getZohoConnection: () =>
     request<import("@/types").ZohoConnectionStatus>("/api/zoho/connection"),
+  getZohoStatus: () =>
+    request<import("@/types").ZohoConnectionStatus>("/api/zoho/status"),
   getZohoAuthorizeUrl: () =>
     request<{ authorize_url: string }>("/api/zoho/oauth/authorize"),
   completeZohoOAuth: (code: string, state: string) =>
@@ -929,23 +1024,33 @@ export const api = {
     reportType: import("@/types").ReportTab | string,
     params?: import("@/types").ReportFilterParams,
   ) => {
-    const base = getApiBase();
-    const token = (await getClerkToken(2000)) || (await waitForClerkToken({ attempts: 15, delayMs: 100, timeoutMs: 2000 }));
-    if (!token) throw new Error("Your session has expired. Please sign in again.");
     const query = qs({
       ...(params as Record<string, string | number | boolean | undefined> | undefined),
       report_type: reportType,
       format: "csv",
     });
-    const res = await fetch(`${base}/api/reports/export${query}`, {
-      headers: { Authorization: `Bearer ${token}` },
-      credentials: "include",
-    });
+    const path = `/api/reports/export${query}`;
+    const token = await resolveAtsBearerToken();
+    let res = await sendOnce(path, undefined, token);
+    if (res.status === 401) {
+      const fresh = await resolveAtsBearerToken({ skipCache: true });
+      res = await sendOnce(path, undefined, fresh);
+      if (res.status === 401) {
+        redirectToSignInOnce();
+        throw new ApiError("Your session has expired. Please sign in again.", 401);
+      }
+    }
     if (!res.ok) {
       const body = await res.text();
       let detail: unknown = body;
       try { detail = JSON.parse(body)?.detail ?? body; } catch { /* keep text */ }
-      throw new ApiError(formatApiErrorDetail(detail, body || `Export failed: ${res.status}`), res.status, detail);
+      const requestId = res.headers.get("X-Request-ID");
+      throw new ApiError(
+        mapAtsHttpError({ status: res.status, detail, requestId }),
+        res.status,
+        detail,
+        requestId,
+      );
     }
     const blob = await res.blob();
     const cd = res.headers.get("Content-Disposition") || "";

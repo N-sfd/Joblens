@@ -1552,16 +1552,30 @@ export interface DashboardSummaryResponse {
 export interface ZohoConnectionStatus {
   connected: boolean;
   status: string;
+  status_message: string;
+  token_status: string;
   mailbox_email: string | null;
   zoho_account_id: string | null;
   last_sync_at: string | null;
+  last_sync_result: string | null;
   last_error: string | null;
+  can_reconnect: boolean;
 }
 
 export interface ZohoSyncResponse {
   imported: number;
   skipped: number;
   total_fetched: number;
+  request_id?: string | null;
+}
+
+export interface AlreadyImportedDetail {
+  code: "already_imported" | string;
+  message: string;
+  job_id: number;
+  recruiter_contact_id?: number | null;
+  vendor_id?: number | null;
+  client_id?: number | null;
 }
 
 export interface ImportedEmail {

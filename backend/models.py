@@ -662,6 +662,8 @@ class ZohoConnection(Base):
     status = Column(String(50), default="Active")
     last_sync_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
+    # Safe counts only, e.g. "12 retrieved, 3 new, 9 skipped" — never bodies/tokens.
+    last_sync_summary = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -2332,16 +2334,30 @@ class ZohoOAuthCallbackRequest(BaseModel):
 class ZohoConnectionStatus(BaseModel):
     connected: bool
     status: str = "Disconnected"
+    status_message: str = "Not connected"
+    token_status: str = "Missing"
     mailbox_email: Optional[str] = None
     zoho_account_id: Optional[str] = None
     last_sync_at: Optional[datetime] = None
+    last_sync_result: Optional[str] = None
     last_error: Optional[str] = None
+    can_reconnect: bool = False
 
 
 class ZohoSyncResponse(BaseModel):
     imported: int
     skipped: int
     total_fetched: int
+    request_id: Optional[str] = None
+
+
+class AlreadyImportedDetail(BaseModel):
+    code: str = "already_imported"
+    message: str = "Already imported"
+    job_id: int
+    recruiter_contact_id: Optional[int] = None
+    vendor_id: Optional[int] = None
+    client_id: Optional[int] = None
 
 
 class ImportedEmailResponse(BaseModel):

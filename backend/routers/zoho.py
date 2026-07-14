@@ -11,6 +11,7 @@ from sqlalchemy.orm import Session
 
 from database import get_db
 from models import (
+    AlreadyImportedDetail,
     CreateJobFromEmailResponse,
     CRMActivity,
     EmailClassificationResponse,
@@ -54,29 +55,88 @@ from services.zoho_client import (
 )
 
 router = APIRouter()
+logger = logging.getLogger("joblens.zoho")
 
 STATE_TTL_MINUTES = 15
 SYNC_LIMIT = 50
+SOURCE_ZOHO_EMAIL = "Zoho Email"
 
 
 def _user_key(principal: AtsPrincipal) -> str:
     return principal.user_id or "local-dev-user"
 
 
+def _request_id(request: Request | None) -> str | None:
+    if request is None:
+        return None
+    return getattr(getattr(request, "state", None), "request_id", None)
+
+
+def _safe_public_error(raw: str | None) -> str | None:
+    """Never surface tokens/secrets; map Zoho transport failures to safe copy."""
+    if not raw:
+        return None
+    low = raw.lower()
+    if any(k in low for k in ("refresh_token", "access_token", "bearer ", "client_secret", "authorization:")):
+        return "Reauthorization required"
+    if any(k in low for k in ("401", "unauthorized", "invalid_grant", "invalid token")):
+        return "Connection expired"
+    if any(k in low for k in ("429", "rate limit", "503", "502", "timeout", "temporarily")):
+        return "Zoho temporarily unavailable"
+    if len(raw) > 180:
+        return "Synchronization failed"
+    return raw
+
+
 def _get_connection(db: Session, user_id: str) -> ZohoConnection | None:
     return db.query(ZohoConnection).filter(ZohoConnection.user_id == user_id).first()
 
 
+def _token_status(conn: ZohoConnection | None) -> str:
+    if not conn or not conn.encrypted_refresh_token:
+        return "Missing"
+    if conn.status in ("Disconnected",):
+        return "Missing"
+    if conn.status == "Error":
+        return "Reauthorization required"
+    if conn.token_expires_at and conn.token_expires_at < datetime.utcnow():
+        # Refresh token may still work; surface soft expiry for visibility.
+        return "Access token expired"
+    return "Valid"
+
+
+def _status_message(conn: ZohoConnection | None, *, connected: bool) -> str:
+    if not conn or not conn.encrypted_refresh_token or conn.status == "Disconnected":
+        return "Not connected"
+    if conn.status == "Error":
+        safe = _safe_public_error(conn.last_error)
+        if safe in ("Connection expired", "Reauthorization required"):
+            return safe
+        if safe == "Zoho temporarily unavailable":
+            return safe
+        return "Synchronization failed" if conn.last_error else "Reauthorization required"
+    if connected:
+        return "Connected"
+    return "Not connected"
+
+
 def _connection_status(conn: ZohoConnection | None) -> ZohoConnectionStatus:
-    if not conn or conn.status != "Active" or not conn.encrypted_refresh_token:
-        return ZohoConnectionStatus(connected=False, status=conn.status if conn else "Disconnected")
+    has_refresh = bool(conn and conn.encrypted_refresh_token)
+    connected = bool(conn and conn.status == "Active" and has_refresh)
+    safe_err = _safe_public_error(conn.last_error) if conn else None
     return ZohoConnectionStatus(
-        connected=True,
-        status=conn.status,
-        mailbox_email=conn.mailbox_email,
-        zoho_account_id=conn.zoho_account_id,
-        last_sync_at=conn.last_sync_at,
-        last_error=conn.last_error,
+        connected=connected,
+        status=(conn.status if conn else "Disconnected"),
+        status_message=_status_message(conn, connected=connected),
+        token_status=_token_status(conn),
+        mailbox_email=conn.mailbox_email if conn else None,
+        zoho_account_id=conn.zoho_account_id if conn else None,
+        last_sync_at=conn.last_sync_at if conn else None,
+        last_sync_result=(conn.last_sync_summary if conn else None),
+        last_error=safe_err,
+        can_reconnect=bool(conn and (not connected or conn.status == "Error" or safe_err in (
+            "Connection expired", "Reauthorization required",
+        ))),
     )
 
 
@@ -184,11 +244,7 @@ async def zoho_oauth_callback(
     return _connection_status(conn)
 
 
-@router.get("/connection", response_model=ZohoConnectionStatus)
-async def zoho_connection_status(
-    principal: AtsPrincipal = Depends(get_current_ats_user),
-    db: Session = Depends(get_db),
-):
+def _load_connection_status(db: Session, principal: AtsPrincipal) -> ZohoConnectionStatus:
     conn = _get_connection(db, _user_key(principal))
     if conn and conn.status == "Error" and conn.encrypted_refresh_token:
         try:
@@ -209,6 +265,23 @@ async def zoho_connection_status(
         except ZohoApiError:
             pass
     return _connection_status(conn)
+
+
+@router.get("/connection", response_model=ZohoConnectionStatus)
+async def zoho_connection_status(
+    principal: AtsPrincipal = Depends(get_current_ats_user),
+    db: Session = Depends(get_db),
+):
+    return _load_connection_status(db, principal)
+
+
+@router.get("/status", response_model=ZohoConnectionStatus)
+async def zoho_status_alias(
+    principal: AtsPrincipal = Depends(get_current_ats_user),
+    db: Session = Depends(get_db),
+):
+    """Alias of /connection for production health/smoke checklists."""
+    return _load_connection_status(db, principal)
 
 
 @router.delete("/connection", response_model=ZohoConnectionStatus)
@@ -236,9 +309,16 @@ async def zoho_sync(
     db: Session = Depends(get_db),
 ):
     rate_limit_zoho(request, principal.user_id)
-    conn = _get_connection(db, _user_key(principal))
+    rid = _request_id(request)
+    user_id = _user_key(principal)
+    conn = _get_connection(db, user_id)
     if not conn or not conn.encrypted_refresh_token or conn.status == "Disconnected":
         raise HTTPException(status_code=400, detail="Zoho Mail is not connected.")
+
+    logger.info(
+        "zoho.sync.start request_id=%s user_id=%s connection_id=%s",
+        rid, principal.user_id, conn.id,
+    )
 
     try:
         access = ensure_access_token(db, conn)
@@ -304,7 +384,9 @@ async def zoho_sync(
             ))
             imported += 1
 
+        summary = f"{len(messages)} retrieved, {imported} new, {skipped} skipped"
         conn.last_sync_at = datetime.utcnow()
+        conn.last_sync_summary = summary
         conn.last_error = None
         conn.status = "Active"
         db.commit()
@@ -312,12 +394,26 @@ async def zoho_sync(
             db, "zoho.sync", "zoho_connection", conn.id,
             f"Synced {imported} new emails ({skipped} skipped)", principal.user_id,
         )
-        return ZohoSyncResponse(imported=imported, skipped=skipped, total_fetched=len(messages))
+        logger.info(
+            "zoho.sync.complete request_id=%s user_id=%s connection_id=%s "
+            "retrieved=%s new=%s skipped=%s",
+            rid, principal.user_id, conn.id, len(messages), imported, skipped,
+        )
+        return ZohoSyncResponse(
+            imported=imported,
+            skipped=skipped,
+            total_fetched=len(messages),
+            request_id=rid,
+        )
     except ZohoApiError as e:
         conn.last_error = str(e)
         conn.status = "Error"
         db.commit()
-        raise HTTPException(status_code=502, detail=str(e))
+        logger.warning(
+            "zoho.sync.failed request_id=%s user_id=%s connection_id=%s",
+            rid, principal.user_id, conn.id,
+        )
+        raise HTTPException(status_code=502, detail=_safe_public_error(str(e)) or "Synchronization failed")
 
 
 @router.get("/emails", response_model=list[ImportedEmailResponse])
@@ -506,6 +602,7 @@ async def parse_imported_email(
     db: Session = Depends(get_db),
 ):
     rate_limit_ai(request, principal.user_id)
+    rid = _request_id(request)
     email = _get_owned_email(db, principal, email_id)
     raw_text = _email_raw_text(email)
     if len(raw_text.strip()) < 20:
@@ -513,12 +610,20 @@ async def parse_imported_email(
     try:
         parsed = await parse_job_requirement(raw_text)
     except Exception as e:
+        logger.warning(
+            "zoho.parse.failed request_id=%s user_id=%s email_id=%s",
+            rid, principal.user_id, email_id,
+        )
         raise_clean_ai_error(logger, "Job details parsing", e)
 
     if not parsed.get("recruiter_email") and email.from_address:
         parsed["recruiter_email"] = email.from_address
     if not parsed.get("recruiter_name") and email.from_name:
         parsed["recruiter_name"] = email.from_name
+    logger.info(
+        "zoho.parse.ok request_id=%s user_id=%s email_id=%s",
+        rid, principal.user_id, email_id,
+    )
     return JobRequirementParseResponse(**{k: v for k, v in parsed.items() if k != "rate"})
 
 
@@ -526,23 +631,30 @@ async def parse_imported_email(
 async def create_job_from_email(
     email_id: int,
     body: JobRequirementCreate,
+    request: Request,
     principal: AtsPrincipal = Depends(require_writer),
     db: Session = Depends(get_db),
 ):
+    rid = _request_id(request)
     email = _get_owned_email(db, principal, email_id)
     if email.job_requirement_id:
         existing = db.query(JobRequirement).filter(JobRequirement.id == email.job_requirement_id).first()
         if existing:
             raise HTTPException(
                 status_code=409,
-                detail=f"This email is already linked to job #{existing.id}.",
+                detail=AlreadyImportedDetail(
+                    job_id=existing.id,
+                    recruiter_contact_id=existing.recruiter_contact_id,
+                    vendor_id=existing.vendor_id,
+                    client_id=existing.client_id,
+                ).model_dump(),
             )
 
     data = _prepare_create_data(body.model_dump())
     if not data.get("recruiter_email") and email.from_address:
         data["recruiter_email"] = email.from_address
-    if not data.get("source"):
-        data["source"] = "Zoho Mail"
+    if not data.get("source") or str(data.get("source")).strip().lower() in ("zoho mail", "zoho"):
+        data["source"] = SOURCE_ZOHO_EMAIL
 
     # Create-or-update the recruiter and their company (vendor), preferring an
     # explicit vendor_id/recruiter_contact_id from the review form untouched.
@@ -582,6 +694,12 @@ async def create_job_from_email(
     log_audit(
         db, "zoho.job_created", "job_requirement", job.id,
         f"Created job from email #{email_id}: {job.job_title}", principal.user_id,
+    )
+    logger.info(
+        "zoho.job_created request_id=%s user_id=%s email_id=%s job_id=%s "
+        "contact_id=%s company_id=%s",
+        rid, principal.user_id, email_id, job.id,
+        data.get("recruiter_contact_id"), data.get("vendor_id"),
     )
     return CreateJobFromEmailResponse(
         email=_email_list_response(email),
