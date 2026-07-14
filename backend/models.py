@@ -2162,3 +2162,74 @@ class ImportedEmailUpdate(BaseModel):
 
 class LinkEmailToJobRequest(BaseModel):
     job_requirement_id: int
+
+
+# --- Unified Dashboard (Recruitment CRM + ATS) ---
+
+class DashboardSummaryCounts(BaseModel):
+    open_jobs: int
+    new_zoho_jobs: int
+    active_candidates: int
+    candidates_submitted: int
+    interviews_scheduled: int
+    offers: int
+    placements: int
+    follow_ups_due: int
+
+
+class DashboardActivityItem(BaseModel):
+    id: int
+    activity_type: str
+    subject: Optional[str] = None
+    description: Optional[str] = None
+    activity_date: datetime
+    created_by: Optional[str] = None
+    job_requirement_id: Optional[int] = None
+    job_title: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+    submission_id: Optional[int] = None
+
+
+class DashboardFollowUpItem(BaseModel):
+    id: int
+    subject: Optional[str] = None
+    due_date: Optional[datetime] = None
+    overdue: bool
+    job_requirement_id: Optional[int] = None
+    job_title: Optional[str] = None
+    contact_id: Optional[int] = None
+    contact_name: Optional[str] = None
+    organization_id: Optional[int] = None
+    organization_name: Optional[str] = None
+    employee_id: Optional[int] = None
+    employee_name: Optional[str] = None
+
+
+class DashboardZohoJobItem(BaseModel):
+    id: int
+    job_title: str
+    recruiter_name: Optional[str] = None
+    company: Optional[str] = None
+    received_at: Optional[datetime] = None
+    review_status: str
+    status: str
+
+
+class DashboardPipelineStage(BaseModel):
+    stage: str
+    count: int
+
+
+class DashboardSummaryResponse(BaseModel):
+    scope: str  # "organization" | "own"
+    zoho_connected: bool
+    counts: DashboardSummaryCounts
+    recent_activities: list[DashboardActivityItem]
+    follow_ups_due: list[DashboardFollowUpItem]
+    recent_zoho_jobs: list[DashboardZohoJobItem]
+    pipeline: list[DashboardPipelineStage]

@@ -1,7 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
+import { useSearchParams } from "next/navigation";
 import { Plus, Loader2, Search, ChevronLeft, ChevronRight, GitCompareArrows } from "lucide-react";
 import clsx from "clsx";
 import { api } from "@/lib/api";
@@ -37,9 +38,14 @@ function displayRate(job: JobRequirement) {
   return job.rate || (job.rate_min && job.rate_max ? `${job.rate_min}–${job.rate_max}` : job.rate_min || job.rate_max) || "—";
 }
 
-export default function JobRequirementsPage() {
+function JobRequirementsPageInner() {
   const { canWrite } = useAtsRole();
-  const [filters, setFilters] = useState<JobRequirementListParams>({ ...EMPTY });
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<JobRequirementListParams>(() => ({
+    ...EMPTY,
+    status: searchParams.get("status") || "",
+    source: searchParams.get("source") || "",
+  }));
   const [searchInput, setSearchInput] = useState("");
   const [jobs, setJobs] = useState<JobRequirement[]>([]);
   const [total, setTotal] = useState(0);
@@ -188,5 +194,13 @@ export default function JobRequirementsPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function JobRequirementsPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>}>
+      <JobRequirementsPageInner />
+    </Suspense>
   );
 }

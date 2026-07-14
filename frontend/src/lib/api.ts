@@ -460,6 +460,10 @@ export const api = {
   getAtsDashboardStats: () =>
     request<import("@/types").AtsDashboardStats>("/api/ats/dashboard"),
 
+  // Unified Recruitment CRM + ATS dashboard
+  getDashboardSummary: () =>
+    request<import("@/types").DashboardSummaryResponse>("/api/dashboard/summary"),
+
   // ATS staff access / role management
   getAtsMe: () =>
     request<{

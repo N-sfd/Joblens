@@ -32,7 +32,7 @@ function SubmissionsPageInner() {
   const [rows, setRows] = useState<Submission[]>([]);
   const [loading, setLoading] = useState(true);
   const [error, setError] = useState<string | null>(null);
-  const [filter, setFilter] = useState<string>("active");
+  const [filter, setFilter] = useState<string>(() => searchParams.get("status") || "active");
   const [updating, setUpdating] = useState<number | null>(null);
   const [showForm, setShowForm] = useState(false);
   const [form, setForm] = useState({ job_requirement_id: "", employee_id: "", submitted_rate: "", status: "Draft" });

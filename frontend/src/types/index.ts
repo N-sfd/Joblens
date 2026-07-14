@@ -1129,6 +1129,76 @@ export interface AtsDashboardStats {
   recent_activities?: AtsDashboardActivityItem[];
 }
 
+// Unified Recruitment CRM + ATS dashboard (backend/routers/dashboard.py)
+export interface DashboardSummaryCounts {
+  open_jobs: number;
+  new_zoho_jobs: number;
+  active_candidates: number;
+  candidates_submitted: number;
+  interviews_scheduled: number;
+  offers: number;
+  placements: number;
+  follow_ups_due: number;
+}
+
+export interface DashboardActivityItem {
+  id: number;
+  activity_type: string;
+  subject: string | null;
+  description: string | null;
+  activity_date: string;
+  created_by: string | null;
+  job_requirement_id: number | null;
+  job_title: string | null;
+  contact_id: number | null;
+  contact_name: string | null;
+  organization_id: number | null;
+  organization_name: string | null;
+  employee_id: number | null;
+  employee_name: string | null;
+  submission_id: number | null;
+}
+
+export interface DashboardFollowUpItem {
+  id: number;
+  subject: string | null;
+  due_date: string | null;
+  overdue: boolean;
+  job_requirement_id: number | null;
+  job_title: string | null;
+  contact_id: number | null;
+  contact_name: string | null;
+  organization_id: number | null;
+  organization_name: string | null;
+  employee_id: number | null;
+  employee_name: string | null;
+}
+
+export interface DashboardZohoJobItem {
+  id: number;
+  job_title: string;
+  recruiter_name: string | null;
+  company: string | null;
+  received_at: string | null;
+  review_status: string;
+  status: string;
+}
+
+export interface DashboardPipelineStage {
+  stage: string;
+  count: number;
+}
+
+export interface DashboardSummaryResponse {
+  scope: "organization" | "own";
+  zoho_connected: boolean;
+  counts: DashboardSummaryCounts;
+  recent_activities: DashboardActivityItem[];
+  follow_ups_due: DashboardFollowUpItem[];
+  recent_zoho_jobs: DashboardZohoJobItem[];
+  pipeline: DashboardPipelineStage[];
+}
+
 export interface ZohoConnectionStatus {
   connected: boolean;
   status: string;

@@ -1,8 +1,8 @@
 "use client";
 
-import { useCallback, useEffect, useState } from "react";
+import { Suspense, useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { useRouter } from "next/navigation";
+import { useRouter, useSearchParams } from "next/navigation";
 import {
   Plus, Loader2, Search, ChevronLeft, ChevronRight, Upload, Pencil, Archive, MoreHorizontal, UserRound, FileUp,
 } from "lucide-react";
@@ -55,10 +55,14 @@ function displayName(emp: EmployeeListItem): string {
   return parts || emp.name;
 }
 
-export default function EmployeesPage() {
+function EmployeesPageInner() {
   const router = useRouter();
   const { canWrite } = useAtsRole();
-  const [filters, setFilters] = useState<EmployeeListParams>({ ...EMPTY_FILTERS });
+  const searchParams = useSearchParams();
+  const [filters, setFilters] = useState<EmployeeListParams>(() => ({
+    ...EMPTY_FILTERS,
+    status: searchParams.get("status") || "",
+  }));
   const [searchInput, setSearchInput] = useState("");
   const [employees, setEmployees] = useState<EmployeeListItem[]>([]);
   const [total, setTotal] = useState(0);
@@ -332,5 +336,13 @@ export default function EmployeesPage() {
         )}
       </div>
     </div>
+  );
+}
+
+export default function EmployeesPage() {
+  return (
+    <Suspense fallback={<div className="flex justify-center py-20"><Loader2 size={24} className="animate-spin text-indigo-500" /></div>}>
+      <EmployeesPageInner />
+    </Suspense>
   );
 }
