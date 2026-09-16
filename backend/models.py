@@ -106,6 +106,29 @@ class ResumeAnalysis(Base):
     created_at = Column(DateTime, default=func.now())
 
 
+class JoblensAnalysis(Base):
+    """Saved Career Intelligence analysis (seeker product — not CRM/ATS)."""
+
+    __tablename__ = "joblens_analyses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resume_filename = Column(String(255), nullable=True)
+    resume_version = Column(Integer, nullable=False, default=1)
+    job_title = Column(String(255), nullable=True)
+    company_name = Column(String(255), nullable=True)
+    content_hash = Column(String(64), nullable=False, index=True)
+    job_description_hash = Column(String(64), nullable=True, index=True)
+    # Stored analysis payload (scores, matches, gaps, recommendations) — not raw prompts.
+    result_json = Column(Text, nullable=False)
+    overall_score = Column(Integer, nullable=True)
+    required_skills_score = Column(Integer, nullable=True)
+    preferred_skills_score = Column(Integer, nullable=True)
+    experience_score = Column(Integer, nullable=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+
 class JobMatch(Base):
     __tablename__ = "job_matches"
 

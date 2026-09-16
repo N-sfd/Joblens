@@ -72,11 +72,12 @@ def check_rate_limit(
         while q and q[0] < cutoff:
             q.popleft()
         if len(q) >= limit:
-            message = (
-                "The AI parsing limit has been reached. Please try again in a minute."
-                if bucket == "ai"
-                else f"Rate limit exceeded for {bucket}. Try again in a minute."
-            )
+            if bucket.startswith("joblens"):
+                message = "You have reached the analysis limit. Please wait and try again."
+            elif bucket == "ai":
+                message = "The AI parsing limit has been reached. Please try again in a minute."
+            else:
+                message = f"Rate limit exceeded for {bucket}. Try again in a minute."
             raise HTTPException(status_code=429, detail=message)
         q.append(now)
 

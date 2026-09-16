@@ -25,7 +25,7 @@ export const nav = [
   { href: "/applications/status", label: "Application Status", icon: ClipboardList },
   { href: "/resume",        label: "Resume Analyzer",     icon: FileText },
   { href: "/jobs",          label: "Job Tracker",         icon: Briefcase },
-  { href: "/match",         label: "Job Matcher",         icon: Target },
+  { href: "/match",         label: "Career Intelligence", icon: Target },
   { href: "/cover-letter",  label: "Cover Letter",        icon: PenTool },
   { href: "/reminders",     label: "Reminders",           icon: BellRing },
 ];

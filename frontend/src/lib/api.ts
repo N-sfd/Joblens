@@ -28,7 +28,7 @@ function getApiBase(): string {
   return normalizeOrigin(serverBackend);
 }
 
-const OWNED_PREFIXES = ["/api/jobs", "/api/applications", "/api/resume", "/api/match", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/integrations/joblens/jobs"];
+const OWNED_PREFIXES = ["/api/jobs", "/api/applications", "/api/resume", "/api/match", "/api/joblens", "/api/cover-letter", "/api/activity", "/api/auth", "/api/account","/api/profile", "/api/integrations/joblens/jobs"];
 
 /** Build a query string (with leading `?`) from defined params; empty → "". */
 export class ApiError extends Error {
@@ -314,6 +314,33 @@ export const api = {
   getResumeHistory: () => request<import("@/types").ResumeHistoryEntry[]>("/api/resume/history"),
   getMatchHistory: () => request<import("@/types").MatchHistoryEntry[]>("/api/match/history"),
   getCoverLetterHistory: () => request<import("@/types").CoverLetterHistoryEntry[]>("/api/cover-letter/history"),
+
+  // JobLens Career Intelligence
+  analyzeCareerIntelligence: (body: {
+    resume_text: string;
+    job_description: string;
+    job_title?: string;
+    company_name?: string;
+    save?: boolean;
+    force_new_version?: boolean;
+    resume_filename?: string;
+  }) =>
+    request<import("@/types").CareerIntelligenceResult>("/api/joblens/analyze", {
+      method: "POST",
+      headers: { "Content-Type": "application/json" },
+      body: JSON.stringify(body),
+    }),
+  analyzeCareerIntelligenceFile: (form: FormData) =>
+    request<import("@/types").CareerIntelligenceResult>("/api/joblens/analyze", {
+      method: "POST",
+      body: form,
+    }),
+  getCareerAnalyses: () =>
+    request<import("@/types").CareerAnalysesListResponse>("/api/joblens/analyses"),
+  getCareerAnalysis: (id: number) =>
+    request<import("@/types").CareerAnalysisDetail>(`/api/joblens/analyses/${id}`),
+  deleteCareerAnalysis: (id: number) =>
+    request<{ ok: boolean }>(`/api/joblens/analyses/${id}`, { method: "DELETE" }),
 
   // Resume
   analyzeResumeFile: (file: File) => {
