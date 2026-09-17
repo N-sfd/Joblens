@@ -1,363 +1,286 @@
 import Link from "next/link";
+import Image from "next/image";
 import LogoMark from "@/components/Logo";
 import UserMenu from "@/components/UserMenu";
 import CtaButtons from "@/components/CtaButtons";
 import { LEGAL_LINKS } from "@/components/legal/LegalPageShell";
-import {
-  FileText, Target, PenTool, Briefcase, ShieldCheck, Lock, Sparkles,
-  CheckCircle2, Upload, ClipboardList, BarChart3, Eye, BellRing, LayoutDashboard,
-} from "lucide-react";
 
-const PRIMARY_FEATURES = [
+const STORY = [
   {
-    icon: Target,
-    color: "bg-indigo-50 text-indigo-600",
-    title: "AI Career Intelligence",
-    desc: "See which job requirements your résumé clearly demonstrates, where evidence is weak, and what you can improve — with structured requirement analysis and evidence-based matching.",
+    src: "/images/joblens-resume-review.jpg",
+    alt: "Hands reviewing a printed résumé beside a notebook",
+    title: "Start with your résumé",
+    desc: "Upload PDF, DOCX, or paste text. JobLens structures experience for evidence mapping — not keyword stuffing.",
   },
   {
-    icon: FileText,
-    color: "bg-violet-50 text-violet-600",
-    title: "Transparent Scoring",
-    desc: "Six weighted categories — required skills, experience, preferred skills, education, domain, and evidence — explained with résumé citations, not a black-box number.",
-  },
-];
-
-const SECONDARY_FEATURES = [
-  {
-    icon: Briefcase,
-    color: "bg-slate-100 text-slate-600",
-    title: "Job Tracker",
-    desc: "Keep applications organized by status with notes and follow-ups.",
+    src: "/images/joblens-workspace.jpg",
+    alt: "Laptop and résumé on a professional desk",
+    title: "Match against a real job",
+    desc: "Paste the description. See which requirements are demonstrated, related, weak, or missing.",
   },
   {
-    icon: PenTool,
-    color: "bg-slate-100 text-slate-600",
-    title: "Cover Letter Generator",
-    desc: "Draft a tailored letter grounded in your real experience.",
-  },
-  {
-    icon: BellRing,
-    color: "bg-slate-100 text-slate-600",
-    title: "Reminders",
-    desc: "Follow-ups, interviews, and deadlines in one place.",
-  },
-  {
-    icon: LayoutDashboard,
-    color: "bg-slate-100 text-slate-600",
-    title: "Dashboard",
-    desc: "A lightweight view of application volume and recent activity.",
-  },
-];
-
-const STEPS = [
-  {
-    icon: Upload,
-    title: "Upload your résumé",
-    desc: "PDF, DOCX, or paste text — JobLens structures your experience for evidence mapping.",
-  },
-  {
-    icon: ClipboardList,
-    title: "Paste a job description",
-    desc: "Required and preferred skills are separated so scoring stays honest and explainable.",
-  },
-  {
-    icon: Sparkles,
-    title: "Get evidence-based alignment",
-    desc: "See strong matches, related evidence, not-demonstrated skills, and gaps — never invented experience.",
-  },
-  {
-    icon: BarChart3,
-    title: "Act on the next three steps",
-    desc: "Improve bullets you already have, then optionally track the application.",
-  },
-];
-
-const TRUST_POINTS = [
-  {
-    icon: Lock,
-    title: "No account required",
-    desc: "Analyze immediately with a private guest session — sign in only if you want to save.",
-  },
-  {
-    icon: ShieldCheck,
-    title: "Your data stays yours",
-    desc: "Résumés and job descriptions are processed to generate your results and are never sold or shared.",
-  },
-  {
-    icon: Eye,
-    title: "Explainable decisions",
-    desc: "Every major claim links back to résumé evidence — decision support, not a hiring prediction.",
+    src: "/images/joblens-interview.jpg",
+    alt: "Professional interview conversation in a bright office",
+    title: "Apply with clarity",
+    desc: "Strengthen real evidence, skip invented skills, and walk into interviews knowing why you align.",
   },
 ];
 
 export default function LandingPage() {
   return (
     <div className="bg-white text-slate-900">
-      <header className="sticky top-0 z-40 bg-white/80 backdrop-blur-sm border-b border-slate-100">
+      <header className="absolute top-0 inset-x-0 z-40">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 h-16 flex items-center justify-between">
           <div className="flex items-center gap-2.5">
-            <div className="w-8 h-8 bg-gradient-to-br from-indigo-500 to-indigo-700 rounded-lg flex items-center justify-center shadow-sm">
+            <div className="w-8 h-8 bg-white/15 backdrop-blur-sm border border-white/25 rounded-lg flex items-center justify-center">
               <LogoMark size={16} className="text-white" />
             </div>
-            <span className="font-bold text-slate-900 tracking-tight">JobLens</span>
+            <span className="font-bold text-white tracking-tight drop-shadow-sm">JobLens</span>
           </div>
-          <nav className="hidden sm:flex items-center gap-7 text-sm font-medium text-slate-500">
-            <a href="#features" className="hover:text-slate-900 transition-colors">Features</a>
-            <a href="#how-it-works" className="hover:text-slate-900 transition-colors">How it Works</a>
-            <a href="#demo" className="hover:text-slate-900 transition-colors">Demo</a>
-            <a href="#privacy" className="hover:text-slate-900 transition-colors">Privacy</a>
+          <nav className="hidden sm:flex items-center gap-7 text-sm font-medium text-white/85">
+            <a href="#story" className="hover:text-white transition-colors">Product</a>
+            <a href="#how-it-works" className="hover:text-white transition-colors">How it Works</a>
+            <a href="#trust" className="hover:text-white transition-colors">Privacy</a>
           </nav>
-          <div className="flex items-center gap-4">
-            <UserMenu />
-            <Link href="/match" className="btn-primary text-sm py-2 px-4">
+          <div className="flex items-center gap-3">
+            <div className="hidden sm:block [&_button]:text-white [&_a]:text-white">
+              <UserMenu />
+            </div>
+            <Link
+              href="/match"
+              className="rounded-lg bg-white text-slate-900 text-sm font-semibold py-2 px-4 hover:bg-slate-100 transition-colors"
+            >
               Analyze Alignment
             </Link>
           </div>
         </div>
       </header>
 
-      {/* Hero */}
-      <section className="relative overflow-hidden">
-        <div className="absolute inset-0 bg-gradient-to-b from-indigo-50/70 via-white to-white pointer-events-none" />
-        <div className="relative max-w-6xl mx-auto px-4 sm:px-6 pt-16 sm:pt-24 pb-16 grid grid-cols-1 lg:grid-cols-2 gap-12 items-center">
-          <div>
-            <span className="inline-flex items-center gap-1.5 text-xs font-semibold text-indigo-700 bg-indigo-50 border border-indigo-100 px-3 py-1 rounded-full mb-5">
-              <Sparkles size={12} /> JobLens — AI Career Intelligence
-            </span>
-            <h1 className="text-3xl sm:text-5xl font-bold tracking-tight leading-[1.1] mb-5">
-              Know why you match — <span className="text-indigo-600">not just the score.</span>
-            </h1>
-            <p className="text-slate-500 text-base sm:text-lg leading-relaxed mb-8 max-w-lg">
-              JobLens analyzes your résumé against a job description and shows the skills, experience, evidence, and gaps behind every score.
+      {/* Full-bleed photo hero — no synthetic panels */}
+      <section className="relative min-h-[88vh] sm:min-h-[92vh] flex items-end sm:items-center">
+        <Image
+          src="/images/joblens-hero-photo.jpg"
+          alt="Professional reviewing career materials at a modern desk"
+          fill
+          priority
+          className="object-cover object-[center_30%]"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-gradient-to-r from-slate-950/80 via-slate-900/55 to-slate-900/25" />
+        <div className="absolute inset-0 bg-gradient-to-t from-slate-950/50 via-transparent to-slate-950/30" />
+
+        <div className="relative w-full max-w-6xl mx-auto px-4 sm:px-6 pb-16 pt-28 sm:py-28">
+          <p className="text-xs font-semibold uppercase tracking-[0.18em] text-indigo-200 mb-4">
+            JobLens — AI Career Intelligence
+          </p>
+          <h1 className="text-4xl sm:text-6xl font-bold tracking-tight text-white leading-[1.05] max-w-2xl mb-5">
+            Know why you match — not just the score.
+          </h1>
+          <p className="text-base sm:text-lg text-slate-200 leading-relaxed max-w-xl mb-8">
+            JobLens analyzes your résumé against a job description and shows the skills, experience, evidence, and gaps behind every score.
+          </p>
+          <CtaButtons className="mb-6 [&_.btn-primary]:bg-white [&_.btn-primary]:text-slate-900 [&_.btn-primary]:hover:bg-slate-100 [&_.btn-secondary]:bg-white/10 [&_.btn-secondary]:text-white [&_.btn-secondary]:border-white/30 [&_.btn-secondary]:hover:bg-white/20" />
+          <p className="text-sm text-slate-300">
+            Resume + Job → Explainable AI Match · Not a hiring prediction
+          </p>
+        </div>
+      </section>
+
+      {/* Image-led product story */}
+      <section id="story" className="py-16 sm:py-24">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 mb-12 sm:mb-16">
+          <div className="max-w-2xl">
+            <h2 className="text-2xl sm:text-4xl font-bold tracking-tight mb-3">
+              Evidence over keywords
+            </h2>
+            <p className="text-slate-500 text-base sm:text-lg leading-relaxed">
+              See which job requirements your résumé clearly demonstrates, where evidence is weak, and what you can improve — with structured requirement analysis and evidence-based matching.
             </p>
-            <CtaButtons className="mb-8" />
-            <div className="flex flex-wrap items-center gap-5 text-sm text-slate-500">
-              <span className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-green-500" /> No sign-up required</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-green-500" /> Evidence-based</span>
-              <span className="flex items-center gap-1.5"><CheckCircle2 size={15} className="text-green-500" /> Not a hiring prediction</span>
-            </div>
-          </div>
-
-          {/* Hero visual — explainability demo */}
-          <div className="relative">
-            <div className="card p-5">
-              <div className="flex items-center justify-between mb-4">
-                <p className="font-semibold text-slate-800 text-sm">Overall Alignment</p>
-                <span className="text-xs bg-indigo-50 text-indigo-700 px-2 py-0.5 rounded-full font-semibold">Strong alignment</span>
-              </div>
-              <p className="text-4xl font-bold text-slate-900 tabular-nums mb-4">87%</p>
-              <div className="space-y-2.5 mb-4">
-                {[
-                  { label: "Required Skills", value: 93 },
-                  { label: "Experience", value: 86 },
-                  { label: "Preferred Skills", value: 69 },
-                ].map((row) => (
-                  <div key={row.label}>
-                    <div className="flex justify-between text-xs mb-1">
-                      <span className="text-slate-600">{row.label}</span>
-                      <span className="font-semibold text-slate-800 tabular-nums">{row.value}%</span>
-                    </div>
-                    <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
-                      <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${row.value}%` }} />
-                    </div>
-                  </div>
-                ))}
-              </div>
-              <div className="grid grid-cols-2 gap-3 text-xs">
-                <div>
-                  <p className="font-semibold text-emerald-700 mb-1.5">Strong evidence</p>
-                  <ul className="space-y-1 text-slate-600">
-                    {["Python", "FastAPI", "SQL"].map((s) => (
-                      <li key={s} className="flex items-center gap-1.5">
-                        <CheckCircle2 size={12} className="text-emerald-600" /> {s}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-                <div>
-                  <p className="font-semibold text-amber-700 mb-1.5">Needs stronger evidence</p>
-                  <ul className="space-y-1 text-slate-600">
-                    {["AWS", "Kubernetes"].map((s) => (
-                      <li key={s} className="flex items-center gap-1.5">
-                        <span className="text-amber-600 font-bold">△</span> {s}
-                      </li>
-                    ))}
-                  </ul>
-                </div>
-              </div>
-              <p className="text-[11px] text-slate-400 mt-4 leading-relaxed">
-                This score reflects résumé evidence against the job — not a hiring prediction.
-              </p>
-            </div>
-            <div className="card p-4 absolute -bottom-6 -left-6 w-52 hidden sm:block">
-              <p className="text-xs font-semibold text-slate-500 mb-2">Flow</p>
-              <p className="text-sm font-semibold text-slate-800 leading-snug">
-                Resume + Job → Explainable AI Match
-              </p>
-            </div>
           </div>
         </div>
-      </section>
 
-      {/* Features */}
-      <section id="features" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="text-center max-w-2xl mx-auto mb-12">
-          <p className="page-kicker">Primary product</p>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3">Evidence-based career intelligence</h2>
-          <p className="text-slate-500">
-            See which job requirements your résumé clearly demonstrates, where evidence is weak, and what you can improve.
-          </p>
-        </div>
-        <div className="grid grid-cols-1 md:grid-cols-2 gap-5 mb-10">
-          {PRIMARY_FEATURES.map(({ icon: Icon, color, title, desc }) => (
-            <div key={title} className="card p-6">
-              <div className={`w-10 h-10 rounded-xl ${color} flex items-center justify-center mb-4`}>
-                <Icon size={18} />
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 space-y-16 sm:space-y-24">
+          {STORY.map((item, i) => (
+            <div
+              key={item.title}
+              className={`grid grid-cols-1 lg:grid-cols-2 gap-8 lg:gap-14 items-center ${
+                i % 2 === 1 ? "lg:[&>*:first-child]:order-2" : ""
+              }`}
+            >
+              <div className="relative aspect-[4/3] overflow-hidden rounded-sm">
+                <Image
+                  src={item.src}
+                  alt={item.alt}
+                  fill
+                  className="object-cover"
+                  sizes="(max-width: 1024px) 100vw, 50vw"
+                />
               </div>
-              <h3 className="font-semibold text-slate-800 mb-1.5 text-lg">{title}</h3>
-              <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
-            </div>
-          ))}
-        </div>
-        <div className="text-center mb-6">
-          <p className="text-xs font-semibold uppercase tracking-wider text-slate-400">Also available</p>
-        </div>
-        <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-4">
-          {SECONDARY_FEATURES.map(({ icon: Icon, color, title, desc }) => (
-            <div key={title} className="rounded-xl border border-slate-100 bg-slate-50/60 p-4">
-              <div className={`w-8 h-8 rounded-lg ${color} flex items-center justify-center mb-3`}>
-                <Icon size={15} />
+              <div className="max-w-md">
+                <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 mb-3">
+                  {String(i + 1).padStart(2, "0")}
+                </p>
+                <h3 className="text-2xl sm:text-3xl font-bold tracking-tight mb-3">{item.title}</h3>
+                <p className="text-slate-500 leading-relaxed">{item.desc}</p>
               </div>
-              <h3 className="font-semibold text-slate-700 text-sm mb-1">{title}</h3>
-              <p className="text-xs text-slate-500 leading-relaxed">{desc}</p>
             </div>
           ))}
         </div>
       </section>
 
-      {/* How it works */}
-      <section id="how-it-works" className="bg-slate-50 py-16 sm:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="text-center max-w-xl mx-auto mb-12">
-            <p className="page-kicker">Simple process</p>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">How it works</h2>
-            <p className="text-slate-500">Upload résumé + paste job → explainable alignment.</p>
-          </div>
-          <div className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-6">
-            {STEPS.map(({ icon: Icon, title, desc }, i) => (
-              <div key={title} className="relative">
-                <div className="card p-5 h-full">
-                  <div className="flex items-center gap-3 mb-3">
-                    <div className="w-9 h-9 rounded-full bg-indigo-600 text-white flex items-center justify-center font-bold text-sm shrink-0">
-                      {i + 1}
-                    </div>
-                    <Icon size={18} className="text-indigo-500" />
-                  </div>
-                  <h3 className="font-semibold text-slate-800 mb-1.5">{title}</h3>
-                  <p className="text-sm text-slate-500 leading-relaxed">{desc}</p>
-                </div>
-              </div>
+      {/* How it works — text strip, no card grid */}
+      <section id="how-it-works" className="relative py-20 sm:py-28 overflow-hidden">
+        <Image
+          src="/images/joblens-hero-career.jpg"
+          alt=""
+          fill
+          className="object-cover"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-slate-950/85" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight mb-10 max-w-lg">
+            How it works
+          </h2>
+          <ol className="grid grid-cols-1 sm:grid-cols-2 lg:grid-cols-4 gap-8 sm:gap-10">
+            {[
+              "Upload your résumé",
+              "Paste a job description",
+              "Review evidence and gaps",
+              "Improve what you already have",
+            ].map((label, i) => (
+              <li key={label} className="text-white">
+                <span className="block text-indigo-300 text-sm font-semibold mb-2">{i + 1}</span>
+                <span className="text-lg font-semibold leading-snug">{label}</span>
+              </li>
             ))}
+          </ol>
+          <div className="mt-12">
+            <Link
+              href="/match"
+              className="inline-flex items-center rounded-lg bg-white text-slate-900 text-sm font-semibold py-3 px-6 hover:bg-slate-100 transition-colors"
+            >
+              Analyze Resume Against a Job
+            </Link>
           </div>
         </div>
       </section>
 
-      {/* Demo preview */}
-      <section id="demo" className="max-w-6xl mx-auto px-4 sm:px-6 py-16 sm:py-20">
-        <div className="text-center max-w-xl mx-auto mb-12">
-          <p className="page-kicker">See it in action</p>
-          <h2 className="text-2xl sm:text-3xl font-bold mb-3">Explainability, not keyword theater</h2>
-          <p className="text-slate-500">
-            Structured requirement analysis and evidence-based matching — so you know why a score landed where it did.
-          </p>
-        </div>
-
-        <div className="rounded-2xl border border-slate-200 shadow-xl overflow-hidden max-w-3xl mx-auto">
-          <div className="bg-slate-100 border-b border-slate-200 px-4 py-2.5 flex items-center gap-2">
-            <span className="w-2.5 h-2.5 rounded-full bg-red-400" />
-            <span className="w-2.5 h-2.5 rounded-full bg-amber-400" />
-            <span className="w-2.5 h-2.5 rounded-full bg-green-400" />
-            <span className="ml-3 text-xs text-slate-400 bg-white rounded-full px-3 py-1 border border-slate-200">joblens.app/match</span>
+      {/* Alignment snapshot — compact, not a fake browser chrome */}
+      <section className="py-16 sm:py-24 bg-slate-50">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 grid grid-cols-1 lg:grid-cols-2 gap-10 lg:gap-16 items-center">
+          <div className="relative aspect-[4/3] overflow-hidden">
+            <Image
+              src="/images/joblens-workspace.jpg"
+              alt="Workspace ready for résumé and job analysis"
+              fill
+              className="object-cover"
+              sizes="(max-width: 1024px) 100vw, 50vw"
+            />
           </div>
-          <div className="bg-white p-5 sm:p-7 space-y-5">
-            <div className="flex flex-wrap items-end justify-between gap-3">
-              <div>
-                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">Your Alignment</p>
-                <p className="text-4xl font-bold text-slate-900">87% <span className="text-lg font-semibold text-slate-600">Strong alignment</span></p>
-              </div>
-              <p className="text-xs text-slate-400 max-w-xs">Not a hiring prediction — evidence vs this job only.</p>
-            </div>
-            <div className="space-y-2">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-[0.16em] text-indigo-600 mb-3">
+              What you get
+            </p>
+            <h2 className="text-2xl sm:text-4xl font-bold tracking-tight mb-4">
+              Transparent alignment
+            </h2>
+            <p className="text-slate-500 leading-relaxed mb-8">
+              Overall alignment with required vs preferred skills, strong evidence, related experience, and honest gaps — never a hiring prediction.
+            </p>
+            <dl className="space-y-4 border-t border-slate-200 pt-6">
               {[
-                { label: "Required Skills", value: 93 },
-                { label: "Experience", value: 86 },
-                { label: "Preferred Skills", value: 69 },
+                { k: "Overall Alignment", v: "87% · Strong alignment" },
+                { k: "Required Skills", v: "93%" },
+                { k: "Experience", v: "86%" },
+                { k: "Preferred Skills", v: "69%" },
+                { k: "Strong evidence", v: "Python · FastAPI · SQL" },
+                { k: "Needs stronger evidence", v: "AWS · Kubernetes" },
               ].map((row) => (
-                <div key={row.label}>
-                  <div className="flex justify-between text-sm mb-1">
-                    <span className="text-slate-600">{row.label}</span>
-                    <span className="font-semibold tabular-nums">{row.value}%</span>
-                  </div>
-                  <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
-                    <div className="h-full bg-indigo-500 rounded-full" style={{ width: `${row.value}%` }} />
-                  </div>
+                <div key={row.k} className="flex flex-col sm:flex-row sm:items-baseline sm:justify-between gap-1 sm:gap-4">
+                  <dt className="text-sm text-slate-500">{row.k}</dt>
+                  <dd className="text-sm font-semibold text-slate-900">{row.v}</dd>
                 </div>
               ))}
-            </div>
-            <div className="grid grid-cols-1 sm:grid-cols-2 gap-4 text-sm">
-              <div className="rounded-xl border border-emerald-100 bg-emerald-50/50 p-3">
-                <p className="font-semibold text-emerald-800 mb-2">Strong evidence</p>
-                <ul className="space-y-1 text-slate-700">
-                  <li>✓ Python</li>
-                  <li>✓ FastAPI</li>
-                  <li>✓ SQL</li>
-                </ul>
-              </div>
-              <div className="rounded-xl border border-amber-100 bg-amber-50/50 p-3">
-                <p className="font-semibold text-amber-800 mb-2">Needs stronger evidence</p>
-                <ul className="space-y-1 text-slate-700">
-                  <li>△ AWS — related cloud tools present</li>
-                  <li>△ Kubernetes — Docker is related, not identical</li>
-                </ul>
-              </div>
-            </div>
+            </dl>
           </div>
         </div>
       </section>
 
-      {/* Privacy / trust */}
-      <section id="privacy" className="bg-slate-900 text-white py-16 sm:py-20">
-        <div className="max-w-6xl mx-auto px-4 sm:px-6">
-          <div className="text-center max-w-xl mx-auto mb-12">
-            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-400 mb-2">Built with trust in mind</p>
-            <h2 className="text-2xl sm:text-3xl font-bold mb-3">Your career data, handled responsibly</h2>
-            <p className="text-slate-400">No pressure to invent keywords — scores you can audit.</p>
+      {/* Secondary tools — quiet text row, not a card wall */}
+      <section className="py-12 border-y border-slate-100">
+        <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row sm:items-center gap-4 sm:gap-8">
+          <p className="text-xs font-semibold uppercase tracking-[0.16em] text-slate-400 shrink-0">
+            Also available
+          </p>
+          <div className="flex flex-wrap gap-x-6 gap-y-2 text-sm text-slate-600">
+            <Link href="/jobs" className="hover:text-indigo-600 transition-colors">Job Tracker</Link>
+            <Link href="/cover-letter" className="hover:text-indigo-600 transition-colors">Cover Letter</Link>
+            <Link href="/reminders" className="hover:text-indigo-600 transition-colors">Reminders</Link>
+            <Link href="/dashboard" className="hover:text-indigo-600 transition-colors">Dashboard</Link>
           </div>
-          <div className="grid grid-cols-1 sm:grid-cols-3 gap-6">
-            {TRUST_POINTS.map(({ icon: Icon, title, desc }) => (
-              <div key={title} className="bg-white/5 border border-white/10 rounded-xl p-5">
-                <div className="w-9 h-9 rounded-lg bg-indigo-500/20 flex items-center justify-center mb-3">
-                  <Icon size={16} className="text-indigo-300" />
-                </div>
-                <h3 className="font-semibold mb-1.5">{title}</h3>
-                <p className="text-sm text-slate-400 leading-relaxed">{desc}</p>
-              </div>
-            ))}
+        </div>
+      </section>
+
+      {/* Trust on photo */}
+      <section id="trust" className="relative py-20 sm:py-28 overflow-hidden">
+        <Image
+          src="/images/joblens-interview.jpg"
+          alt=""
+          fill
+          className="object-cover object-center"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-slate-950/80" />
+        <div className="relative max-w-6xl mx-auto px-4 sm:px-6">
+          <h2 className="text-2xl sm:text-4xl font-bold text-white tracking-tight mb-10 max-w-xl">
+            Your career data, handled responsibly
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-3 gap-10 text-slate-200">
+            <div>
+              <h3 className="font-semibold text-white mb-2">No account required</h3>
+              <p className="text-sm leading-relaxed text-slate-300">
+                Analyze immediately. Sign in only if you want to save.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-white mb-2">Your data stays yours</h3>
+              <p className="text-sm leading-relaxed text-slate-300">
+                Résumés and jobs are processed for results — never sold or shared.
+              </p>
+            </div>
+            <div>
+              <h3 className="font-semibold text-white mb-2">Explainable decisions</h3>
+              <p className="text-sm leading-relaxed text-slate-300">
+                Every major claim links back to résumé evidence.
+              </p>
+            </div>
           </div>
         </div>
       </section>
 
       {/* Final CTA */}
-      <section className="max-w-4xl mx-auto px-4 sm:px-6 py-16 sm:py-20 text-center">
-        <h2 className="text-2xl sm:text-3xl font-bold mb-3">Ready to make your next application more informed?</h2>
-        <p className="text-slate-500 mb-8 max-w-md mx-auto">
-          Upload a résumé, paste a job, and see the evidence behind your alignment score.
-        </p>
-        <CtaButtons className="justify-center" />
+      <section className="relative py-20 sm:py-28 overflow-hidden">
+        <Image
+          src="/images/joblens-resume-review.jpg"
+          alt=""
+          fill
+          className="object-cover"
+          sizes="100vw"
+        />
+        <div className="absolute inset-0 bg-white/88" />
+        <div className="relative max-w-3xl mx-auto px-4 sm:px-6 text-center">
+          <h2 className="text-2xl sm:text-4xl font-bold tracking-tight mb-4">
+            Ready to make your next application more informed?
+          </h2>
+          <p className="text-slate-600 mb-8 leading-relaxed">
+            Upload a résumé, paste a job, and see the evidence behind your alignment score.
+          </p>
+          <CtaButtons className="justify-center" />
+        </div>
       </section>
 
-      <footer className="border-t border-slate-100 py-8">
+      <footer className="border-t border-slate-100 py-8 bg-white">
         <div className="max-w-6xl mx-auto px-4 sm:px-6 flex flex-col sm:flex-row items-center justify-between gap-4">
           <div className="flex items-center gap-2">
             <div className="w-6 h-6 bg-indigo-600 rounded-md flex items-center justify-center">

@@ -139,7 +139,7 @@ export default function ProfilePage() {
       setLoading(false);
       setLoadError((prev) =>
         prev ||
-        "Profile is taking too long to load. The backend may be unreachable — check BACKEND_URL, or open Job Matcher to upload a resume without a profile.",
+        "Profile is taking too long to load. The CRM backend may be unreachable — on Vercel, set BACKEND_URL to this repo’s FastAPI (/health must return {\"status\":\"healthy\"}), not joblens-api.onrender.com.",
       );
     }, 22_000);
     return () => window.clearTimeout(t);

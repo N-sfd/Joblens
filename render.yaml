@@ -1,12 +1,17 @@
 # JobLens / ApplyPilot — Render Blueprint
 # Docs: https://render.com/docs/blueprint-spec
 #
+# IMPORTANT: Do NOT point Vercel BACKEND_URL at the unrelated salary-prediction
+# service often named `joblens-api` (health returns model_rmse / status "ok").
+# This CRM FastAPI must return: GET /health → {"status":"healthy"}
+#
 # After first deploy:
 # 1. Attach the Postgres DB (created below) — DATABASE_URL is linked automatically.
 # 2. Set all sync:false secrets in the Render dashboard.
 # 3. Update Zoho redirect URI to your production frontend callback URL.
 # 4. Set Clerk production keys + ATS_AUTH_ENFORCE=true.
-# 5. On Vercel: BACKEND_URL=https://<this-service>.onrender.com
+# 5. On Vercel: BACKEND_URL=https://<joblens-crm-api>.onrender.com
+#    (no trailing slash, no /api), then redeploy the frontend.
 
 databases:
   - name: joblens-db
@@ -16,7 +21,7 @@ databases:
 
 services:
   - type: web
-    name: joblens-api
+    name: joblens-crm-api
     runtime: python
     rootDir: backend
     plan: free
@@ -37,6 +42,8 @@ services:
         generateValue: true
       - key: ENV
         value: production
+      - key: SEEKER_PRODUCT_ENABLED
+        value: "true"
       - key: ATS_AUTH_ENFORCE
         value: "true"
       - key: ALLOWED_ORIGINS

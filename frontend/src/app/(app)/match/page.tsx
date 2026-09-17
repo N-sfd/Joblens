@@ -523,10 +523,24 @@ export default function MatchPage() {
 
   return (
     <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-28 sm:pb-8">
-      <header className="space-y-2">
-        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
-          JobLens — AI Career Intelligence
-        </h1>
+      <header className="space-y-4">
+        <div className="relative h-28 sm:h-36 overflow-hidden rounded-2xl border border-slate-200">
+          {/* eslint-disable-next-line @next/next/no-img-element */}
+          <img
+            src="/images/joblens-hero-career.jpg"
+            alt=""
+            className="absolute inset-0 h-full w-full object-cover object-center"
+          />
+          <div className="absolute inset-0 bg-gradient-to-r from-slate-900/70 via-slate-900/45 to-indigo-900/30" />
+          <div className="relative h-full flex flex-col justify-end p-4 sm:p-5">
+            <p className="text-[11px] font-semibold uppercase tracking-wider text-indigo-200 mb-1">
+              Evidence-based decision support
+            </p>
+            <h1 className="text-xl sm:text-2xl font-bold text-white tracking-tight">
+              JobLens — AI Career Intelligence
+            </h1>
+          </div>
+        </div>
         <p className="text-slate-600 max-w-2xl text-sm sm:text-base leading-relaxed">
           Understand how your résumé aligns with a job — with transparent scoring, evidence, and actionable gaps.
         </p>

@@ -81,6 +81,52 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
     );
   }
 
+  // Wrong BACKEND_URL often points at the unrelated salary-prediction "joblens-api"
+  // (health includes model_rmse). Surface a clear 502 instead of opaque 404s.
+  if (
+    upstream.status === 404 &&
+    (pathname.startsWith("/api/profile") ||
+      pathname.startsWith("/api/joblens") ||
+      pathname.startsWith("/api/auth") ||
+      pathname.startsWith("/api/jobs") ||
+      pathname.startsWith("/api/candidates"))
+  ) {
+    try {
+      const healthRes = await fetch(new URL("/health", origin), {
+        method: "GET",
+        redirect: "manual",
+        signal: AbortSignal.timeout(4000),
+      });
+      const healthText = await healthRes.text();
+      let healthJson: Record<string, unknown> | null = null;
+      try {
+        healthJson = JSON.parse(healthText) as Record<string, unknown>;
+      } catch {
+        healthJson = null;
+      }
+      const wrongSalaryApi =
+        healthJson != null &&
+        ("model_rmse" in healthJson ||
+          "model_loaded" in healthJson ||
+          healthJson.status === "ok");
+      const notCrmHealthy = !healthJson || healthJson.status !== "healthy";
+      if (wrongSalaryApi || notCrmHealthy) {
+        return NextResponse.json(
+          {
+            detail:
+              `BACKEND_URL (${origin}) is not this repo’s CRM FastAPI. ` +
+              `Expected /health → {"status":"healthy"}. ` +
+              `Do not use the salary-prediction joblens-api.onrender.com. ` +
+              `Deploy backend/ to Render, set Vercel BACKEND_URL to that service root (no /api), enable SEEKER_PRODUCT_ENABLED=true, then redeploy.`,
+          },
+          { status: 502 },
+        );
+      }
+    } catch {
+      /* keep original 404 */
+    }
+  }
+
   const outHeaders = new Headers();
   copyHeaders(upstream.headers, outHeaders);
 

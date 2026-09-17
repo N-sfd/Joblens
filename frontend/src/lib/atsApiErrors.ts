@@ -35,6 +35,11 @@ export function mapAtsHttpError(opts: {
       context === "candidate_create" || context === "candidate_resume"
         ? "Please review the highlighted candidate information."
         : detailMsg || "Please review the submitted information.";
+  } else if (status === 404) {
+    message =
+      detailMsg && /not found/i.test(detailMsg)
+        ? "This API route was not found on the configured backend. On Vercel, set BACKEND_URL to this repo’s CRM FastAPI (health must return {\"status\":\"healthy\"}), not the salary-prediction JobLens API — then redeploy."
+        : detailMsg || `Request failed (${status}).`;
   } else if (status === 429) {
     message = "Too many requests. Please wait and try again.";
   } else if (status >= 500) {
