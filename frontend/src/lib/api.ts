@@ -52,6 +52,9 @@ export class ApiError extends Error {
 }
 
 function errorContextForPath(path: string): AtsErrorContext {
+  if (path.startsWith("/api/profile") || path.startsWith("/api/auth/me") || path.startsWith("/api/account")) {
+    return "seeker_auth";
+  }
   if (path.includes("/check-duplicates")) return "candidate_duplicate";
   if (path.includes("/resumes") || path.includes("parse-resume")) return "candidate_resume";
   if (path.startsWith("/api/candidates") || path.startsWith("/api/employees")) return "candidate_create";
@@ -165,7 +168,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const host = typeof window !== "undefined" ? window.location.hostname : "";
     const onDeployed = Boolean(host) && host !== "localhost" && host !== "127.0.0.1";
     const hint = aborted
-      ? " The API did not respond in time. Check that BACKEND_URL points at this CRM FastAPI and the Render service is awake."
+      ? " The API timed out. Vercel BACKEND_URL must be this repo’s CRM FastAPI (/health → {\"status\":\"healthy\"}), not joblens-api.onrender.com. Deploy backend/ on Render (joblens-crm-api), wake the service, then retry."
       : onDeployed
         ? " Check BACKEND_URL on Vercel (same-origin /api proxy) and that ALLOWED_ORIGINS includes this site."
         : " Is the backend running? Start it on :8000 or set NEXT_PUBLIC_API_URL.";

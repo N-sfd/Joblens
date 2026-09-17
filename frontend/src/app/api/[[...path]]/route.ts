@@ -24,7 +24,9 @@ function backendOrigin(): string | null {
 
 function copyHeaders(from: Headers, to: Headers) {
   from.forEach((value, key) => {
-    if (!HOP_BY_HOP.has(key.toLowerCase())) to.set(key, value);
+    const lower = key.toLowerCase();
+    if (HOP_BY_HOP.has(lower) || lower === "set-cookie") return;
+    to.set(key, value);
   });
 }
 
@@ -64,20 +66,26 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
     const body =
       req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
 
+    // Bound wait time so a sleeping/wrong Render host fails fast instead of
+    // hanging until the browser's 20s AbortController fires.
     upstream = await fetch(target, {
       method: req.method,
       headers,
       body: body && body.byteLength > 0 ? body : undefined,
       // Do not follow redirects that could strip Authorization.
       redirect: "manual",
+      signal: AbortSignal.timeout(12_000),
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "upstream unreachable";
+    const timedOut = /abort|timeout/i.test(msg);
     return NextResponse.json(
       {
-        detail: `Backend unreachable at ${origin}${pathname} (${msg}). Check BACKEND_URL on Vercel and that the Render service is awake.`,
+        detail: timedOut
+          ? `BACKEND_URL (${origin}) timed out after 12s. Deploy this repo’s backend/ as Render service joblens-crm-api, confirm /health returns {"status":"healthy"}, set Vercel BACKEND_URL to that URL (not salary-prediction joblens-api.onrender.com), then redeploy.`
+          : `Backend unreachable at ${origin}${pathname} (${msg}). Check BACKEND_URL on Vercel and that the Render service is awake.`,
       },
-      { status: 502 },
+      { status: 504 },
     );
   }
 
@@ -129,6 +137,19 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
 
   const outHeaders = new Headers();
   copyHeaders(upstream.headers, outHeaders);
+  // Node fetch exposes Set-Cookie via getSetCookie(); forEach can drop or join them.
+  outHeaders.delete("set-cookie");
+  const getSetCookie = (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;
+  const setCookies =
+    typeof getSetCookie === "function" ? getSetCookie.call(upstream.headers) : [];
+  if (setCookies.length) {
+    for (const cookie of setCookies) {
+      outHeaders.append("set-cookie", cookie);
+    }
+  } else {
+    const single = upstream.headers.get("set-cookie");
+    if (single) outHeaders.append("set-cookie", single);
+  }
 
   return new NextResponse(upstream.body, {
     status: upstream.status,

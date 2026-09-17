@@ -20,7 +20,12 @@ function mapAtsHttpError({ status, detail, requestId, context = "generic", netwo
   const detailMsg = extractDetailMessage(detail);
   let message;
   if (networkFailure) message = "The CRM server could not be reached.";
-  else if (status === 401) message = "Your session has expired. Please sign in again.";
+  else if (status === 401) {
+    message =
+      context === "seeker_auth"
+        ? "Sign in with your JobLens email and password to continue."
+        : "Your session has expired. Please sign in again.";
+  }
   else if (status === 403) {
     message =
       context === "candidate_create" || context === "candidate_resume"
@@ -53,6 +58,13 @@ describe("mapAtsHttpError", () => {
     assert.equal(
       mapAtsHttpError({ status: 401 }),
       "Your session has expired. Please sign in again.",
+    );
+  });
+
+  it("maps seeker profile 401 to email/password sign-in (not Clerk session)", () => {
+    assert.equal(
+      mapAtsHttpError({ status: 401, context: "seeker_auth" }),
+      "Sign in with your JobLens email and password to continue.",
     );
   });
 

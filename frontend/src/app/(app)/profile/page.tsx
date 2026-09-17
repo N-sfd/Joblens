@@ -2,7 +2,7 @@
 
 import { useCallback, useEffect, useState } from "react";
 import Link from "next/link";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type {
   Profile,
   ProfileUpdate,
@@ -61,6 +61,7 @@ export default function ProfilePage() {
   const [profile, setProfile] = useState<Profile | null>(null);
   const [loading, setLoading] = useState(true);
   const [loadError, setLoadError] = useState<string | null>(null);
+  const [needsSignIn, setNeedsSignIn] = useState(false);
   const [showAuth, setShowAuth] = useState(false);
   const [section, setSection] = useState<SectionKey>("personal");
   const [saveState, setSaveState] = useState<SaveState>("idle");
@@ -119,11 +120,19 @@ export default function ProfilePage() {
   const load = useCallback(async () => {
     setLoading(true);
     setLoadError(null);
+    setNeedsSignIn(false);
     try {
       const p = await api.getProfile();
       applyProfile(p);
     } catch (e) {
-      setLoadError(e instanceof Error ? e.message : "Failed to load profile.");
+      const status = e instanceof ApiError ? e.status : 0;
+      const msg = e instanceof Error ? e.message : "Failed to load profile.";
+      if (status === 401 || /sign in|not authenticated|session/i.test(msg)) {
+        setNeedsSignIn(true);
+        setLoadError(null);
+      } else {
+        setLoadError(msg);
+      }
       setProfile(null);
     } finally {
       setLoading(false);
@@ -277,32 +286,42 @@ export default function ProfilePage() {
     );
   }
 
-  if (loadError) {
+  if (needsSignIn || loadError) {
     return (
       <div className="max-w-2xl mx-auto py-10 px-4 space-y-4">
-        <ErrorBanner message={loadError} onRetry={load} />
-        <div className="card p-5 space-y-3">
-          <p className="text-sm text-slate-600 dark:text-slate-300">
-            Sign in with your JobLens account (email/password) to view and edit your profile.
-            This is separate from Clerk sign-in used for the ATS.
-          </p>
+        {loadError && !needsSignIn && <ErrorBanner message={loadError} onRetry={load} />}
+        <div className="rounded-2xl border border-slate-200 bg-white p-6 space-y-4 shadow-sm">
+          <div>
+            <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">Your account</p>
+            <h1 className="text-xl font-bold text-slate-900">Sign in to open your profile</h1>
+            <p className="text-sm text-slate-600 mt-2 leading-relaxed">
+              Profile editing uses your JobLens email/password account. This is separate from Clerk sign-in used for the staffing ATS.
+            </p>
+          </div>
           <div className="flex flex-wrap gap-3">
             <button
               type="button"
               onClick={() => setShowAuth(true)}
               className="btn-primary"
             >
-              Log in
+              Log in / Create account
             </button>
             <Link href="/match" className="btn-secondary inline-flex items-center">
-              Job Matcher — Your Resume / Upload file
-            </Link>
-            <Link href="/ats" className="text-sm text-indigo-600 hover:underline self-center">
-              Staffing CRM (/ats)
+              Continue to Career Intelligence
             </Link>
           </div>
+          <p className="text-xs text-slate-400">
+            You can analyze a résumé on /match without signing in. Sign in only if you want a saved profile.
+          </p>
         </div>
-        {showAuth && <AuthModal onClose={() => setShowAuth(false)} />}
+        {showAuth && (
+          <AuthModal
+            onClose={() => {
+              setShowAuth(false);
+              void load();
+            }}
+          />
+        )}
       </div>
     );
   }

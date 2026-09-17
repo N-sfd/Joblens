@@ -2,6 +2,7 @@
 
 export type AtsErrorContext =
   | "generic"
+  | "seeker_auth"
   | "candidate_create"
   | "candidate_resume"
   | "candidate_duplicate";
@@ -20,7 +21,10 @@ export function mapAtsHttpError(opts: {
   if (networkFailure) {
     message = "The CRM server could not be reached.";
   } else if (status === 401) {
-    message = "Your session has expired. Please sign in again.";
+    message =
+      context === "seeker_auth"
+        ? "Sign in with your JobLens email and password to continue."
+        : "Your session has expired. Please sign in again.";
   } else if (status === 403) {
     message =
       context === "candidate_create" || context === "candidate_resume"
