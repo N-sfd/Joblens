@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import type { ImportedEmailDetail, JobRequirement } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import LinkJobPicker from "@/components/LinkJobPicker";
+import { useAtsRole } from "@/lib/atsRole";
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
@@ -50,6 +51,7 @@ function importStatusClass(s: string) {
 export default function EmailDetailPage() {
   const params = useParams();
   const router = useRouter();
+  const { canWrite } = useAtsRole();
   const emailId = Number(params.id);
 
   const [email, setEmail] = useState<ImportedEmailDetail | null>(null);
@@ -126,16 +128,17 @@ export default function EmailDetailPage() {
     return (
       <div className="p-8 max-w-3xl mx-auto">
         <ErrorBanner message={error || "Email not found."} className="mb-4" />
-        <Link href="/ats/email-inbox" className="text-sm text-indigo-600 hover:text-indigo-800">Back to inbox</Link>
+        <Link href="/ats/zoho-inbox" className="text-sm text-indigo-600 hover:text-indigo-800">Back to inbox</Link>
       </div>
     );
   }
 
   const body = email.body_text || "(No plain-text body — HTML only or empty.)";
+  const alreadyImported = Boolean(email.job_requirement_id);
 
   return (
     <div className="p-4 sm:p-8 max-w-4xl mx-auto">
-      <Link href="/ats/email-inbox" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-4">
+      <Link href="/ats/zoho-inbox" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-4">
         <ArrowLeft size={14} /> Back to Inbox
       </Link>
 
@@ -164,12 +167,25 @@ export default function EmailDetailPage() {
         )}
       </div>
 
+      {alreadyImported && (
+        <div className="mb-4 rounded-xl border border-emerald-200 bg-emerald-50 px-4 py-3 text-sm text-emerald-950 space-y-2">
+          <p className="font-medium">Already imported</p>
+          <div className="flex flex-wrap gap-3">
+            <Link href={`/ats/jobs/${email.job_requirement_id}`} className="text-indigo-700 font-medium hover:underline">
+              Open Job
+            </Link>
+          </div>
+        </div>
+      )}
+
       <div className="flex flex-wrap gap-2 mb-6">
-        <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={classify}>
-          {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
-          Classify
-        </button>
-        {!email.job_requirement_id ? (
+        {canWrite && (
+          <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={classify}>
+            {busy ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
+            Classify
+          </button>
+        )}
+        {!email.job_requirement_id && canWrite ? (
           <>
             <button
               type="button"
@@ -188,17 +204,21 @@ export default function EmailDetailPage() {
               <Link2 size={14} /> Link to Existing Job
             </button>
           </>
-        ) : (
+        ) : email.job_requirement_id ? (
           <Link href={`/ats/jobs/${email.job_requirement_id}`} className="btn-primary flex items-center gap-2">
-            <Briefcase size={14} /> View Job #{email.job_requirement_id}
+            <Briefcase size={14} /> Open Job
           </Link>
+        ) : null}
+        {canWrite && (
+          <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={ignore}>
+            <XCircle size={14} /> Ignore
+          </button>
         )}
-        <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={ignore}>
-          <XCircle size={14} /> Ignore
-        </button>
-        <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={archive}>
-          <Archive size={14} /> Archive
-        </button>
+        {canWrite && (
+          <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={archive}>
+            <Archive size={14} /> Archive
+          </button>
+        )}
       </div>
 
       {linking && <LinkJobPicker onClose={() => setLinking(false)} onLink={linkToJob} />}

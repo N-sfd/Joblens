@@ -9,6 +9,7 @@ import { api } from "@/lib/api";
 import type { ImportedEmail, JobRequirement, ZohoConnectionStatus } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import LinkJobPicker from "@/components/LinkJobPicker";
+import { useAtsRole } from "@/lib/atsRole";
 
 function formatDate(iso: string | null) {
   if (!iso) return "—";
@@ -63,6 +64,7 @@ type Filter = "all" | "needs_review" | "job_req" | "unclassified";
 
 export default function EmailInboxPage() {
   const router = useRouter();
+  const { canWrite } = useAtsRole();
   const [conn, setConn] = useState<ZohoConnectionStatus | null>(null);
   const [emails, setEmails] = useState<ImportedEmail[]>([]);
   const [loading, setLoading] = useState(true);
@@ -140,7 +142,7 @@ export default function EmailInboxPage() {
     setMessage(null);
     try {
       const res = await api.syncZohoMail();
-      setMessage(`Sync complete: ${res.imported} imported, ${res.skipped} skipped.`);
+      setMessage(`Sync complete: ${res.total_fetched} retrieved, ${res.imported} new, ${res.skipped} skipped.`);
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");
@@ -174,10 +176,10 @@ export default function EmailInboxPage() {
       <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3 mb-6">
         <div>
           <p className="page-kicker">ATS</p>
-          <h1 className="page-title">Zoho Email Inbox</h1>
-          <p className="page-subtitle">Classify recruiter emails and create job requirements.</p>
+          <h1 className="page-title">Zoho Inbox</h1>
+          <p className="page-subtitle">Sync recruiter emails, parse jobs, and save into the unified Jobs module after review.</p>
         </div>
-        {connected && (
+        {connected && canWrite && (
           <div className="flex flex-wrap gap-2 shrink-0">
             <button type="button" className="btn-secondary flex items-center gap-2" disabled={classifying} onClick={classifyAll}>
               {classifying ? <Loader2 size={14} className="animate-spin" /> : <Sparkles size={14} />}
@@ -290,7 +292,7 @@ export default function EmailInboxPage() {
                         <td className="px-4 py-3 text-slate-500 hidden sm:table-cell">{formatDate(e.received_at)}</td>
                         <td className="px-4 py-3">
                           <span className={clsx("text-xs font-medium px-2 py-0.5 rounded-full", importStatusClass(e.import_status))}>
-                            {importStatusLabel(e.import_status)}
+                            {e.job_requirement_id ? "Already imported" : importStatusLabel(e.import_status)}
                           </span>
                         </td>
                         <td className="px-4 py-3">
@@ -298,27 +300,35 @@ export default function EmailInboxPage() {
                             <Link href={`/ats/email-inbox/${e.id}`} title="View Email" className="text-slate-400 hover:text-indigo-600">
                               <Eye size={15} />
                             </Link>
-                            {!e.job_requirement_id && (
-                              <button
-                                type="button"
-                                title="Parse Job"
-                                className="text-slate-400 hover:text-indigo-600"
-                                onClick={() => router.push(`/ats/jobs/new?emailId=${e.id}`)}
+                            {e.job_requirement_id ? (
+                              <Link
+                                href={`/ats/jobs/${e.job_requirement_id}`}
+                                title="Open Job"
+                                className="text-xs text-indigo-600 hover:underline"
                               >
-                                <Briefcase size={15} />
-                              </button>
-                            )}
-                            {!e.job_requirement_id && (
-                              <button
-                                type="button"
-                                title="Link to Existing Job"
-                                className="text-slate-400 hover:text-indigo-600"
-                                onClick={() => setLinkingEmailId(e.id)}
-                              >
-                                <Link2 size={15} />
-                              </button>
-                            )}
-                            {!locked && (
+                                Open Job
+                              </Link>
+                            ) : canWrite ? (
+                              <>
+                                <button
+                                  type="button"
+                                  title="Parse Job"
+                                  className="text-slate-400 hover:text-indigo-600"
+                                  onClick={() => router.push(`/ats/jobs/new?emailId=${e.id}`)}
+                                >
+                                  <Briefcase size={15} />
+                                </button>
+                                <button
+                                  type="button"
+                                  title="Link to Existing Job"
+                                  className="text-slate-400 hover:text-indigo-600"
+                                  onClick={() => setLinkingEmailId(e.id)}
+                                >
+                                  <Link2 size={15} />
+                                </button>
+                              </>
+                            ) : null}
+                            {canWrite && !locked && (
                               <button
                                 type="button"
                                 title="Ignore"
@@ -329,7 +339,7 @@ export default function EmailInboxPage() {
                                 <XCircle size={15} />
                               </button>
                             )}
-                            {!locked && (
+                            {canWrite && !locked && (
                               <button
                                 type="button"
                                 title="Archive"

@@ -9,7 +9,7 @@ import ErrorBanner from "@/components/ErrorBanner";
 import { useAtsRole } from "@/lib/atsRole";
 
 export default function ZohoSettingsPage() {
-  const { isAdmin } = useAtsRole();
+  const { isAdmin, canWrite, isReadOnly } = useAtsRole();
   const [conn, setConn] = useState<ZohoConnectionStatus | null>(null);
   const [loading, setLoading] = useState(true);
   const [busy, setBusy] = useState(false);
@@ -63,7 +63,10 @@ export default function ZohoSettingsPage() {
     setMessage(null);
     try {
       const res = await api.syncZohoMail();
-      setMessage(`Sync complete: ${res.imported} imported, ${res.skipped} skipped.`);
+      setMessage(
+        `Sync complete: ${res.total_fetched} retrieved, ${res.imported} new, ${res.skipped} skipped.` +
+          (res.request_id ? ` (request ${res.request_id})` : ""),
+      );
       await load();
     } catch (e) {
       setError(e instanceof Error ? e.message : "Sync failed.");
@@ -77,6 +80,7 @@ export default function ZohoSettingsPage() {
   }
 
   const connected = conn?.connected ?? false;
+  const statusMessage = conn?.status_message || (connected ? "Connected" : "Not connected");
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl mx-auto">
@@ -87,7 +91,7 @@ export default function ZohoSettingsPage() {
       <div className="mb-6">
         <p className="page-kicker">Integration</p>
         <h1 className="page-title">Zoho Mail</h1>
-        <p className="page-subtitle">Securely connect a Zoho mailbox to import recruiter job emails.</p>
+        <p className="page-subtitle">Securely connect a Zoho mailbox to import recruiter job emails into CRM + ATS.</p>
       </div>
 
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}
@@ -95,41 +99,49 @@ export default function ZohoSettingsPage() {
         <div className="mb-4 rounded-xl bg-green-50 border border-green-100 px-4 py-3 text-sm text-green-800">{message}</div>
       )}
 
+      {isReadOnly && (
+        <div className="mb-4 rounded-xl bg-amber-50 border border-amber-100 px-4 py-3 text-sm text-amber-900">
+          Read Only accounts can view connection status but cannot connect, disconnect, or synchronize Zoho.
+        </div>
+      )}
+
       <div className="card p-6 space-y-4">
-        <div className="flex flex-col sm:flex-row sm:items-center sm:justify-between gap-3">
-          <div>
+        <div className="flex flex-col sm:flex-row sm:items-start sm:justify-between gap-3">
+          <div className="space-y-1.5">
             <p className="font-medium text-slate-900 text-sm">Connection status</p>
-            <p className="text-xs text-slate-500 mt-0.5">
-              {connected
-                ? `Connected as ${conn?.mailbox_email ?? "mailbox"}`
-                : "Not connected"}
-            </p>
+            <p className="text-sm text-slate-700">{statusMessage}</p>
+            {connected && conn?.mailbox_email && (
+              <p className="text-xs text-slate-500">Connected account: {conn.mailbox_email}</p>
+            )}
+            <p className="text-xs text-slate-500">Token status: {conn?.token_status ?? "Missing"}</p>
             {conn?.last_sync_at && (
-              <p className="text-xs text-slate-400 mt-1">
-                Last sync: {new Date(conn.last_sync_at).toLocaleString()}
+              <p className="text-xs text-slate-400">
+                Last successful sync: {new Date(conn.last_sync_at).toLocaleString()}
               </p>
             )}
+            {conn?.last_sync_result && (
+              <p className="text-xs text-slate-500">Last sync result: {conn.last_sync_result}</p>
+            )}
             {conn?.last_error && (
-              <p className="text-xs text-red-600 mt-1">{conn.last_error}</p>
+              <p className="text-xs text-red-600">{conn.last_error}</p>
             )}
           </div>
           <div className="flex flex-wrap gap-2">
-            {!connected ? (
+            {canWrite && (!connected || conn?.can_reconnect) && (
               <button type="button" className="btn-primary" disabled={busy} onClick={connect}>
-                {busy ? <Loader2 size={14} className="animate-spin" /> : "Connect Zoho Mail"}
+                {busy ? <Loader2 size={14} className="animate-spin" /> : connected ? "Reconnect" : "Connect Zoho Mail"}
               </button>
-            ) : (
-              <>
-                <button type="button" className="btn-primary flex items-center gap-2" disabled={busy} onClick={sync}>
-                  {busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
-                  Sync Now
-                </button>
-                {isAdmin && (
-                  <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={disconnect}>
-                    <Unplug size={14} /> Disconnect
-                  </button>
-                )}
-              </>
+            )}
+            {canWrite && connected && (
+              <button type="button" className="btn-primary flex items-center gap-2" disabled={busy} onClick={sync}>
+                {busy ? <Loader2 size={14} className="animate-spin" /> : <RefreshCw size={14} />}
+                Sync Now
+              </button>
+            )}
+            {isAdmin && connected && (
+              <button type="button" className="btn-secondary flex items-center gap-2" disabled={busy} onClick={disconnect}>
+                <Unplug size={14} /> Disconnect
+              </button>
             )}
           </div>
         </div>
@@ -137,10 +149,10 @@ export default function ZohoSettingsPage() {
         {connected && (
           <p className="text-xs text-slate-500">
             Imported emails appear in{" "}
-            <Link href="/ats/email-inbox" className="text-indigo-600 hover:text-indigo-800 font-medium">
-              Zoho Email Inbox
+            <Link href="/ats/zoho-inbox" className="text-indigo-600 hover:text-indigo-800 font-medium">
+              Zoho Inbox
             </Link>
-            .
+            . Jobs are never created until you review and save.
           </p>
         )}
       </div>

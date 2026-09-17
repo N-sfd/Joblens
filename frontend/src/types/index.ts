@@ -260,6 +260,89 @@ export interface MatchResult {
   learning_resources: { skill: string; suggestion: string }[];
 }
 
+/** JobLens AI Career Intelligence — evidence-based match result */
+export interface CareerRequirementMatch {
+  requirement: string;
+  category: string;
+  match_level: string;
+  match_label: string;
+  score_contribution: number;
+  evidence: string | null;
+  resume_section: string | null;
+  explanation: string;
+  confidence: string;
+}
+
+export interface CareerIntelligenceResult {
+  overall_score: number;
+  category_scores: {
+    required_skills: number;
+    relevant_experience: number;
+    preferred_skills: number;
+    education: number;
+    domain_relevance: number;
+    resume_evidence: number;
+  };
+  weights?: Record<string, number>;
+  formula?: string;
+  parsed_resume?: Record<string, unknown>;
+  parsed_job?: Record<string, unknown>;
+  normalized_skills?: {
+    resume: string[];
+    required: string[];
+    preferred: string[];
+  };
+  requirement_matches: CareerRequirementMatch[];
+  evidence_map: {
+    strong_evidence: Array<Record<string, unknown>>;
+    partial_evidence: Array<Record<string, unknown>>;
+    related_evidence: Array<Record<string, unknown>>;
+    weak_or_missing_evidence: Array<Record<string, unknown>>;
+    not_demonstrated: Array<Record<string, unknown>>;
+  };
+  gap_analysis: {
+    missing_skills: string[];
+    not_demonstrated_skills: string[];
+    weak_evidence: string[];
+    related_evidence: string[];
+    resume_improvement_opportunities: Array<{ title: string; detail: string; why: string }>;
+  };
+  recommendations: Array<{ type: string; title: string; detail: string; why: string }>;
+  ats_keywords?: string[];
+  warnings?: string[];
+  analysis_id?: number | null;
+  saved?: boolean;
+  duplicate?: boolean;
+  job_title?: string | null;
+  company_name?: string | null;
+  resume_filename?: string | null;
+  ai_used?: boolean;
+}
+
+export interface CareerAnalysisListItem {
+  id: number;
+  resume_filename: string | null;
+  resume_version: number;
+  job_title: string | null;
+  company_name: string | null;
+  overall_score: number | null;
+  required_skills_score: number | null;
+  preferred_skills_score: number | null;
+  experience_score: number | null;
+  missing_skills: string[];
+  not_demonstrated_skills: string[];
+  created_at: string | null;
+}
+
+export interface CareerAnalysesListResponse {
+  items: CareerAnalysisListItem[];
+  repeated_gaps: Array<{ skill: string; count: number; of: number; message: string }>;
+}
+
+export interface CareerAnalysisDetail extends CareerAnalysisListItem {
+  result: CareerIntelligenceResult;
+}
+
 export interface ExperienceEntry { title: string; company: string; start?: string; end?: string; description?: string }
 export interface EducationEntry { school: string; degree?: string; start?: string; end?: string }
 export interface ProjectEntry { name: string; description?: string; url?: string; technologies?: string[] }
@@ -1552,16 +1635,30 @@ export interface DashboardSummaryResponse {
 export interface ZohoConnectionStatus {
   connected: boolean;
   status: string;
+  status_message: string;
+  token_status: string;
   mailbox_email: string | null;
   zoho_account_id: string | null;
   last_sync_at: string | null;
+  last_sync_result: string | null;
   last_error: string | null;
+  can_reconnect: boolean;
 }
 
 export interface ZohoSyncResponse {
   imported: number;
   skipped: number;
   total_fetched: number;
+  request_id?: string | null;
+}
+
+export interface AlreadyImportedDetail {
+  code: "already_imported" | string;
+  message: string;
+  job_id: number;
+  recruiter_contact_id?: number | null;
+  vendor_id?: number | null;
+  client_id?: number | null;
 }
 
 export interface ImportedEmail {

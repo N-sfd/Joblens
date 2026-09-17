@@ -24,6 +24,8 @@ const LEGACY_ATS_EXACT: Record<string, string> = {
   "/ats/companies": "/ats/contacts?view=companies",
   "/ats/interviews": "/ats/pipeline?stage_group=interview",
   "/ats/offers": "/ats/pipeline?stage_group=offer",
+  // Canonical CRM+ATS Zoho Inbox path (product name); implementation lives at email-inbox.
+  "/ats/zoho-inbox": "/ats/email-inbox",
 };
 
 function mapSubmissionsQueryToPipeline(search: string): string {
@@ -66,6 +68,12 @@ function applyLegacyRedirects(req: NextRequest) {
     return NextResponse.redirect(url);
   }
   // /ats/employees/:id[/edit] → /ats/candidates/:id[/edit]
+  if (pathname.startsWith("/ats/zoho-inbox/")) {
+    const target = pathname.replace("/ats/zoho-inbox", "/ats/email-inbox");
+    const url = new URL(target, req.url);
+    url.search = req.nextUrl.search;
+    return NextResponse.redirect(url);
+  }
   if (pathname.startsWith("/ats/employees/")) {
     const target = pathname.replace("/ats/employees", "/ats/candidates");
     const url = new URL(target, req.url);

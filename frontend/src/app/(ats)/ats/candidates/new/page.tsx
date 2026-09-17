@@ -3,13 +3,16 @@
 import { Suspense, useRef, useState } from "react";
 import Link from "next/link";
 import { useRouter, useSearchParams } from "next/navigation";
+import { useAuth } from "@clerk/nextjs";
 import { ArrowLeft, FileUp, Loader2, Sparkles } from "lucide-react";
 import clsx from "clsx";
-import { api } from "@/lib/api";
+import { api, ApiError } from "@/lib/api";
 import type { CandidateDuplicateMatch, EmployeeCreate, EmployeeResumeParsed } from "@/types";
 import { CANDIDATE_DISPLAY_STATUSES } from "@/types";
 import ErrorBanner from "@/components/ErrorBanner";
 import { useAtsRole } from "@/lib/atsRole";
+import { isClerkConfigured } from "@/lib/clerkConfigured";
+import { mapAtsHttpError } from "@/lib/atsApiErrors";
 
 const VISA_STATUSES = ["US Citizen", "Green Card", "H1B", "H4 EAD", "OPT", "CPT", "Other"] as const;
 const AVAILABILITIES = ["Immediate", "One Week", "Two Weeks", "Thirty Days", "On Project", "Not Available"] as const;
@@ -182,10 +185,26 @@ function CandidateFormFields({
   );
 }
 
+function formatSaveError(e: unknown): string {
+  if (e instanceof ApiError) {
+    return mapAtsHttpError({
+      status: e.status,
+      detail: e.detail,
+      requestId: e.requestId,
+      context: "candidate_create",
+      networkFailure: e.status === 0,
+    });
+  }
+  if (e instanceof Error) return e.message;
+  return "The candidate could not be saved. Please try again.";
+}
+
 function NewCandidateInner() {
   const router = useRouter();
   const searchParams = useSearchParams();
-  const { isAdmin } = useAtsRole();
+  const { isAdmin, canWrite, isReadOnly, loading: roleLoading } = useAtsRole();
+  const clerkOn = isClerkConfigured();
+  const { isLoaded, isSignedIn } = useAuth();
   const mode = searchParams.get("mode") === "resume" ? "resume" : "manual";
   const fileInputRef = useRef<HTMLInputElement>(null);
 
@@ -195,9 +214,13 @@ function NewCandidateInner() {
   const [parsing, setParsing] = useState(false);
   const [saving, setSaving] = useState(false);
   const [error, setError] = useState<string | null>(null);
+  const [successHint, setSuccessHint] = useState<string | null>(null);
   const [dupMatches, setDupMatches] = useState<CandidateDuplicateMatch[]>([]);
   const [dupBlocked, setDupBlocked] = useState(false);
   const [forceNew, setForceNew] = useState(false);
+
+  const sessionReady = !clerkOn || (isLoaded && Boolean(isSignedIn));
+  const verifyingSession = clerkOn && !isLoaded;
 
   const update = (field: keyof EmployeeCreate) => (
     e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
@@ -208,6 +231,10 @@ function NewCandidateInner() {
       setError("Choose a resume file first.");
       return;
     }
+    if (!sessionReady) {
+      setError("Verifying your session…");
+      return;
+    }
     setParsing(true);
     setError(null);
     try {
@@ -215,13 +242,21 @@ function NewCandidateInner() {
       setForm(applyParsedToForm(result));
       setParsed(true);
     } catch (e) {
-      setError(e instanceof Error ? e.message : "Resume parsing failed.");
+      setError(formatSaveError(e));
     } finally {
       setParsing(false);
     }
   };
 
   const save = async () => {
+    if (!sessionReady) {
+      setError("Verifying your session…");
+      return;
+    }
+    if (isReadOnly || !canWrite) {
+      setError("Your account does not have permission to add candidates.");
+      return;
+    }
     if (!form.name?.trim() || !form.email?.trim()) {
       setError("Name and email are required.");
       return;
@@ -236,6 +271,7 @@ function NewCandidateInner() {
     }
     setSaving(true);
     setError(null);
+    setSuccessHint(null);
     setDupMatches([]);
     try {
       const check = await api.checkCandidateDuplicates({
@@ -266,16 +302,38 @@ function NewCandidateInner() {
         source: mode === "resume" ? "Resume Upload" : (form.source || "Manual"),
       };
       const created = await api.createCandidate(payload, { forceNew: forceNew && isAdmin });
+
       if (mode === "resume" && file) {
-        await api.uploadCandidateResume(created.id, file);
+        try {
+          await api.uploadCandidateResume(created.id, file);
+        } catch (uploadErr) {
+          // Candidate already exists — preserve form was for auth failure; here keep record + retry path.
+          setSuccessHint(
+            `Candidate saved, but the resume upload failed. You can retry the upload on the candidate page. ${formatSaveError(uploadErr)}`,
+          );
+          setSaving(false);
+          router.push(`/ats/candidates/${created.id}?resume_upload=failed`);
+          return;
+        }
       }
       router.push(`/ats/candidates/${created.id}`);
     } catch (e) {
-      const msg = e instanceof Error ? e.message : "Candidate save failed.";
-      setError(msg);
+      // Preserve form + selected file on auth / validation failure.
+      setError(formatSaveError(e));
       setSaving(false);
     }
   };
+
+  if (isReadOnly && !roleLoading) {
+    return (
+      <div className="p-4 sm:p-8 max-w-3xl mx-auto">
+        <ErrorBanner message="Your account does not have permission to add candidates." />
+        <Link href="/ats/candidates" className="mt-4 inline-block text-sm text-indigo-600 hover:underline">
+          Back to Candidates
+        </Link>
+      </div>
+    );
+  }
 
   return (
     <div className="p-4 sm:p-8 max-w-3xl mx-auto">
@@ -304,7 +362,23 @@ function NewCandidateInner() {
         </Link>
       </div>
 
+      {verifyingSession && (
+        <div className="mb-4 rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 text-sm text-slate-600 flex items-center gap-2">
+          <Loader2 size={14} className="animate-spin" /> Verifying your session…
+        </div>
+      )}
+      {clerkOn && isLoaded && !isSignedIn && (
+        <ErrorBanner
+          message="Your session has expired. Please sign in again."
+          className="mb-4"
+        />
+      )}
       {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}
+      {successHint && (
+        <div className="mb-4 rounded-xl border border-amber-200 bg-amber-50 px-4 py-3 text-sm text-amber-900">
+          {successHint}
+        </div>
+      )}
       <DuplicateBanner
         matches={dupMatches}
         blocked={dupBlocked}
@@ -331,7 +405,12 @@ function NewCandidateInner() {
             <button type="button" className="btn-secondary flex items-center gap-2" onClick={() => fileInputRef.current?.click()}>
               <FileUp size={14} /> {file ? file.name : "Choose file"}
             </button>
-            <button type="button" className="btn-primary flex items-center gap-2" disabled={!file || parsing} onClick={handleParse}>
+            <button
+              type="button"
+              className="btn-primary flex items-center gap-2"
+              disabled={!file || parsing || !sessionReady}
+              onClick={handleParse}
+            >
               {parsing ? <><Loader2 size={14} className="animate-spin" /> Parsing…</> : <><Sparkles size={14} /> Parse Resume</>}
             </button>
           </div>
@@ -345,10 +424,134 @@ function NewCandidateInner() {
         <button
           type="button"
           onClick={save}
-          disabled={saving || !form.name || !form.email || (mode === "resume" && !parsed)}
+          disabled={
+            saving
+            || verifyingSession
+            || !sessionReady
+            || !form.name
+            || !form.email
+            || (mode === "resume" && !parsed)
+          }
           className="btn-primary flex items-center gap-2"
         >
-          {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : "Save Candidate"}
+          {saving ? <><Loader2 size={14} className="animate-spin" /> Saving…</> : verifyingSession ? "Verifying your session…" : "Save Candidate"}
+        </button>
+      </div>
+    </div>
+  );
+}
+
+function NewCandidatePageShell() {
+  // When Clerk is not configured, useAuth() would crash — skip the hook branch.
+  if (!isClerkConfigured()) {
+    return <NewCandidateWithoutClerk />;
+  }
+  return <NewCandidateInner />;
+}
+
+/** Local/demo path without ClerkProvider — same form, API may reject until Clerk is set. */
+function NewCandidateWithoutClerk() {
+  return <NewCandidateInnerNoAuth />;
+}
+
+function NewCandidateInnerNoAuth() {
+  // Minimal duplicate of flow that does not call useAuth — avoids ClerkProvider crash.
+  const router = useRouter();
+  const searchParams = useSearchParams();
+  const { isAdmin, canWrite, isReadOnly, loading: roleLoading } = useAtsRole();
+  const mode = searchParams.get("mode") === "resume" ? "resume" : "manual";
+  const fileInputRef = useRef<HTMLInputElement>(null);
+  const [form, setForm] = useState<EmployeeCreate>(emptyForm);
+  const [file, setFile] = useState<File | null>(null);
+  const [parsed, setParsed] = useState(false);
+  const [parsing, setParsing] = useState(false);
+  const [saving, setSaving] = useState(false);
+  const [error, setError] = useState<string | null>(null);
+  const [dupMatches, setDupMatches] = useState<CandidateDuplicateMatch[]>([]);
+  const [dupBlocked, setDupBlocked] = useState(false);
+  const [forceNew, setForceNew] = useState(false);
+
+  const update = (field: keyof EmployeeCreate) => (
+    e: React.ChangeEvent<HTMLInputElement | HTMLSelectElement | HTMLTextAreaElement>
+  ) => setForm((f) => ({ ...f, [field]: e.target.value }));
+
+  const handleParse = async () => {
+    if (!file) { setError("Choose a resume file first."); return; }
+    setParsing(true);
+    setError(null);
+    try {
+      setForm(applyParsedToForm(await api.parseCandidateResume(file)));
+      setParsed(true);
+    } catch (e) {
+      setError(formatSaveError(e));
+    } finally {
+      setParsing(false);
+    }
+  };
+
+  const save = async () => {
+    if (isReadOnly || !canWrite) {
+      setError("Your account does not have permission to add candidates.");
+      return;
+    }
+    if (!form.name?.trim() || !form.email?.trim()) {
+      setError("Name and email are required.");
+      return;
+    }
+    setSaving(true);
+    setError(null);
+    try {
+      const created = await api.createCandidate({
+        ...form,
+        source: mode === "resume" ? "Resume Upload" : (form.source || "Manual"),
+      }, { forceNew: forceNew && isAdmin });
+      if (mode === "resume" && file) {
+        try { await api.uploadCandidateResume(created.id, file); }
+        catch (uploadErr) {
+          setError(`Candidate saved, but resume upload failed. ${formatSaveError(uploadErr)}`);
+          setSaving(false);
+          router.push(`/ats/candidates/${created.id}?resume_upload=failed`);
+          return;
+        }
+      }
+      router.push(`/ats/candidates/${created.id}`);
+    } catch (e) {
+      setError(formatSaveError(e));
+      setSaving(false);
+    }
+  };
+
+  if (isReadOnly && !roleLoading) {
+    return (
+      <div className="p-4 sm:p-8 max-w-3xl mx-auto">
+        <ErrorBanner message="Your account does not have permission to add candidates." />
+      </div>
+    );
+  }
+
+  return (
+    <div className="p-4 sm:p-8 max-w-3xl mx-auto">
+      <Link href="/ats/candidates" className="inline-flex items-center gap-1.5 text-sm text-slate-500 hover:text-slate-800 mb-4">
+        <ArrowLeft size={14} /> Back to Candidates
+      </Link>
+      <div className="mb-6">
+        <p className="page-kicker">ATS</p>
+        <h1 className="page-title">Add Candidate</h1>
+      </div>
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} className="mb-4" />}
+      <DuplicateBanner matches={dupMatches} blocked={dupBlocked} isAdmin={isAdmin} onForce={() => { setForceNew(true); setDupMatches([]); }} />
+      {mode === "resume" && (
+        <div className="card p-6 mb-5 space-y-4">
+          <input ref={fileInputRef} type="file" className="hidden" aria-label="Resume file" onChange={(e) => { setFile(e.target.files?.[0] ?? null); setParsed(false); }} />
+          <button type="button" className="btn-secondary" onClick={() => fileInputRef.current?.click()}>{file ? file.name : "Choose file"}</button>
+          <button type="button" className="btn-primary" disabled={!file || parsing} onClick={handleParse}>{parsing ? "Parsing…" : "Parse Resume"}</button>
+        </div>
+      )}
+      {(mode === "manual" || parsed) && <CandidateFormFields form={form} update={update} />}
+      <div className="flex gap-3 justify-end mt-5">
+        <button type="button" onClick={() => router.push("/ats/candidates")} className="btn-secondary">Cancel</button>
+        <button type="button" onClick={save} disabled={saving || !form.name || !form.email || (mode === "resume" && !parsed)} className="btn-primary">
+          {saving ? "Saving…" : "Save Candidate"}
         </button>
       </div>
     </div>
@@ -358,7 +561,7 @@ function NewCandidateInner() {
 export default function NewCandidatePage() {
   return (
     <Suspense fallback={<div className="flex justify-center py-20"><Loader2 className="animate-spin text-indigo-500" /></div>}>
-      <NewCandidateInner />
+      <NewCandidatePageShell />
     </Suspense>
   );
 }

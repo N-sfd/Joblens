@@ -14,7 +14,7 @@ SEEKER_PRODUCT_ENABLED = os.getenv("SEEKER_PRODUCT_ENABLED", "true").strip().low
 )
 
 from database import create_tables, SessionLocal, DATABASE_URL
-from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, pipeline, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, reports, zoho, applications, extension, extension_upload, extension_pilot, ats_staff
+from routers import resume, jobs, match, cover_letter, auth, activity, account, profile, public_jobs, employees, employee_resumes, job_requirements, job_sends, pipeline, interviews, offers, crm_organizations, crm_contacts, crm_activities, ats_dashboard, dashboard, reports, zoho, applications, extension, extension_upload, extension_pilot, ats_staff, joblens
 from ats_auth import ENFORCE, CLERK_JWKS_URL, CLERK_ISSUER
 from services.storage import STORAGE_PROVIDER, validate_storage_config
 from services.extension_config import validate_extension_config_at_startup
@@ -117,6 +117,7 @@ if SEEKER_PRODUCT_ENABLED:
     app.include_router(extension_upload.router, prefix="/api/extension", tags=["Browser Extension Uploads"])
     app.include_router(extension_pilot.router, prefix="/api/extension", tags=["Browser Extension Pilot"])
     app.include_router(match.router, prefix="/api/match", tags=["Match"])
+    app.include_router(joblens.router, prefix="/api/joblens", tags=["JobLens Career Intelligence"])
     app.include_router(cover_letter.router, prefix="/api/cover-letter", tags=["Cover Letter"])
     app.include_router(activity.router, prefix="/api/activity", tags=["Activity"])
     app.include_router(account.router, prefix="/api/account", tags=["Account"])

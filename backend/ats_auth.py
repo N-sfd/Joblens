@@ -393,10 +393,18 @@ def _fetch_jwks(force: bool = False) -> list:
     return _jwks_cache["keys"]
 
 
-def _verify_token(token: str) -> dict:
+def _verify_token(token: str, *, request: Request | None = None) -> dict:
+    route = request.url.path if request is not None else "-"
+    method = request.method if request is not None else "-"
+    request_id = getattr(getattr(request, "state", None), "request_id", None) if request else None
+
     try:
         header = jwt.get_unverified_header(token)
     except Exception:
+        logger.info(
+            "ats_auth token_invalid category=malformed_header route=%s method=%s request_id=%s",
+            route, method, request_id,
+        )
         raise HTTPException(status_code=401, detail=UNAUTHORIZED_MSG) from None
     kid = header.get("kid")
 
@@ -406,6 +414,10 @@ def _verify_token(token: str) -> dict:
         keys = _fetch_jwks(force=True)
         key = next((k for k in keys if k.get("kid") == kid), None)
     if key is None:
+        logger.info(
+            "ats_auth token_invalid category=unknown_kid route=%s method=%s request_id=%s",
+            route, method, request_id,
+        )
         raise HTTPException(status_code=401, detail=UNAUTHORIZED_MSG)
 
     try:
@@ -416,7 +428,21 @@ def _verify_token(token: str) -> dict:
             issuer=CLERK_ISSUER or None,
             options={"verify_aud": False},
         )
-    except Exception:
+    except Exception as exc:
+        # python-jose: ExpiredSignatureError, JWTClaimsError (issuer), JWTError, …
+        name = type(exc).__name__
+        category = "invalid_token"
+        msg = str(exc).lower()
+        if "expired" in name.lower() or "expired" in msg:
+            category = "expired"
+        elif "issuer" in msg or "claim" in name.lower():
+            category = "invalid_issuer"
+        elif "audience" in msg or "aud" in msg:
+            category = "invalid_audience"
+        logger.info(
+            "ats_auth token_invalid category=%s route=%s method=%s request_id=%s",
+            category, route, method, request_id,
+        )
         raise HTTPException(status_code=401, detail=UNAUTHORIZED_MSG) from None
     return claims
 
@@ -436,9 +462,10 @@ def _log_auth_decision(
     required: tuple[str, ...],
     allowed: bool,
 ) -> None:
+    request_id = getattr(getattr(request, "state", None), "request_id", None)
     logger.info(
         "ats_auth decision route=%s method=%s user_id=%s email=%s role=%s role_source=%s "
-        "required=%s org=%s result=%s",
+        "required=%s org=%s result=%s request_id=%s",
         request.url.path,
         request.method,
         principal.user_id,
@@ -448,17 +475,19 @@ def _log_auth_decision(
         ",".join(required) if required else "-",
         principal.organization_name,
         "allow" if allowed else "deny",
+        request_id,
     )
 
 
 def get_current_ats_user(request: Request) -> AtsPrincipal:
     """FastAPI dependency for every private ATS endpoint."""
     token = _bearer_token(request)
+    request_id = getattr(getattr(request, "state", None), "request_id", None)
 
     if not ENFORCE:
         if token:
             try:
-                claims = _verify_token(token)
+                claims = _verify_token(token, request=request)
                 principal = AtsPrincipal(
                     user_id=claims.get("sub"),
                     claims=claims,
@@ -472,9 +501,13 @@ def get_current_ats_user(request: Request) -> AtsPrincipal:
         return AtsPrincipal(user_id=None, claims={})
 
     if not token:
+        logger.info(
+            "ats_auth token_invalid category=missing route=%s method=%s request_id=%s",
+            request.url.path, request.method, request_id,
+        )
         raise HTTPException(status_code=401, detail=UNAUTHORIZED_MSG)
     try:
-        claims = _verify_token(token)
+        claims = _verify_token(token, request=request)
     except HTTPException:
         raise
     except Exception:

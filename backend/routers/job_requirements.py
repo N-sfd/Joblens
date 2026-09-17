@@ -349,6 +349,7 @@ def _apply_url_classification(data: dict, *, partial: bool = False) -> dict:
 def _find_org_by_name(db: Session, name: str) -> CRMOrganization | None:
     if not name or not name.strip():
         return None
+    # Exact case-insensitive name only — no fuzzy/weak merges.
     return (
         db.query(CRMOrganization)
         .filter(CRMOrganization.organization_name.ilike(name.strip()))
@@ -356,8 +357,30 @@ def _find_org_by_name(db: Session, name: str) -> CRMOrganization | None:
     )
 
 
-def _find_contact(db: Session, email: str | None, name: str | None) -> CRMContact | None:
+def _find_org_by_domain(db: Session, email_domain: str | None) -> CRMOrganization | None:
+    from services.crm_normalize import normalize_domain
+
+    domain = normalize_domain(email_domain)
+    if not domain:
+        return None
+    return (
+        db.query(CRMOrganization)
+        .filter(CRMOrganization.email_domain == domain)
+        .first()
+    )
+
+
+def _find_contact(
+    db: Session,
+    email: str | None,
+    name: str | None,
+    *,
+    phone: str | None = None,
+    organization_id: int | None = None,
+) -> CRMContact | None:
+    """Match recruiter contacts: email → phone → name+company. No weak auto-merge."""
     from services.crm_normalize import normalize_email as _norm_email
+    from services.crm_normalize import normalize_phone as _norm_phone
 
     if email and email.strip():
         contact = (
@@ -367,6 +390,15 @@ def _find_contact(db: Session, email: str | None, name: str | None) -> CRMContac
         )
         if contact:
             return contact
+
+    ph = _norm_phone(phone)
+    if ph and len(ph) >= 7:
+        for row in db.query(CRMContact).filter(
+            (CRMContact.phone.isnot(None)) | (CRMContact.mobile.isnot(None))
+        ).all():
+            if _norm_phone(row.phone) == ph or _norm_phone(row.mobile) == ph:
+                return row
+
     if name and name.strip():
         parts = name.strip().split()
         first = parts[0]
@@ -374,6 +406,8 @@ def _find_contact(db: Session, email: str | None, name: str | None) -> CRMContac
         q = db.query(CRMContact).filter(CRMContact.first_name.ilike(first))
         if last:
             q = q.filter(CRMContact.last_name.ilike(last))
+        if organization_id is not None:
+            q = q.filter(CRMContact.organization_id == organization_id)
         return q.first()
     return None
 
@@ -381,24 +415,26 @@ def _find_contact(db: Session, email: str | None, name: str | None) -> CRMContac
 def _find_or_create_org(
     db: Session, *, name: str | None, email_domain: str | None, source: str, principal: AtsPrincipal,
 ) -> CRMOrganization | None:
-    """Find a CRM organization by name (or email domain), else create one.
+    """Find org by domain then exact name; never fuzzy-merge aliases.
 
-    Only fills/creates when data is missing — never overwrites an existing,
-    already-populated org record.
+    Order: linked ID (caller) → normalized domain → normalized name → create.
     """
+    from services.crm_normalize import normalize_domain
+
+    domain = normalize_domain(email_domain)
+    org = _find_org_by_domain(db, domain)
+    if not org and name and name.strip():
+        org = _find_org_by_name(db, name)
+    if org:
+        if domain and not org.email_domain:
+            org.email_domain = domain
+        return org
     if not name or not name.strip():
         return None
-    org = _find_org_by_name(db, name)
-    if not org and email_domain:
-        org = db.query(CRMOrganization).filter(CRMOrganization.email_domain == email_domain).first()
-    if org:
-        if email_domain and not org.email_domain:
-            org.email_domain = email_domain
-        return org
     org = CRMOrganization(
         organization_name=name.strip(),
         organization_type="Staffing Vendor",
-        email_domain=email_domain,
+        email_domain=domain or None,
         source=source,
         needs_review=True,
         created_by=principal.user_id,
@@ -418,10 +454,10 @@ def _find_or_create_contact(
     source: str,
     principal: AtsPrincipal,
 ) -> CRMContact | None:
-    """Find a CRM contact by email/name, else create one (recruiter default)."""
-    if not (email and email.strip()) and not (name and name.strip()):
+    """Find a CRM contact by email/phone/name+company, else create one."""
+    if not (email and email.strip()) and not (name and name.strip()) and not (phone and str(phone).strip()):
         return None
-    contact = _find_contact(db, email, name)
+    contact = _find_contact(db, email, name, phone=phone, organization_id=organization_id)
     if contact:
         if phone and not contact.phone:
             contact.phone = phone
@@ -456,23 +492,29 @@ def _auto_link_crm(
     """Resolve CRM FK ids from provided names/emails when an id isn't set.
 
     Only fills a link when it's currently empty, so an explicit selection from
-    the UI is never overridden. Exact (case-insensitive) name match for orgs.
+    the UI is never overridden.
+
+    Company match order: existing ID → domain → exact name (no weak merge).
+    Contact match order: email → phone → name+company.
 
     When `create_missing=True` (job save flows), a recruiter/company with no
-    existing match is created rather than left unlinked — matching by
-    normalized email/name first so duplicates are never created. Client/end
-    client (the hiring company) are only ever linked, never auto-created —
-    lower confidence than the recruiter's own vendor company.
+    existing match is created rather than left unlinked. Client/end client
+    are only ever linked, never auto-created.
     """
     link_source = data.get("source") or "Manual"
+    domain = _domain_from_email(data.get("recruiter_email"))
 
-    if data.get("vendor_id") is None and data.get("vendor"):
-        org = _find_org_by_name(db, data["vendor"])
-        if not org and create_missing:
+    if data.get("vendor_id") is None:
+        org = None
+        if domain:
+            org = _find_org_by_domain(db, domain)
+        if not org and data.get("vendor"):
+            org = _find_org_by_name(db, data["vendor"])
+        if not org and create_missing and data.get("vendor"):
             org = _find_or_create_org(
                 db,
                 name=data["vendor"],
-                email_domain=_domain_from_email(data.get("recruiter_email")),
+                email_domain=domain,
                 source=link_source,
                 principal=principal,
             )
@@ -486,8 +528,16 @@ def _auto_link_crm(
         org = _find_org_by_name(db, data["end_client"])
         if org:
             data["end_client_id"] = org.id
-    if data.get("recruiter_contact_id") is None and (data.get("recruiter_email") or data.get("recruiter_name")):
-        contact = _find_contact(db, data.get("recruiter_email"), data.get("recruiter_name"))
+    if data.get("recruiter_contact_id") is None and (
+        data.get("recruiter_email") or data.get("recruiter_name") or data.get("recruiter_phone")
+    ):
+        contact = _find_contact(
+            db,
+            data.get("recruiter_email"),
+            data.get("recruiter_name"),
+            phone=data.get("recruiter_phone"),
+            organization_id=data.get("vendor_id"),
+        )
         if not contact and create_missing:
             contact = _find_or_create_contact(
                 db,

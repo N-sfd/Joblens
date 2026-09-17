@@ -19,7 +19,7 @@ type NavItem = {
 const NAV: NavItem[] = [
   { href: "/ats", label: "Dashboard", icon: LayoutDashboard },
   {
-    href: "/ats/email-inbox",
+    href: "/ats/zoho-inbox",
     label: "Zoho Inbox",
     icon: Inbox,
     roles: ["admin", "manager", "recruiter"],

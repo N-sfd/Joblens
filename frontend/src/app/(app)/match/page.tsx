@@ -1,1310 +1,1082 @@
 "use client";
 
-import { useState, useEffect, Suspense } from "react";
-import { useRouter, useSearchParams } from "next/navigation";
-import { api } from "@/lib/api";
-import type { MatchResult, MatchHistoryEntry, PublicJobListing, JobRequirement, ResumeHistoryEntry, JobApplication } from "@/types";
-import ScoreCircle from "@/components/ScoreCircle";
-import AgentActivity from "@/components/AgentActivity";
-import ErrorBanner from "@/components/ErrorBanner";
-import HistoryPanel from "@/components/HistoryPanel";
-import PrivacyNote from "@/components/PrivacyNote";
-import ApplyOptionsModal from "@/components/ApplyOptionsModal";
+import { useCallback, useEffect, useMemo, useRef, useState } from "react";
+import Link from "next/link";
 import {
-  Target, CheckCircle, XCircle, AlertCircle, Lightbulb, Tag, BookOpen,
-  Loader2, ArrowRight, Save, PenTool, Zap, MessageSquare, ChevronDown,
-  ChevronUp, Copy, X, GraduationCap, Search, RefreshCw, MapPin,
-  Mail, Phone, Pencil, Info, Inbox, WifiOff, Briefcase, Send,
+  AlertTriangle,
+  CheckCircle2,
+  ChevronDown,
+  ChevronUp,
+  FileText,
+  History,
+  Loader2,
+  RefreshCw,
+  Replace,
+  Save,
+  Target,
+  Trash2,
+  X,
 } from "lucide-react";
 import clsx from "clsx";
+import { api, ApiError } from "@/lib/api";
+import { useAuth } from "@/lib/AuthContext";
+import type {
+  CareerAnalysesListResponse,
+  CareerAnalysisListItem,
+  CareerIntelligenceResult,
+  CareerRequirementMatch,
+} from "@/types";
+import ErrorBanner from "@/components/ErrorBanner";
+import PrivacyNote from "@/components/PrivacyNote";
 
-const RESUME_KEY = "aijob_resume_text";
-const JD_KEY = "aijob_jd_text";
+const RESUME_KEY = "joblens_ci_resume";
+const JD_KEY = "joblens_ci_jd";
 
-function isEmailImported(j: PublicJobListing | JobRequirement) {
-  const src = (j.source || "").toLowerCase();
-  const plat = ("application_platform" in j ? j.application_platform : null) || "";
-  return src.includes("email") || src.includes("zoho") || plat === "recruiter_email";
-}
+const CATEGORIES: {
+  key: keyof CareerIntelligenceResult["category_scores"];
+  label: string;
+  weight: string;
+}[] = [
+  { key: "required_skills", label: "Required Skills", weight: "35%" },
+  { key: "relevant_experience", label: "Relevant Experience", weight: "25%" },
+  { key: "preferred_skills", label: "Preferred Skills", weight: "15%" },
+  { key: "education", label: "Education", weight: "10%" },
+  { key: "domain_relevance", label: "Domain Relevance", weight: "10%" },
+  { key: "resume_evidence", label: "Resume Evidence", weight: "5%" },
+];
 
-function sourceBadge(j: PublicJobListing | JobRequirement) {
-  if (isEmailImported(j)) return "Email Imported";
-  if ((j.source || "").toLowerCase().includes("manual")) return "Manually Added";
-  return j.source || "Published Job";
-}
-
-const MATCH_STEPS = [
-  "Parsing resume",
+const ANALYSIS_STAGES = [
+  "Parsing résumé",
   "Extracting job requirements",
-  "Comparing skills and keywords",
-  "Analyzing experience alignment",
-  "Calculating match score",
-  "Generating tailoring suggestions",
+  "Normalizing skills",
+  "Matching experience",
+  "Mapping evidence",
+  "Calculating weighted scores",
+  "Identifying gaps",
+  "Preparing recommendations",
 ];
 
-const BULLETS_STEPS = [
-  "Analyzing job description keywords",
-  "Matching relevant experience",
-  "Crafting impact-focused bullets",
-  "Optimizing for ATS",
-];
+type EvidenceItem = Record<string, unknown>;
 
-const QUESTIONS_STEPS = [
-  "Analyzing role requirements",
-  "Identifying key competencies",
-  "Generating behavioral questions",
-  "Preparing suggested answers",
-];
+function alignmentLabel(score: number): string {
+  if (score >= 80) return "Strong alignment";
+  if (score >= 65) return "Moderate alignment";
+  if (score >= 45) return "Partial alignment";
+  return "Limited alignment";
+}
 
-const likelihoodStyle = {
-  low: "bg-red-100 text-red-700",
-  medium: "bg-amber-100 text-amber-700",
-  high: "bg-green-100 text-green-700",
-};
+function fileTypeLabel(name: string): string {
+  const lower = name.toLowerCase();
+  if (lower.endsWith(".pdf")) return "PDF";
+  if (lower.endsWith(".docx")) return "DOCX";
+  if (lower.endsWith(".txt")) return "TXT";
+  return "File";
+}
 
-const recommendationStyle: Record<string, string> = {
-  "Strong Match": "bg-green-100 text-green-700",
-  "Good Match": "bg-blue-100 text-blue-700",
-  "Weak Match": "bg-amber-100 text-amber-700",
-  "Not Recommended": "bg-red-100 text-red-700",
-};
+function formatBytes(bytes: number): string {
+  if (bytes < 1024) return `${bytes} B`;
+  if (bytes < 1024 * 1024) return `${(bytes / 1024).toFixed(1)} KB`;
+  return `${(bytes / (1024 * 1024)).toFixed(1)} MB`;
+}
 
-const STATUSES = ["Applied", "Interviewing", "Offer", "Rejected", "Saved"] as const;
-
-function MatchPageContent() {
-  const router = useRouter();
-  const searchParams = useSearchParams();
-
-  const [resumeText, setResumeText] = useState(() =>
-    typeof window !== "undefined" ? localStorage.getItem(RESUME_KEY) ?? "" : ""
+function Expand({
+  title,
+  children,
+  defaultOpen = false,
+}: {
+  title: string;
+  children: React.ReactNode;
+  defaultOpen?: boolean;
+}) {
+  const [open, setOpen] = useState(defaultOpen);
+  return (
+    <div className="rounded-xl border border-slate-200 bg-white overflow-hidden">
+      <button
+        type="button"
+        className="w-full flex items-center justify-between gap-3 px-4 sm:px-5 py-3.5 text-left text-sm font-semibold text-slate-800"
+        onClick={() => setOpen((v) => !v)}
+      >
+        {title}
+        {open ? <ChevronUp size={16} className="shrink-0 text-slate-400" /> : <ChevronDown size={16} className="shrink-0 text-slate-400" />}
+      </button>
+      {open && <div className="px-4 sm:px-5 pb-4 border-t border-slate-100 pt-3">{children}</div>}
+    </div>
   );
-  const [resumeSource, setResumeSource] = useState<string | null>(null);
-  const [resumeUploading, setResumeUploading] = useState(false);
-  const [resumeUploadError, setResumeUploadError] = useState<string | null>(null);
-  const [savedResumes, setSavedResumes] = useState<ResumeHistoryEntry[]>([]);
-  const [jobDescription, setJobDescription] = useState("");
-  const [loading, setLoading] = useState(false);
+}
 
-  // Select Published Job / Select Saved Job / Paste Manually
-  const [mode, setMode] = useState<"published" | "saved" | "manual">("published");
-  const [atsJobs, setAtsJobs] = useState<PublicJobListing[]>([]);
-  const [atsJobsLoading, setAtsJobsLoading] = useState(true);
-  const [atsJobsError, setAtsJobsError] = useState<string | null>(null);
-  const [atsJobsTotal, setAtsJobsTotal] = useState(0);
-  const [lastRefreshed, setLastRefreshed] = useState<Date | null>(null);
-  const [atsSearch, setAtsSearch] = useState("");
-  const [atsLocation, setAtsLocation] = useState("");
-  const [atsWorkType, setAtsWorkType] = useState("");
-  const [atsEmploymentType, setAtsEmploymentType] = useState("");
-  const [atsClient, setAtsClient] = useState("");
-  const [atsSkills, setAtsSkills] = useState("");
-  const [atsSource, setAtsSource] = useState("");
-  const [savedTrackerJobs, setSavedTrackerJobs] = useState<JobApplication[]>([]);
-  const [selectedJobId, setSelectedJobId] = useState<number | "">("");
-  const [selectedJob, setSelectedJob] = useState<JobRequirement | null>(null);
-  const [selectedJobLoading, setSelectedJobLoading] = useState(false);
-  const [selectedJobError, setSelectedJobError] = useState<string | null>(null);
-  const [applyJobId, setApplyJobId] = useState<number | null>(null);
-  const [editOverride, setEditOverride] = useState(false);
-  const [overrideFields, setOverrideFields] = useState({
-    job_description: "", required_skills: "", preferred_skills: "",
-    location: "", work_type: "", rate: "",
-  });
-  const [done, setDone] = useState(false);
-  const [error, setError] = useState<string | null>(null);
-  const [result, setResult] = useState<MatchResult | null>(null);
+function matchBadgeClass(level: string): string {
+  switch (level) {
+    case "strong_match":
+      return "bg-emerald-50 text-emerald-700";
+    case "partial_match":
+      return "bg-amber-50 text-amber-700";
+    case "related_evidence":
+      return "bg-sky-50 text-sky-700";
+    case "not_demonstrated":
+      return "bg-orange-50 text-orange-700";
+    case "missing":
+      return "bg-rose-50 text-rose-700";
+    default:
+      return "bg-slate-100 text-slate-600";
+  }
+}
 
-  // Action states
-  const [bullets, setBullets] = useState<string[] | null>(null);
-  const [bulletsLoading, setBulletsLoading] = useState(false);
-  const [bulletsDone, setBulletsDone] = useState(false);
-  const [questions, setQuestions] = useState<{ question: string; type: string; suggested_answer: string }[] | null>(null);
-  const [questionsLoading, setQuestionsLoading] = useState(false);
-  const [questionsDone, setQuestionsDone] = useState(false);
-  const [openQuestion, setOpenQuestion] = useState<number | null>(null);
+function recommendationImpact(type: string): "High impact" | "Medium impact" | "Optional" {
+  if (type === "emphasize" || type === "bullets") return "High impact";
+  if (type === "learning") return "Medium impact";
+  return "Optional";
+}
 
-  // Save to tracker modal
-  const [showSave, setShowSave] = useState(false);
-  const [saveForm, setSaveForm] = useState({ company: "", role: "", status: "Applied" as string });
-  const [saving, setSaving] = useState(false);
-  const [toast, setToast] = useState<string | null>(null);
+function EvidenceBlock({ item }: { item: EvidenceItem }) {
+  const requirement = String(item.requirement ?? "");
+  const evidence = item.evidence ? String(item.evidence) : null;
+  const section = item.resume_section ? String(item.resume_section) : null;
+  const explanation = item.explanation ? String(item.explanation) : null;
+  return (
+    <li className="flex gap-2.5 text-sm">
+      <CheckCircle2 size={15} className="text-emerald-600 shrink-0 mt-0.5" />
+      <div className="min-w-0">
+        <p className="font-semibold text-slate-800">{requirement}</p>
+        {evidence ? (
+          <p className="text-slate-600 mt-0.5 leading-relaxed">&ldquo;{evidence}&rdquo;</p>
+        ) : explanation ? (
+          <p className="text-slate-600 mt-0.5 leading-relaxed">{explanation}</p>
+        ) : null}
+        {section ? (
+          <p className="text-xs text-slate-400 mt-1">
+            Evidence source · {section}
+          </p>
+        ) : null}
+      </div>
+    </li>
+  );
+}
 
-  const [history, setHistory] = useState<MatchHistoryEntry[]>([]);
-  const [historyLoading, setHistoryLoading] = useState(true);
+function RequirementCard({ m }: { m: CareerRequirementMatch }) {
+  return (
+    <div className="rounded-lg border border-slate-100 bg-slate-50/60 px-3.5 py-3 space-y-1.5">
+      <div className="flex flex-wrap items-center justify-between gap-2">
+        <p className="font-semibold text-slate-800 text-sm">{m.requirement}</p>
+        <span className={clsx("text-[11px] font-semibold px-2 py-0.5 rounded-full", matchBadgeClass(m.match_level))}>
+          {m.match_label}
+        </span>
+      </div>
+      {m.evidence ? (
+        <p className="text-sm text-slate-600">
+          <span className="font-medium text-slate-700">Evidence:</span> &ldquo;{m.evidence}&rdquo;
+        </p>
+      ) : null}
+      {m.resume_section ? (
+        <p className="text-xs text-slate-400">Evidence source · {m.resume_section}</p>
+      ) : null}
+      <p className="text-sm text-slate-600 leading-relaxed">{m.explanation}</p>
+    </div>
+  );
+}
 
-  useEffect(() => {
-    api.getMatchHistory()
-      .then(setHistory)
-      .catch(() => {})
-      .finally(() => setHistoryLoading(false));
-    api.getResumeHistory().then(setSavedResumes).catch(() => {});
-  }, []);
+function extractRelatedHints(explanation: string | undefined): string[] {
+  if (!explanation) return [];
+  const paren = explanation.match(/\(([^)]+)\)/);
+  if (!paren?.[1]) return [];
+  return paren[1]
+    .split(",")
+    .map((s) => s.trim())
+    .filter((s) => s.length > 1 && s.length < 40);
+}
 
-  const selectSavedResume = (id: number | "") => {
-    if (id === "") return;
-    const entry = savedResumes.find((r) => r.id === id);
-    if (!entry) return;
-    setResumeText(entry.resume_text);
-    setResumeSource(entry.filename || "Saved resume");
-    setResumeUploadError(null);
-  };
+function GapCard({
+  title,
+  tone,
+  items,
+  matches,
+}: {
+  title: string;
+  tone: "missing" | "not_demonstrated" | "weak" | "related";
+  items: string[];
+  matches: CareerRequirementMatch[];
+}) {
+  const toneClass =
+    tone === "missing"
+      ? "border-rose-100 bg-rose-50/40"
+      : tone === "not_demonstrated"
+        ? "border-orange-100 bg-orange-50/40"
+        : tone === "weak"
+          ? "border-amber-100 bg-amber-50/40"
+          : "border-sky-100 bg-sky-50/40";
 
-  const uploadResume = async (file: File) => {
-    setResumeUploading(true);
-    setResumeUploadError(null);
-    try {
-      const data = await api.analyzeResumeFile(file);
-      setResumeText(data.resume_text);
-      setResumeSource(file.name);
-      api.getResumeHistory().then(setSavedResumes).catch(() => {});
-    } catch (e) {
-      setResumeUploadError(e instanceof Error ? e.message : "Couldn't read that file.");
-    } finally {
-      setResumeUploading(false);
-    }
-  };
-
-  const loadFromHistory = (entry: MatchHistoryEntry) => {
-    setResumeText(entry.resume_text);
-    setJobDescription(entry.job_description);
-    setResult(entry.match);
-    setDone(true);
-    setBullets(null);
-    setBulletsDone(false);
-    setQuestions(null);
-    setQuestionsDone(false);
-  };
-
-  const showToast = (msg: string) => {
-    setToast(msg);
-    setTimeout(() => setToast(null), 3000);
-  };
-
-  const loadAtsJobs = async (overrides?: {
-    search?: string; location?: string; work_type?: string; employment_type?: string;
-    client?: string; skills?: string; source?: string;
-  }) => {
-    setAtsJobsLoading(true);
-    setAtsJobsError(null);
-    try {
-      const res = await api.listPublicJobs({
-        q: (overrides?.search ?? atsSearch) || undefined,
-        location: (overrides?.location ?? atsLocation) || undefined,
-        work_type: (overrides?.work_type ?? atsWorkType) || undefined,
-        employment_type: (overrides?.employment_type ?? atsEmploymentType) || undefined,
-        client: (overrides?.client ?? atsClient) || undefined,
-        skills: (overrides?.skills ?? atsSkills) || undefined,
-        source: (overrides?.source ?? atsSource) || undefined,
-        page_size: 50,
-      });
-      setAtsJobs(res.items);
-      setAtsJobsTotal(res.total);
-      setLastRefreshed(new Date());
-    } catch (e) {
-      const raw = e instanceof Error ? e.message : "Couldn't reach the job source.";
-      const isMissingRoute = /not found|404|Request failed: 404/i.test(raw);
-      setAtsJobsError(
-        isMissingRoute
-          ? "Published jobs API is not available on this backend (404). Set Vercel BACKEND_URL to this JobLens CRM FastAPI with SEEKER_PRODUCT_ENABLED=true, or use Paste Manually / ATS Jobs."
-          : raw,
-      );
-    } finally {
-      setAtsJobsLoading(false);
-    }
-  };
-
-  const loadSavedJobs = async () => {
-    try {
-      const rows = await api.listJobs();
-      setSavedTrackerJobs(rows.filter((r) => r.source_job_requirement_id != null || (r.notes && r.notes.length > 40)));
-    } catch {
-      setSavedTrackerJobs([]);
-    }
-  };
-
-  useEffect(() => {
-    if (mode === "published") loadAtsJobs();
-    if (mode === "saved") loadSavedJobs();
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [mode]);
-
-  // Hard stop: do not leave "Loading published jobs…" forever when the proxy hangs.
-  useEffect(() => {
-    if (!atsJobsLoading) return;
-    const t = window.setTimeout(() => {
-      setAtsJobsLoading(false);
-      setAtsJobsError(
-        (prev) =>
-          prev ||
-          "Published jobs timed out. Check BACKEND_URL, or use Paste Job Manually / ATS Jobs.",
-      );
-    }, 22_000);
-    return () => window.clearTimeout(t);
-  }, [atsJobsLoading]);
-
-  const filtersActive = !!(atsSearch || atsLocation || atsWorkType || atsEmploymentType || atsClient || atsSkills || atsSource);
-
-  const clearFilters = () => {
-    setAtsSearch(""); setAtsLocation(""); setAtsWorkType(""); setAtsEmploymentType("");
-    setAtsClient(""); setAtsSkills(""); setAtsSource("");
-    loadAtsJobs({ search: "", location: "", work_type: "", employment_type: "", client: "", skills: "", source: "" });
-  };
-
-  const resetOverride = (job: JobRequirement | null) => {
-    setEditOverride(false);
-    setOverrideFields({
-      job_description: job?.job_description ?? "",
-      required_skills: (job?.required_skills ?? []).join(", "),
-      preferred_skills: (job?.preferred_skills ?? []).join(", "),
-      location: job?.location ?? "",
-      work_type: job?.work_type ?? "",
-      rate: job?.rate ?? "",
-    });
-  };
-
-  const selectJob = async (id: number | "") => {
-    setSelectedJobId(id);
-    setSelectedJob(null);
-    setSelectedJobError(null);
-    if (id === "") return;
-    setSelectedJobLoading(true);
-    try {
-      const job = await api.getPublicJob(Number(id));
-      setSelectedJob(job);
-      resetOverride(job);
-      showToast(`Imported "${job.job_title}" from ATS.`);
-    } catch (e) {
-      setSelectedJobError(
-        e instanceof Error ? e.message : "This job is no longer available — it may have closed or been unpublished."
-      );
-    } finally {
-      setSelectedJobLoading(false);
-    }
-  };
-
-  // Deep link from Discover Jobs / Job Details ("Analyze Match" → /match?atsJob=123).
-  useEffect(() => {
-    const atsJob = searchParams.get("atsJob");
-    if (atsJob) {
-      setMode("published");
-      selectJob(Number(atsJob));
-    }
-    // eslint-disable-next-line react-hooks/exhaustive-deps
-  }, [searchParams]);
-
-  // Builds the text actually sent to the matcher: the full structured job
-  // context, with any "Edit for this analysis" overrides applied locally —
-  // never written back to the source ATS record.
-  const effectiveJobDescription = () => {
-    if (mode === "manual" || !selectedJob) return jobDescription;
-    const f = overrideFields;
-    const lines = [
-      `Job Title: ${selectedJob.job_title}`,
-      selectedJob.client ? `Client: ${selectedJob.client}` : "",
-      selectedJob.vendor ? `Vendor: ${selectedJob.vendor}` : "",
-      selectedJob.end_client ? `End Client: ${selectedJob.end_client}` : "",
-      f.location ? `Location: ${f.location}` : "",
-      f.work_type ? `Work Arrangement: ${f.work_type}` : "",
-      selectedJob.employment_type ? `Employment Type: ${selectedJob.employment_type}` : "",
-      selectedJob.duration ? `Duration: ${selectedJob.duration}` : "",
-      f.rate ? `Rate: ${f.rate}` : "",
-      selectedJob.visa_requirement ? `Work Authorization: ${selectedJob.visa_requirement}` : "",
-      f.required_skills ? `Required Skills: ${f.required_skills}` : "",
-      f.preferred_skills ? `Preferred Skills: ${f.preferred_skills}` : "",
-      "",
-      f.job_description || "",
-    ].filter(Boolean);
-    return lines.join("\n");
-  };
-
-  const effectiveCompanyName = () =>
-    mode !== "manual" && selectedJob ? (selectedJob.client || selectedJob.vendor || undefined) : undefined;
-
-  const run = async () => {
-    const effectiveJD = effectiveJobDescription();
-    setLoading(true);
-    setDone(false);
-    setError(null);
-    setBullets(null);
-    setBulletsDone(false);
-    setQuestions(null);
-    setQuestionsDone(false);
-    try {
-      const data = await api.matchJob(resumeText, effectiveJD, {
-        company_name: effectiveCompanyName(),
-        job_requirement_id: mode !== "manual" ? selectedJob?.id : undefined,
-      });
-      setDone(true);
-      setResult(data);
-      if (mode === "manual") localStorage.setItem(JD_KEY, jobDescription);
-      api.getMatchHistory().then(setHistory).catch(() => {});
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Match failed.");
-    } finally {
-      setLoading(false);
-    }
-  };
-
-  const handleBullets = async () => {
-    setBulletsLoading(true);
-    setBulletsDone(false);
-    try {
-      const data = await api.generateResumeBullets(resumeText, effectiveJobDescription());
-      setBulletsDone(true);
-      setBullets(data.bullets);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate bullets.");
-    } finally {
-      setBulletsLoading(false);
-    }
-  };
-
-  const handleQuestions = async () => {
-    setQuestionsLoading(true);
-    setQuestionsDone(false);
-    try {
-      const data = await api.createInterviewQuestions(resumeText, effectiveJobDescription());
-      setQuestionsDone(true);
-      setQuestions(data.questions);
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Failed to generate questions.");
-    } finally {
-      setQuestionsLoading(false);
-    }
-  };
-
-  const handleSaveToTracker = async () => {
-    if (!saveForm.company || !saveForm.role) return;
-    setSaving(true);
-    try {
-      const matchNote = result ? `Match Score: ${result.match_score}% · Likelihood: ${result.likelihood}${result.missing_skills.length ? ` · Add keywords: ${result.missing_skills.slice(0, 4).join(", ")}` : ""}` : undefined;
-      await api.createJob({
-        company: saveForm.company,
-        role: saveForm.role,
-        status: saveForm.status as never,
-        notes: matchNote ?? null,
-        job_url: null, salary_range: null, location: null,
-        work_type: null, recruiter_name: null, recruiter_email: null,
-        follow_up_date: null, date_applied: null, reminder_type: null,
-        source_job_requirement_id: mode !== "manual" ? selectedJob?.id ?? null : null,
-        application_source: null, application_method: null, application_opened_at: null,
-        applied_at: null, recruiter_contacted_at: null, last_activity_at: null,
-        job_snapshot_json: null,
-      });
-      setShowSave(false);
-      showToast("Saved to Job Tracker!");
-    } catch (e) {
-      setError(e instanceof Error ? e.message : "Save failed.");
-    } finally {
-      setSaving(false);
-    }
-  };
-
-  const handleCoverLetter = () => {
-    localStorage.setItem(JD_KEY, effectiveJobDescription());
-    router.push("/cover-letter");
-  };
-
-  const importantKeywords = result
-    ? [
-        ...result.keyword_report.matched.map((k) => ({ keyword: k.keyword, count: k.jd_count, found: true })),
-        ...result.keyword_report.missing.map((k) => ({ keyword: k.keyword, count: k.jd_count, found: false })),
-      ]
-        .sort((a, b) => b.count - a.count)
-        .slice(0, 14)
-    : [];
-
-  const typeColor: Record<string, string> = {
-    behavioral: "bg-blue-100 text-blue-700",
-    technical: "bg-purple-100 text-purple-700",
-    situational: "bg-amber-100 text-amber-700",
-  };
+  if (!items.length) {
+    return (
+      <div className={clsx("rounded-xl border p-4", toneClass)}>
+        <h4 className="font-semibold text-slate-800 text-sm mb-1">{title}</h4>
+        <p className="text-sm text-slate-500">None in this category.</p>
+      </div>
+    );
+  }
 
   return (
-    <div className="p-4 sm:p-8 max-w-6xl mx-auto">
-      {/* Toast */}
-      {toast && (
-        <div className="fixed top-5 right-5 z-50 bg-slate-900 text-white px-4 py-2.5 rounded-xl shadow-lg text-sm font-medium animate-slide-up">
-          {toast}
-        </div>
-      )}
-
-      <div className="mb-8">
-        <p className="page-kicker">Tools</p>
-        <h1 className="page-title">Job Matcher</h1>
-        <p className="page-subtitle">Paste your resume and job description to get a fit score, tailored bullets, and interview prep.</p>
-      </div>
-
-      <HistoryPanel
-        title="Past Matches"
-        items={history}
-        loading={historyLoading}
-        getKey={(h) => h.id}
-        renderItem={(h) => ({
-          primary: `Score: ${h.match.match_score}% · ${h.match.likelihood} likelihood`,
-          secondary: h.job_description.slice(0, 80),
-          date: h.created_at,
-        })}
-        onSelect={loadFromHistory}
-      />
-
-      {/* Input Panel */}
-      <div className="grid grid-cols-1 lg:grid-cols-2 gap-4 mb-4">
-        {/* Left: resume */}
-        <div className="card p-5">
-          <div className="flex items-center justify-between mb-1.5 flex-wrap gap-2">
-            <label className="label mb-0">Your Resume</label>
-            <div className="flex items-center gap-3">
-              {savedResumes.length > 0 && (
-                <select
-                  className="input text-xs py-1 w-auto"
-                  aria-label="Select a saved resume"
-                  value=""
-                  onChange={(e) => selectSavedResume(e.target.value ? Number(e.target.value) : "")}
-                >
-                  <option value="">Select a saved resume…</option>
-                  {savedResumes.map((r) => (
-                    <option key={r.id} value={r.id}>
-                      {r.filename || "Resume"} — {new Date(r.created_at).toLocaleDateString()}
-                    </option>
-                  ))}
-                </select>
-              )}
-              <label className="text-xs font-medium text-indigo-600 hover:underline cursor-pointer flex items-center gap-1">
-                {resumeUploading ? <Loader2 size={12} className="animate-spin" /> : <Save size={12} />}
-                Upload file
-                <input
-                  type="file"
-                  accept=".pdf,.docx,.txt"
-                  className="hidden"
-                  disabled={resumeUploading}
-                  onChange={(e) => { const f = e.target.files?.[0]; if (f) uploadResume(f); }}
-                />
-              </label>
-            </div>
-          </div>
-          <textarea
-            className="textarea h-56"
-            placeholder="Paste your resume text here, upload a file, or select a saved resume above…"
-            value={resumeText}
-            onChange={(e) => { setResumeText(e.target.value); setResumeSource(null); }}
-          />
-          {resumeUploadError && <p className="text-xs text-red-600 mt-1.5">{resumeUploadError}</p>}
-          {resumeSource && (
-            <p className="text-xs text-slate-400 mt-1.5">Loaded from <span className="font-medium text-slate-600 dark:text-slate-300">{resumeSource}</span> · {resumeText.trim().split(/\s+/).filter(Boolean).length} words</p>
-          )}
-          {typeof window !== "undefined" && localStorage.getItem(RESUME_KEY) && resumeText !== localStorage.getItem(RESUME_KEY) && (
-            <button type="button" onClick={() => { setResumeText(localStorage.getItem(RESUME_KEY) ?? ""); setResumeSource("last analysis"); }}
-              className="text-xs text-indigo-600 hover:underline mt-1.5 flex items-center gap-1">
-              <ArrowRight size={11} /> Load from last analysis
-            </button>
-          )}
-        </div>
-
-        {/* Right: job — Published / Saved / Manual */}
-        <div className="card p-5">
-          <div className="flex flex-wrap gap-1 mb-4 bg-slate-100 dark:bg-slate-800 rounded-xl p-1 w-fit">
-            {([
-              { key: "published", label: "Select Published Job" },
-              { key: "saved", label: "Select Saved Job" },
-              { key: "manual", label: "Paste Manually" },
-            ] as const).map((t) => (
-              <button
-                key={t.key}
-                type="button"
-                onClick={() => setMode(t.key)}
-                className={clsx(
-                  "px-3 py-1.5 rounded-lg text-sm font-medium transition-all",
-                  mode === t.key
-                    ? "bg-white dark:bg-slate-900 text-slate-900 dark:text-white shadow-sm"
-                    : "text-slate-500 dark:text-slate-400 hover:text-slate-700 dark:hover:text-slate-200"
-                )}
-              >
-                {t.label}
-              </button>
-            ))}
-          </div>
-
-          {mode === "manual" ? (
-            <textarea
-              className="textarea h-64"
-              placeholder="Paste the job description here…"
-              value={jobDescription}
-              onChange={(e) => setJobDescription(e.target.value)}
-            />
-          ) : mode === "saved" ? (
-            <div className="space-y-3">
-              {savedTrackerJobs.length === 0 ? (
-                <div className="text-center py-6">
-                  <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm text-slate-600 dark:text-slate-400">No saved jobs in your tracker yet.</p>
-                  <button type="button" onClick={() => setMode("published")} className="text-xs text-indigo-600 hover:underline mt-2">
-                    Select a published job instead
-                  </button>
+    <div className={clsx("rounded-xl border p-4 space-y-3", toneClass)}>
+      <h4 className="font-semibold text-slate-800 text-sm">{title}</h4>
+      <ul className="space-y-3">
+        {items.map((skill) => {
+          const match = matches.find((m) => m.requirement === skill);
+          const relatedTools = extractRelatedHints(match?.explanation);
+          return (
+            <li key={skill} className="text-sm">
+              <p className="font-medium text-slate-800">{skill}</p>
+              {match?.explanation ? (
+                <p className="text-slate-600 mt-1 leading-relaxed">{match.explanation}</p>
+              ) : null}
+              {match?.evidence ? (
+                <p className="text-slate-600 mt-1 italic">&ldquo;{match.evidence}&rdquo;</p>
+              ) : null}
+              {match?.resume_section ? (
+                <p className="text-xs text-slate-400 mt-1">Evidence source · {match.resume_section}</p>
+              ) : null}
+              {relatedTools.length > 0 && (tone === "not_demonstrated" || tone === "related") ? (
+                <div className="mt-2">
+                  <p className="text-xs font-medium text-slate-600 mb-1">Related résumé evidence:</p>
+                  <ul className="list-disc pl-4 text-xs text-slate-600 space-y-0.5">
+                    {relatedTools.map((t) => (
+                      <li key={t}>{t}</li>
+                    ))}
+                  </ul>
                 </div>
-              ) : (
-                <select
-                  className="input"
-                  aria-label="Select a saved job"
-                  value={selectedJobId}
-                  onChange={(e) => {
-                    const id = e.target.value ? Number(e.target.value) : "";
-                    if (id === "") { setSelectedJobId(""); setSelectedJob(null); return; }
-                    const row = savedTrackerJobs.find((r) => r.id === id);
-                    if (row?.source_job_requirement_id) {
-                      selectJob(row.source_job_requirement_id);
-                    } else if (row) {
-                      setSelectedJobId(row.id);
-                      setSelectedJob(null);
-                      setJobDescription([row.role, row.company, row.location, row.notes].filter(Boolean).join("\n"));
-                      setMode("manual");
-                      showToast(`Loaded "${row.role}" from tracker (manual paste).`);
-                    }
-                  }}
-                >
-                  <option value="">— Choose a saved job —</option>
-                  {savedTrackerJobs.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      {j.role} — {j.company}{j.location ? ` · ${j.location}` : ""}
-                    </option>
-                  ))}
-                </select>
-              )}
-            </div>
-          ) : (
-            <div className="space-y-3">
-              <div className="flex gap-2">
-                <div className="relative flex-1">
-                  <Search size={14} className="absolute left-3 top-1/2 -translate-y-1/2 text-slate-400" />
-                  <input
-                    className="input pl-8"
-                    placeholder="Search title, client, vendor, skills…"
-                    value={atsSearch}
-                    onChange={(e) => setAtsSearch(e.target.value)}
-                    onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()}
-                  />
-                </div>
-                <button type="button" onClick={() => loadAtsJobs()} disabled={atsJobsLoading} title="Refresh Jobs"
-                  className="btn-secondary px-3">
-                  <RefreshCw size={14} className={atsJobsLoading ? "animate-spin" : ""} />
-                </button>
-              </div>
-              {lastRefreshed && (
-                <p className="text-[11px] text-slate-400">
-                  Last refreshed {lastRefreshed.toLocaleTimeString("en-US", { hour: "numeric", minute: "2-digit", second: "2-digit" })}
+              ) : null}
+              {tone === "not_demonstrated" || tone === "related" ? (
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Recommendation: Only add {skill} if you actually have experience with it.
                 </p>
-              )}
-              <div className="grid grid-cols-1 sm:grid-cols-3 gap-2">
-                <input
-                  className="input text-sm"
-                  placeholder="All Locations"
-                  aria-label="Location filter"
-                  value={atsLocation}
-                  onChange={(e) => setAtsLocation(e.target.value)}
-                  onBlur={() => loadAtsJobs()}
-                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()}
-                />
-                <select
-                  className="input text-sm"
-                  aria-label="Work arrangement filter"
-                  value={atsWorkType}
-                  onChange={(e) => { setAtsWorkType(e.target.value); loadAtsJobs({ work_type: e.target.value }); }}
-                >
-                  <option value="">All</option>
-                  <option value="Remote">Remote</option>
-                  <option value="Hybrid">Hybrid</option>
-                  <option value="Onsite">Onsite</option>
-                </select>
-                <select
-                  className="input text-sm"
-                  aria-label="Employment type filter"
-                  value={atsEmploymentType}
-                  onChange={(e) => { setAtsEmploymentType(e.target.value); loadAtsJobs({ employment_type: e.target.value }); }}
-                >
-                  <option value="">All</option>
-                  <option value="Contract">Contract</option>
-                  <option value="Full-time">Full-time</option>
-                  <option value="Part-time">Part-time</option>
-                  <option value="C2C">C2C</option>
-                </select>
-                <select
-                  className="input text-sm"
-                  aria-label="Source filter"
-                  value={atsSource}
-                  onChange={(e) => { setAtsSource(e.target.value); loadAtsJobs({ source: e.target.value }); }}
-                >
-                  <option value="">All Sources</option>
-                  <option value="email">Email Imported</option>
-                  <option value="greenhouse">Published Job</option>
-                  <option value="manual">Manually Added</option>
-                </select>
-                <input className="input text-sm" placeholder="Client" value={atsClient}
-                  onChange={(e) => setAtsClient(e.target.value)}
-                  onBlur={() => loadAtsJobs()}
-                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
-                <input className="input text-sm" placeholder="Skills (empty = all)" value={atsSkills}
-                  onChange={(e) => setAtsSkills(e.target.value)}
-                  onBlur={() => loadAtsJobs()}
-                  onKeyDown={(e) => e.key === "Enter" && loadAtsJobs()} />
-              </div>
-              <div className="flex flex-wrap items-center gap-3">
-                <button type="button" onClick={clearFilters} className="text-xs text-slate-500 hover:text-indigo-600 transition-colors">
-                  Clear Filters
-                </button>
-                <button type="button" onClick={() => loadAtsJobs()} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                  <RefreshCw size={11} /> Refresh Jobs
-                </button>
-                <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                  <Pencil size={11} /> Paste Job Manually
-                </button>
-              </div>
-
-              {atsJobsLoading ? (
-                <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-8">
-                  <Loader2 size={16} className="animate-spin" /> Loading published jobs…
-                </div>
-              ) : atsJobsError ? (
-                <div className="text-center py-6 px-2">
-                  <WifiOff size={28} className="mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm font-medium text-slate-700 dark:text-slate-300">
-                    Select Published Job cannot load jobs right now
-                  </p>
-                  <p className="text-xs text-slate-500 mt-1.5 leading-relaxed">{atsJobsError}</p>
-                  <div className="flex flex-wrap items-center justify-center gap-2 mt-4">
-                    <button type="button" onClick={() => loadAtsJobs()} className="btn-secondary text-xs">
-                      <RefreshCw size={12} className="inline mr-1" /> Retry
-                    </button>
-                    <button type="button" onClick={() => setMode("manual")} className="btn-primary text-xs">
-                      Paste Job Manually
-                    </button>
-                    <a href="/ats/jobs" className="text-xs text-indigo-600 hover:underline">
-                      Open ATS Jobs
-                    </a>
-                  </div>
-                </div>
-              ) : atsJobs.length === 0 ? (
-                <div className="text-center py-6">
-                  <Inbox size={28} className="mx-auto mb-2 text-slate-300" />
-                  <p className="text-sm text-slate-600 dark:text-slate-400">
-                    {filtersActive ? "No jobs match the current filters." : "No approved open jobs are currently available."}
-                  </p>
-                  <div className="flex items-center justify-center gap-3 mt-2">
-                    {filtersActive && (
-                      <button type="button" onClick={clearFilters} className="text-xs text-indigo-600 hover:underline">
-                        Clear Filters
-                      </button>
-                    )}
-                    <button type="button" onClick={() => loadAtsJobs()} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                      <RefreshCw size={11} /> Refresh Jobs
-                    </button>
-                    <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline flex items-center gap-1">
-                      <Pencil size={11} /> Paste Job Manually
-                    </button>
-                  </div>
-                </div>
-              ) : (
-                <select
-                  className="input"
-                  aria-label="Select a published job"
-                  value={selectedJobId}
-                  onChange={(e) => selectJob(e.target.value ? Number(e.target.value) : "")}
-                >
-                  <option value="">— Choose a published job ({atsJobsTotal}) —</option>
-                  {atsJobs.map((j) => (
-                    <option key={j.id} value={j.id}>
-                      [{sourceBadge(j)}] {j.job_title}{j.client ? ` — ${j.client}` : j.vendor ? ` — ${j.vendor}` : ""}
-                      {j.location ? ` · ${j.location}` : ""}{j.work_type ? ` · ${j.work_type}` : ""}
-                      {j.recruiter_name ? ` · ${j.recruiter_name}` : ""}
-                    </option>
-                  ))}
-                </select>
-              )}
-
-              {selectedJobLoading && (
-                <div className="flex items-center justify-center gap-2 text-slate-400 text-sm py-6">
-                  <Loader2 size={16} className="animate-spin" /> Importing job details…
-                </div>
-              )}
-              {selectedJobError && (
-                <div>
-                  <ErrorBanner
-                    message={selectedJobError}
-                    onDismiss={() => setSelectedJobError(null)}
-                    onRetry={() => selectJob(selectedJobId)}
-                  />
-                  <button type="button" onClick={() => setMode("manual")} className="text-xs text-indigo-600 hover:underline mt-2 flex items-center gap-1">
-                    <Pencil size={11} /> Switch to Manual Entry
-                  </button>
-                </div>
-              )}
-              {selectedJob && !selectedJobLoading && (
-                <div className="border border-slate-200 dark:border-slate-700 rounded-xl p-4 space-y-3 max-h-[420px] overflow-y-auto">
-                  <div className="flex items-center justify-between gap-2">
-                    <span className="inline-flex items-center gap-1.5 text-xs font-medium text-indigo-700 dark:text-indigo-400 bg-indigo-50 dark:bg-indigo-950/40 border border-indigo-100 dark:border-indigo-900/50 px-2.5 py-1 rounded-full">
-                      <Info size={11} /> {sourceBadge(selectedJob)}
-                    </span>
-                    <button
-                      type="button"
-                      onClick={() => setEditOverride((v) => !v)}
-                      className="flex items-center gap-1 text-xs font-medium text-indigo-600 hover:underline"
-                    >
-                      <Pencil size={11} /> {editOverride ? "Done editing" : "Edit for this analysis"}
-                    </button>
-                  </div>
-
-                  <div>
-                    <p className="font-semibold text-slate-900 dark:text-white">{selectedJob.job_title}</p>
-                    <p className="text-xs text-slate-400 mt-0.5">
-                      {selectedJob.job_reference_number && <>Ref #{selectedJob.job_reference_number} · </>}
-                      Job ID {selectedJob.id}
-                      {selectedJob.external_job_id && <> · Ext {selectedJob.external_job_id}</>}
-                      {" · "}Received {selectedJob.received_at ? new Date(selectedJob.received_at).toLocaleDateString() : "—"}
-                    </p>
-                  </div>
-
-                  <div className="grid grid-cols-2 gap-x-3 gap-y-1.5 text-xs">
-                    <span className="text-slate-400">Client</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.client || "—"}</span>
-                    <span className="text-slate-400">Vendor</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.vendor || "—"}</span>
-                    {selectedJob.end_client && <><span className="text-slate-400">End Client</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.end_client}</span></>}
-                    <span className="text-slate-400 flex items-center gap-1"><MapPin size={11} /> Location</span>
-                    {editOverride ? (
-                      <input className="input text-xs py-1" value={overrideFields.location}
-                        onChange={(e) => setOverrideFields((f) => ({ ...f, location: e.target.value }))} />
-                    ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.location || "—"}</span>}
-                    <span className="text-slate-400">Arrangement</span>
-                    {editOverride ? (
-                      <input className="input text-xs py-1" value={overrideFields.work_type}
-                        onChange={(e) => setOverrideFields((f) => ({ ...f, work_type: e.target.value }))} />
-                    ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.work_type || "—"}</span>}
-                    <span className="text-slate-400">Employment Type</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.employment_type || "—"}</span>
-                    <span className="text-slate-400">Duration</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.duration || "—"}</span>
-                    <span className="text-slate-400">Rate</span>
-                    {editOverride ? (
-                      <input className="input text-xs py-1" value={overrideFields.rate}
-                        onChange={(e) => setOverrideFields((f) => ({ ...f, rate: e.target.value }))} />
-                    ) : <span className="text-slate-700 dark:text-slate-300">{selectedJob.rate || "—"}</span>}
-                    <span className="text-slate-400">Work Authorization</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.visa_requirement || "—"}</span>
-                    <span className="text-slate-400">Apply method</span>
-                    <span className="text-slate-700 dark:text-slate-300">
-                      {selectedJob.application_url ? "Employer website" : "Contact Recruiter"}
-                    </span>
-                  </div>
-
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Required Skills</p>
-                    {editOverride ? (
-                      <input className="input text-xs py-1" value={overrideFields.required_skills}
-                        onChange={(e) => setOverrideFields((f) => ({ ...f, required_skills: e.target.value }))} />
-                    ) : (
-                      <div className="flex flex-wrap gap-1.5">
-                        {(selectedJob.required_skills || []).map((s, i) => (
-                          <span key={i} className="px-2 py-0.5 bg-red-50 dark:bg-red-950/30 text-red-700 dark:text-red-400 rounded-full text-[11px] font-medium">{s}</span>
-                        ))}
-                        {!(selectedJob.required_skills || []).length && <span className="text-slate-400">—</span>}
-                      </div>
-                    )}
-                  </div>
-                  {((selectedJob.preferred_skills || []).length > 0 || editOverride) && (
-                    <div>
-                      <p className="text-xs text-slate-400 mb-1">Preferred Skills</p>
-                      {editOverride ? (
-                        <input className="input text-xs py-1" value={overrideFields.preferred_skills}
-                          onChange={(e) => setOverrideFields((f) => ({ ...f, preferred_skills: e.target.value }))} />
-                      ) : (
-                        <div className="flex flex-wrap gap-1.5">
-                          {selectedJob.preferred_skills.map((s, i) => (
-                            <span key={i} className="px-2 py-0.5 bg-blue-50 dark:bg-blue-950/30 text-blue-700 dark:text-blue-400 rounded-full text-[11px] font-medium">{s}</span>
-                          ))}
-                        </div>
-                      )}
-                    </div>
-                  )}
-
-                  <div>
-                    <p className="text-xs text-slate-400 mb-1">Job Description</p>
-                    {editOverride ? (
-                      <textarea className="textarea text-xs h-28" value={overrideFields.job_description}
-                        onChange={(e) => setOverrideFields((f) => ({ ...f, job_description: e.target.value }))} />
-                    ) : (
-                      <p className="text-xs text-slate-600 dark:text-slate-400 whitespace-pre-wrap leading-relaxed">{selectedJob.job_description || "—"}</p>
-                    )}
-                  </div>
-
-                  <div className="border-t border-slate-100 dark:border-slate-800 pt-3">
-                    <p className="text-xs font-semibold text-slate-500 dark:text-slate-400 mb-1.5 flex items-center gap-1"><Briefcase size={11} /> Recruiter</p>
-                    <div className="grid grid-cols-2 gap-x-3 gap-y-1 text-xs">
-                      <span className="text-slate-400">Name</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.recruiter_name || "—"}</span>
-                      <span className="text-slate-400">Company</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.vendor || "—"}</span>
-                      <span className="text-slate-400 flex items-center gap-1"><Mail size={11} /> Email</span><span className="text-slate-700 dark:text-slate-300 truncate">{selectedJob.recruiter_email || "—"}</span>
-                      <span className="text-slate-400 flex items-center gap-1"><Phone size={11} /> Phone</span><span className="text-slate-700 dark:text-slate-300">{selectedJob.recruiter_phone || "—"}</span>
-                    </div>
-                  </div>
-
-                  <button
-                    type="button"
-                    onClick={() => setApplyJobId(selectedJob.id)}
-                    className="w-full text-xs px-3 py-2 rounded-lg bg-indigo-600 hover:bg-indigo-700 text-white font-semibold flex items-center justify-center gap-1.5"
-                  >
-                    <Send size={12} /> {selectedJob.application_url ? "Apply Now" : "Contact Recruiter"}
-                  </button>
-                </div>
-              )}
-            </div>
-          )}
-        </div>
-      </div>
-
-      <PrivacyNote className="mb-4">
-        Your resume and this job description are used only to generate your match score and are never sold or shared. Read our
-      </PrivacyNote>
-
-      {error && (
-        <ErrorBanner message={error} onDismiss={() => setError(null)} onRetry={run} className="mb-4" />
-      )}
-
-      {(() => {
-        const missing: string[] = [];
-        if (resumeText.length < 50) missing.push("a resume (paste, upload, or select a saved one)");
-        if (effectiveJobDescription().length < 50) {
-          missing.push(mode !== "manual" ? "a selected published job" : "a job description");
-        }
-        const canRun = missing.length === 0;
-        return (
-          <>
-            <button
-              type="button"
-              onClick={run}
-              disabled={loading || !canRun}
-              className="btn-primary flex items-center gap-2 w-full justify-center py-3"
-            >
-              {loading
-                ? <><Loader2 size={16} className="animate-spin" /> Analyzing…</>
-                : <><Target size={16} /> Analyze Resume Against This Job</>}
-            </button>
-            {!canRun && !loading && (
-              <p className="text-xs text-slate-400 text-center mt-2 mb-5">
-                Add {missing.join(" and ")} to run the analysis.
-              </p>
-            )}
-            {canRun && <div className="mb-5" />}
-          </>
-        );
-      })()}
-
-      {/* Main match agent activity */}
-      <AgentActivity steps={MATCH_STEPS} isRunning={loading} isDone={done} className="mb-5" />
-
-      {/* Results */}
-      {result && (
-        <div className="space-y-5 animate-slide-up">
-          {/* Score Hero */}
-          <div className="card p-6">
-            <div className="flex flex-col sm:flex-row items-center gap-6">
-              <ScoreCircle score={result.match_score} label="ATS Match Score" size={140} />
-              <div className="flex-1 text-center sm:text-left">
-                <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start mb-2">
-                  <span className={clsx(
-                    "px-3 py-1 rounded-full text-sm font-bold",
-                    recommendationStyle[result.recommendation] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400"
-                  )}>
-                    {result.recommendation}
-                  </span>
-                </div>
-                <div className="flex flex-wrap items-center gap-2 justify-center sm:justify-start">
-                  <span className={clsx("px-3 py-1 rounded-full text-sm font-semibold", likelihoodStyle[result.likelihood])}>
-                    {result.likelihood.charAt(0).toUpperCase() + result.likelihood.slice(1)} likelihood
-                  </span>
-                  <span className={clsx(
-                    "px-3 py-1 rounded-full text-sm font-semibold",
-                    result.likelihood === "high" ? "bg-green-100 text-green-700" :
-                    result.likelihood === "medium" ? "bg-amber-100 text-amber-700" : "bg-red-100 text-red-700"
-                  )}>
-                    {result.ats_verdict}
-                  </span>
-                </div>
-                <p className="text-slate-600 dark:text-slate-400 text-sm mt-3 leading-relaxed">{result.summary}</p>
-              </div>
-            </div>
-
-            {/* Action Buttons */}
-            <div className="mt-5 pt-5 border-t border-slate-100 dark:border-slate-800 flex flex-col sm:flex-row flex-wrap gap-2">
-              <button type="button"
-                onClick={() => setShowSave(true)}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-indigo-600 hover:bg-indigo-700 text-white rounded-lg text-sm font-semibold transition-colors w-full sm:w-auto"
-              >
-                <Save size={14} /> Save to Tracker
-              </button>
-              <button type="button"
-                onClick={handleBullets}
-                disabled={bulletsLoading}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-purple-600 hover:bg-purple-700 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 w-full sm:w-auto"
-              >
-                {bulletsLoading ? <Loader2 size={14} className="animate-spin" /> : <Zap size={14} />}
-                Better Bullets
-              </button>
-              <button type="button"
-                onClick={handleCoverLetter}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-emerald-600 hover:bg-emerald-700 text-white rounded-lg text-sm font-semibold transition-colors w-full sm:w-auto"
-              >
-                <PenTool size={14} /> Cover Letter
-              </button>
-              <button type="button"
-                onClick={handleQuestions}
-                disabled={questionsLoading}
-                className="flex items-center justify-center gap-2 px-4 py-2.5 bg-amber-500 hover:bg-amber-600 text-white rounded-lg text-sm font-semibold transition-colors disabled:opacity-60 w-full sm:w-auto"
-              >
-                {questionsLoading ? <Loader2 size={14} className="animate-spin" /> : <MessageSquare size={14} />}
-                Interview Prep
-              </button>
-            </div>
-          </div>
-
-          {/* ATS Score Breakdown */}
-          <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-4 flex items-center gap-2">
-              <Target size={15} className="text-indigo-500" /> ATS Score Breakdown
-            </h3>
-            <div className="space-y-3">
-              {[
-                { label: "Keyword Match", score: result.keyword_match_score, hint: "exact JD keyword coverage" },
-                { label: "Skills Fit", score: result.skills_match_score, hint: "Skills alignment" },
-                { label: "Experience Fit", score: result.experience_match_score, hint: "Experience alignment" },
-                { label: "Education Fit", score: result.education_match_score, hint: "Education alignment" },
-                { label: "Formatting Compliance", score: result.formatting_score, hint: "ATS parsability" },
-              ].map((row) => (
-                <div key={row.label}>
-                  <div className="flex items-center justify-between mb-1">
-                    <span className="text-sm font-medium text-slate-700 dark:text-slate-300">{row.label}</span>
-                    <span className="text-xs text-slate-400">{row.score}/100</span>
-                  </div>
-                  <div className="h-2 bg-slate-100 dark:bg-slate-800 rounded-full overflow-hidden">
-                    <div
-                      className={clsx(
-                        "h-full rounded-full transition-all duration-700",
-                        row.score >= 80 ? "bg-green-500" : row.score >= 60 ? "bg-amber-500" : "bg-red-400"
-                      )}
-                      style={{ width: `${Math.min(100, Math.max(0, row.score))}%` }}
-                    />
-                  </div>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Important Job Keywords */}
-          {importantKeywords.length > 0 && (
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <Tag size={15} className="text-indigo-500" /> Important Job Keywords
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {importantKeywords.map((k, i) => (
-                  <span
-                    key={i}
-                    className={clsx(
-                      "px-2.5 py-1 rounded-full text-xs font-medium",
-                      k.found ? "bg-green-50 text-green-700" : "bg-red-50 text-red-700"
-                    )}
-                  >
-                    {k.keyword} <span className={k.found ? "text-green-400" : "text-red-400"}>×{k.count} in JD</span>
-                  </span>
-                ))}
-              </div>
-              <p className="text-xs text-slate-400 mt-3">Top keywords from the job description, ranked by frequency — green means found in your resume, red means missing.</p>
-            </div>
-          )}
-
-          {/* Keyword Scan */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <CheckCircle size={15} className="text-green-500" /> Keywords Found in Resume
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.keyword_report.matched.length === 0 && (
-                  <p className="text-sm text-slate-400">No exact keyword overlaps detected.</p>
-                )}
-                {result.keyword_report.matched.map((k, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">
-                    {k.keyword} <span className="text-green-400">×{k.resume_count}</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <XCircle size={15} className="text-red-400" /> Keywords Missing from Resume
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.keyword_report.missing.length === 0 && (
-                  <p className="text-sm text-slate-400">No missing high-frequency keywords detected.</p>
-                )}
-                {result.keyword_report.missing.map((k, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium">
-                    {k.keyword} <span className="text-red-400">×{k.jd_count} in JD</span>
-                  </span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Formatting Issues */}
-          {result.formatting_issues.length > 0 && (
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <AlertCircle size={15} className="text-amber-500" /> ATS Formatting Issues
-              </h3>
-              <ul className="space-y-2">
-                {result.formatting_issues.map((issue, i) => (
-                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
-                    <AlertCircle size={13} className="text-amber-400 mt-0.5 shrink-0" /> {issue}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Skills */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <CheckCircle size={15} className="text-green-500" /> Matching Skills
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.matching_skills.map((s, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-green-50 text-green-700 rounded-full text-xs font-medium">{s}</span>
-                ))}
-              </div>
-            </div>
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <XCircle size={15} className="text-red-400" /> Missing Skills
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.missing_skills.map((s, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-red-50 text-red-700 rounded-full text-xs font-medium">{s}</span>
-                ))}
-              </div>
-            </div>
-          </div>
-
-          {/* Experience & Gaps */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <CheckCircle size={15} className="text-indigo-500" /> Matching Experience
-              </h3>
-              <ul className="space-y-2">
-                {result.matching_experience.map((e, i) => (
-                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
-                    <CheckCircle size={13} className="text-indigo-400 mt-0.5 shrink-0" /> {e}
-                  </li>
-                ))}
-              </ul>
-            </div>
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <AlertCircle size={15} className="text-amber-500" /> Gaps
-              </h3>
-              <ul className="space-y-2">
-                {result.gaps.map((g, i) => (
-                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
-                    <AlertCircle size={13} className="text-amber-400 mt-0.5 shrink-0" /> {g}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Tailoring Suggestions */}
-          <div className="card p-5">
-            <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-              <Lightbulb size={15} className="text-amber-500" /> Tailoring Suggestions
-            </h3>
-            <div className="space-y-3">
-              {result.tailoring_suggestions.map((s, i) => (
-                <div key={i} className="flex items-start gap-3 bg-amber-50 dark:bg-amber-950/20 rounded-lg px-4 py-3">
-                  <span className="text-xs font-bold text-amber-700 bg-amber-200 px-2 py-0.5 rounded-full shrink-0 mt-0.5">{s.section}</span>
-                  <p className="text-sm text-slate-700 dark:text-slate-300">{s.suggestion}</p>
-                </div>
-              ))}
-            </div>
-          </div>
-
-          {/* Keywords & Interview Tips */}
-          <div className="grid grid-cols-1 sm:grid-cols-2 gap-4">
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <Tag size={15} className="text-indigo-500" /> Keywords to Add
-              </h3>
-              <div className="flex flex-wrap gap-2">
-                {result.keywords_to_add.map((k, i) => (
-                  <span key={i} className="px-2.5 py-1 bg-indigo-50 text-indigo-700 rounded-full text-xs font-medium border border-indigo-100">{k}</span>
-                ))}
-              </div>
-            </div>
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <BookOpen size={15} className="text-purple-500" /> Quick Interview Tips
-              </h3>
-              <ul className="space-y-2">
-                {result.interview_preparation.map((t, i) => (
-                  <li key={i} className="text-sm text-slate-600 dark:text-slate-400 flex items-start gap-2">
-                    <span className="text-purple-400 font-bold shrink-0">→</span> {t}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          </div>
-
-          {/* Learning Resources for Missing Skills */}
-          {result.learning_resources.length > 0 && (
-            <div className="card p-5">
-              <h3 className="font-semibold text-slate-700 dark:text-slate-300 mb-3 flex items-center gap-2">
-                <GraduationCap size={15} className="text-emerald-500" /> Close the Gap
-              </h3>
-              <div className="space-y-3">
-                {result.learning_resources.map((r, i) => (
-                  <div key={i} className="flex items-start gap-3 bg-emerald-50 rounded-lg px-4 py-3">
-                    <span className="text-xs font-bold text-emerald-700 bg-emerald-200 px-2 py-0.5 rounded-full shrink-0 mt-0.5">{r.skill}</span>
-                    <p className="text-sm text-slate-700 dark:text-slate-300">{r.suggestion}</p>
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-
-          {/* Bullets agent activity */}
-          <AgentActivity steps={BULLETS_STEPS} isRunning={bulletsLoading} isDone={bulletsDone} />
-
-          {/* Generated Resume Bullets */}
-          {bullets && (
-            <div className="card p-5 animate-slide-up">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                  <Zap size={15} className="text-purple-500" /> Improved Resume Bullets
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(bullets.map(b => `• ${b}`).join("\n"))}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
-                >
-                  <Copy size={12} /> Copy all
-                </button>
-              </div>
-              <ul className="space-y-2.5">
-                {bullets.map((b, i) => (
-                  <li key={i} className="flex items-start gap-2.5 text-sm text-slate-700 dark:text-slate-300 bg-purple-50 rounded-lg px-4 py-2.5">
-                    <span className="text-purple-500 font-bold shrink-0 mt-0.5">•</span> {b}
-                  </li>
-                ))}
-              </ul>
-            </div>
-          )}
-
-          {/* Questions agent activity */}
-          <AgentActivity steps={QUESTIONS_STEPS} isRunning={questionsLoading} isDone={questionsDone} />
-
-          {/* Interview Questions */}
-          {questions && (
-            <div className="card p-5 animate-slide-up">
-              <div className="flex items-center justify-between mb-3">
-                <h3 className="font-semibold text-slate-700 dark:text-slate-300 flex items-center gap-2">
-                  <MessageSquare size={15} className="text-amber-500" /> Interview Questions & Answers
-                </h3>
-                <button
-                  type="button"
-                  onClick={() => navigator.clipboard.writeText(
-                    questions.map((q, i) => `${i + 1}. [${q.type}] ${q.question}\n${q.suggested_answer}`).join("\n\n")
-                  )}
-                  className="flex items-center gap-1.5 text-xs text-slate-500 dark:text-slate-400 hover:text-indigo-600 transition-colors"
-                >
-                  <Copy size={12} /> Copy all
-                </button>
-              </div>
-              <div className="space-y-2">
-                {questions.map((q, i) => (
-                  <div key={i} className="border border-slate-200 rounded-xl overflow-hidden">
-                    <button
-                      type="button"
-                      onClick={() => setOpenQuestion(openQuestion === i ? null : i)}
-                      className="w-full flex items-center justify-between px-4 py-3 text-left hover:bg-slate-50 transition-colors"
-                    >
-                      <div className="flex items-center gap-3 min-w-0">
-                        <span className={clsx("text-xs font-semibold px-2 py-0.5 rounded-full shrink-0", typeColor[q.type] ?? "bg-slate-100 dark:bg-slate-800 text-slate-600 dark:text-slate-400")}>
-                          {q.type}
-                        </span>
-                        <span className="text-sm font-medium text-slate-800 dark:text-slate-100 truncate">{q.question}</span>
-                      </div>
-                      {openQuestion === i ? <ChevronUp size={15} className="text-slate-400 shrink-0" /> : <ChevronDown size={15} className="text-slate-400 shrink-0" />}
-                    </button>
-                    {openQuestion === i && (
-                      <div className="px-4 pb-4 bg-amber-50 dark:bg-amber-950/20 border-t border-slate-100">
-                        <p className="text-xs font-semibold text-amber-700 mt-3 mb-1.5">Suggested Answer</p>
-                        <p className="text-sm text-slate-700 dark:text-slate-300 leading-relaxed">{q.suggested_answer}</p>
-                      </div>
-                    )}
-                  </div>
-                ))}
-              </div>
-            </div>
-          )}
-        </div>
-      )}
-
-      {/* Save to Tracker Modal */}
-      {showSave && (
-        <div className="fixed inset-0 bg-black/40 flex items-center justify-center z-50 p-4">
-          <div className="bg-white dark:bg-slate-900 rounded-2xl shadow-2xl w-full max-w-sm p-6 animate-slide-up">
-            <div className="flex items-center justify-between mb-4">
-              <h3 className="font-bold text-slate-800 dark:text-slate-100">Save to Job Tracker</h3>
-              <button type="button" aria-label="Close" onClick={() => setShowSave(false)} className="text-slate-400 hover:text-slate-600 dark:text-slate-400"><X size={18} /></button>
-            </div>
-            <div className="space-y-3">
-              <div>
-                <label className="label">Company</label>
-                <input className="input" placeholder="Company name" value={saveForm.company}
-                  onChange={(e) => setSaveForm({ ...saveForm, company: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Role</label>
-                <input className="input" placeholder="Job title" value={saveForm.role}
-                  onChange={(e) => setSaveForm({ ...saveForm, role: e.target.value })} />
-              </div>
-              <div>
-                <label className="label">Status</label>
-                <select className="input" value={saveForm.status}
-                  aria-label="Application status"
-                  onChange={(e) => setSaveForm({ ...saveForm, status: e.target.value })}>
-                  {STATUSES.map((s) => <option key={s}>{s}</option>)}
-                </select>
-              </div>
-            </div>
-            <div className="flex gap-3 justify-end mt-5">
-              <button type="button" onClick={() => setShowSave(false)} className="btn-secondary">Cancel</button>
-              <button type="button" onClick={handleSaveToTracker} disabled={saving || !saveForm.company || !saveForm.role}
-                className="btn-primary flex items-center gap-2">
-                {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
-                Save
-              </button>
-            </div>
-          </div>
-        </div>
-      )}
-      {applyJobId != null && (
-        <ApplyOptionsModal
-          jobId={applyJobId}
-          onClose={() => setApplyJobId(null)}
-        />
-      )}
+              ) : null}
+              {tone === "missing" ? (
+                <p className="text-xs text-slate-500 mt-1.5">
+                  No relevant evidence exists. Only pursue this if it matches your real career direction.
+                </p>
+              ) : null}
+              {tone === "weak" ? (
+                <p className="text-xs text-slate-500 mt-1.5">
+                  Only add this skill if you have real experience with it — strengthen existing bullets instead of inventing new ones.
+                </p>
+              ) : null}
+            </li>
+          );
+        })}
+      </ul>
     </div>
   );
 }
 
 export default function MatchPage() {
+  const fileRef = useRef<HTMLInputElement>(null);
+  const { user, isLoading: authLoading } = useAuth();
+  const isAuthenticated = Boolean(user);
+
+  const [resumeText, setResumeText] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem(RESUME_KEY) ?? "" : "",
+  );
+  const [jobDescription, setJobDescription] = useState(() =>
+    typeof window !== "undefined" ? localStorage.getItem(JD_KEY) ?? "" : "",
+  );
+  const [jobTitle, setJobTitle] = useState("");
+  const [companyName, setCompanyName] = useState("");
+  const [file, setFile] = useState<File | null>(null);
+  const [fileName, setFileName] = useState<string | null>(null);
+  const [fileSize, setFileSize] = useState<number | null>(null);
+  const [showPasteResume, setShowPasteResume] = useState(false);
+  const [loading, setLoading] = useState(false);
+  const [stageIdx, setStageIdx] = useState(0);
+  const [error, setError] = useState<string | null>(null);
+  const [result, setResult] = useState<CareerIntelligenceResult | null>(null);
+  const [analyzedAt, setAnalyzedAt] = useState<Date | null>(null);
+  const [history, setHistory] = useState<CareerAnalysesListResponse | null>(null);
+  const [saving, setSaving] = useState(false);
+  const [savingNote, setSavingNote] = useState<string | null>(null);
+  const [compareMode, setCompareMode] = useState<"idle" | "new_job" | "new_resume">("idle");
+  const [baseline, setBaseline] = useState<CareerIntelligenceResult | null>(null);
+
+  useEffect(() => {
+    localStorage.setItem(RESUME_KEY, resumeText);
+  }, [resumeText]);
+  useEffect(() => {
+    localStorage.setItem(JD_KEY, jobDescription);
+  }, [jobDescription]);
+
+  const loadHistory = useCallback(async () => {
+    try {
+      setHistory(await api.getCareerAnalyses());
+    } catch {
+      /* history optional */
+    }
+  }, []);
+
+  useEffect(() => {
+    void loadHistory();
+  }, [loadHistory]);
+
+  useEffect(() => {
+    if (!loading) return;
+    setStageIdx(0);
+    const t = window.setInterval(() => {
+      setStageIdx((i) => (i + 1) % ANALYSIS_STAGES.length);
+    }, 1100);
+    return () => window.clearInterval(t);
+  }, [loading]);
+
+  const clearFile = () => {
+    setFile(null);
+    setFileName(null);
+    setFileSize(null);
+    if (fileRef.current) fileRef.current.value = "";
+  };
+
+  const onFile = async (f: File | null) => {
+    if (!f) {
+      clearFile();
+      return;
+    }
+    setFile(f);
+    setFileName(f.name);
+    setFileSize(f.size);
+    if (f.name.toLowerCase().endsWith(".txt")) {
+      setResumeText(await f.text());
+    }
+  };
+
+  const runAnalyze = async (opts?: { save?: boolean; forceNew?: boolean }) => {
+    setError(null);
+    setSavingNote(null);
+    if (jobDescription.trim().length < 50) {
+      setError("Paste a longer job description (at least ~50 characters).");
+      return;
+    }
+    if (!file && resumeText.trim().length < 50) {
+      setError("Upload a résumé or paste résumé text first.");
+      return;
+    }
+
+    const shouldSave = Boolean(opts?.save);
+    setLoading(true);
+    try {
+      let data: CareerIntelligenceResult;
+      if (file && !file.name.toLowerCase().endsWith(".txt")) {
+        const form = new FormData();
+        form.append("file", file);
+        form.append("job_description", jobDescription);
+        if (jobTitle) form.append("job_title", jobTitle);
+        if (companyName) form.append("company_name", companyName);
+        form.append("save", shouldSave ? "true" : "false");
+        if (opts?.forceNew) form.append("force_new_version", "true");
+        data = await api.analyzeCareerIntelligenceFile(form);
+      } else {
+        data = await api.analyzeCareerIntelligence({
+          resume_text: resumeText,
+          job_description: jobDescription,
+          job_title: jobTitle || undefined,
+          company_name: companyName || undefined,
+          resume_filename: fileName || undefined,
+          save: shouldSave,
+          force_new_version: opts?.forceNew,
+        });
+      }
+
+      if (compareMode !== "idle" && result) {
+        setBaseline(result);
+      }
+      setResult(data);
+      setAnalyzedAt(new Date());
+      setCompareMode("idle");
+
+      if (shouldSave) {
+        if (data.duplicate) {
+          setSavingNote("This exact résumé + job combination was already saved. Opened the existing analysis.");
+        } else if (data.saved || data.analysis_id) {
+          setSavingNote("Analysis saved.");
+        }
+        await loadHistory();
+      }
+    } catch (e) {
+      const msg =
+        e instanceof ApiError
+          ? e.status === 429
+            ? "You have reached the analysis limit. Please wait and try again."
+            : e.message
+          : e instanceof Error
+            ? e.message
+            : "Analysis failed. Check your connection and try again.";
+      setError(msg);
+    } finally {
+      setLoading(false);
+      setSaving(false);
+    }
+  };
+
+  const saveAnalysis = async () => {
+    if (!isAuthenticated) return;
+    setSaving(true);
+    await runAnalyze({ save: true });
+  };
+
+  const openHistoryItem = async (item: CareerAnalysisListItem) => {
+    try {
+      const detail = await api.getCareerAnalysis(item.id);
+      setResult(detail.result);
+      setJobTitle(detail.job_title || "");
+      setCompanyName(detail.company_name || "");
+      setAnalyzedAt(detail.created_at ? new Date(detail.created_at) : new Date());
+      setSavingNote(`Loaded analysis #${item.id}`);
+      setBaseline(null);
+      setCompareMode("idle");
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not load analysis.");
+    }
+  };
+
+  const removeHistoryItem = async (id: number) => {
+    try {
+      await api.deleteCareerAnalysis(id);
+      await loadHistory();
+    } catch (e) {
+      setError(e instanceof Error ? e.message : "Could not delete analysis.");
+    }
+  };
+
+  const startCompare = (mode: "new_job" | "new_resume") => {
+    if (!result) return;
+    setBaseline(result);
+    setCompareMode(mode);
+    setResult(null);
+    if (mode === "new_job") {
+      setJobDescription("");
+      setJobTitle("");
+      setCompanyName("");
+    } else {
+      clearFile();
+      setResumeText("");
+      setShowPasteResume(true);
+    }
+    window.scrollTo({ top: 0, behavior: "smooth" });
+  };
+
+  const cats = result?.category_scores;
+  const strongEvidence = result?.evidence_map.strong_evidence ?? [];
+  const allEvidence = useMemo(() => {
+    if (!result) return [] as EvidenceItem[];
+    return [
+      ...result.evidence_map.strong_evidence,
+      ...result.evidence_map.partial_evidence,
+      ...result.evidence_map.related_evidence,
+    ];
+  }, [result]);
+
+  const terms = useMemo(() => {
+    if (!result) {
+      return { supported: [] as string[], possible: [] as string[], doNotAdd: [] as string[] };
+    }
+    const supported: string[] = [];
+    const possible: string[] = [];
+    const doNotAdd: string[] = [];
+    for (const m of result.requirement_matches) {
+      if (m.match_level === "strong_match" || m.match_level === "partial_match") {
+        supported.push(m.requirement);
+      } else if (m.match_level === "related_evidence" || m.match_level === "not_demonstrated") {
+        possible.push(m.requirement);
+      } else if (m.match_level === "missing") {
+        doNotAdd.push(m.requirement);
+      }
+    }
+    return { supported, possible, doNotAdd };
+  }, [result]);
+
+  const nextActions = useMemo(() => {
+    if (!result) return [] as string[];
+    const actions: string[] = [];
+    const high = result.recommendations.filter((r) => recommendationImpact(r.type) === "High impact");
+    for (const r of high.slice(0, 2)) actions.push(r.title.replace(/\.$/, ""));
+    const gaps = result.gap_analysis;
+    if (gaps.related_evidence[0]) {
+      actions.push(`Clarify cloud or adjacent experience without claiming ${gaps.related_evidence[0]} unless true`);
+    } else if (gaps.not_demonstrated_skills[0]) {
+      actions.push(`Only add ${gaps.not_demonstrated_skills[0]} if you have real experience`);
+    } else if (gaps.weak_evidence[0]) {
+      actions.push(`Add project context for ${gaps.weak_evidence[0]}`);
+    }
+    while (actions.length < 3 && result.recommendations[actions.length]) {
+      actions.push(result.recommendations[actions.length].title.replace(/\.$/, ""));
+    }
+    return actions.slice(0, 3);
+  }, [result]);
+
+  const groupedRecs = useMemo(() => {
+    type Rec = CareerIntelligenceResult["recommendations"][number];
+    const groups: Record<"High impact" | "Medium impact" | "Optional", Rec[]> = {
+      "High impact": [],
+      "Medium impact": [],
+      Optional: [],
+    };
+    if (!result) return groups;
+    for (const r of result.recommendations) {
+      groups[recommendationImpact(r.type)].push(r);
+    }
+    return groups;
+  }, [result]);
+
+  const showStickyAnalyze = !result && !loading;
+
   return (
-    <Suspense fallback={<div className="p-8 flex items-center gap-2 text-slate-500 dark:text-slate-400"><Loader2 size={18} className="animate-spin" /> Loading…</div>}>
-      <MatchPageContent />
-    </Suspense>
+    <div className="max-w-5xl mx-auto px-4 sm:px-6 py-8 space-y-8 pb-28 sm:pb-8">
+      <header className="space-y-2">
+        <h1 className="text-2xl sm:text-3xl font-bold text-slate-900 tracking-tight">
+          JobLens — AI Career Intelligence
+        </h1>
+        <p className="text-slate-600 max-w-2xl text-sm sm:text-base leading-relaxed">
+          Understand how your résumé aligns with a job — with transparent scoring, evidence, and actionable gaps.
+        </p>
+      </header>
+
+      <PrivacyNote>
+        Your résumé is processed only to generate this analysis and is never sold or shared.
+      </PrivacyNote>
+
+      {error && <ErrorBanner message={error} onDismiss={() => setError(null)} />}
+      {savingNote && (
+        <div className="rounded-xl border border-emerald-100 bg-emerald-50 px-4 py-3 text-sm text-emerald-800">
+          {savingNote}
+        </div>
+      )}
+      {compareMode !== "idle" && (
+        <div className="rounded-xl border border-indigo-100 bg-indigo-50 px-4 py-3 text-sm text-indigo-900">
+          Compare mode: {compareMode === "new_job" ? "same résumé vs a new job" : "another résumé vs the same job"}.
+          Update the input below, then run Analyze Alignment to see category differences.
+        </div>
+      )}
+
+      {/* Input: Resume + Job */}
+      <section className="grid grid-cols-1 lg:grid-cols-2 gap-5">
+        <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+          <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
+            <FileText size={16} className="text-indigo-600" /> Upload Resume
+          </h2>
+
+          <input
+            ref={fileRef}
+            type="file"
+            accept=".pdf,.docx,.txt,application/pdf"
+            className="hidden"
+            onChange={(e) => void onFile(e.target.files?.[0] ?? null)}
+          />
+
+          {!fileName ? (
+            <button
+              type="button"
+              onClick={() => fileRef.current?.click()}
+              className="w-full rounded-xl border-2 border-dashed border-slate-200 hover:border-indigo-300 hover:bg-indigo-50/40 transition-colors px-4 py-10 text-center"
+            >
+              <div className="mx-auto mb-3 w-10 h-10 rounded-full bg-indigo-50 text-indigo-600 flex items-center justify-center">
+                <FileText size={18} />
+              </div>
+              <p className="font-semibold text-slate-800 text-sm">Drop your resume here</p>
+              <p className="text-xs text-slate-500 mt-1">or click to browse · PDF, DOCX, TXT supported</p>
+            </button>
+          ) : (
+            <div className="rounded-xl border border-slate-200 bg-slate-50 px-4 py-3 flex flex-col sm:flex-row sm:items-center gap-3 justify-between">
+              <div className="flex items-start gap-3 min-w-0">
+                <div className="w-9 h-9 rounded-lg bg-indigo-100 text-indigo-700 flex items-center justify-center shrink-0">
+                  <FileText size={16} />
+                </div>
+                <div className="min-w-0">
+                  <p className="font-medium text-slate-800 text-sm truncate">{fileName}</p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {fileTypeLabel(fileName)}
+                    {fileSize != null ? ` · ${formatBytes(fileSize)}` : ""}
+                  </p>
+                </div>
+              </div>
+              <div className="flex items-center gap-2 shrink-0">
+                <button
+                  type="button"
+                  className="btn-secondary text-xs py-1.5 px-2.5 flex items-center gap-1"
+                  onClick={() => fileRef.current?.click()}
+                >
+                  <Replace size={12} /> Replace Resume
+                </button>
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-rose-600 p-1.5"
+                  aria-label="Remove resume"
+                  onClick={clearFile}
+                >
+                  <X size={16} />
+                </button>
+              </div>
+            </div>
+          )}
+
+          <button
+            type="button"
+            className="text-xs font-medium text-indigo-600 hover:text-indigo-800"
+            onClick={() => setShowPasteResume((v) => !v)}
+          >
+            {showPasteResume ? "Hide pasted résumé text" : "Or paste résumé text"}
+          </button>
+          {showPasteResume && (
+            <textarea
+              className="textarea min-h-[140px]"
+              value={resumeText}
+              onChange={(e) => setResumeText(e.target.value)}
+              placeholder="Paste your résumé text…"
+            />
+          )}
+        </div>
+
+        <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+          <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
+            <Target size={16} className="text-indigo-600" /> Paste Job Description
+          </h2>
+          <div className="grid grid-cols-1 sm:grid-cols-2 gap-3">
+            <div>
+              <label className="label">Job title (optional)</label>
+              <input
+                className="input"
+                value={jobTitle}
+                onChange={(e) => setJobTitle(e.target.value)}
+                placeholder="e.g. Backend Engineer"
+              />
+            </div>
+            <div>
+              <label className="label">Company (optional)</label>
+              <input
+                className="input"
+                value={companyName}
+                onChange={(e) => setCompanyName(e.target.value)}
+                placeholder="e.g. Acme Corp"
+              />
+            </div>
+          </div>
+          <label className="label">Job description</label>
+          <textarea
+            className="textarea min-h-[180px]"
+            value={jobDescription}
+            onChange={(e) => setJobDescription(e.target.value)}
+            placeholder="Paste the full job description…"
+          />
+        </div>
+      </section>
+
+      <div className={clsx("hidden sm:flex justify-center", showStickyAnalyze && "sm:flex")}>
+        <button
+          type="button"
+          className="btn-primary flex items-center gap-2 px-8 py-3 text-base"
+          disabled={loading}
+          onClick={() => void runAnalyze({ save: false })}
+        >
+          {loading ? <Loader2 size={16} className="animate-spin" /> : <Target size={16} />}
+          {loading ? "Analyzing…" : "Analyze Alignment"}
+        </button>
+      </div>
+
+      {loading && (
+        <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+          <div className="flex items-center justify-between gap-3">
+            <p className="text-sm font-medium text-slate-800">Running evidence-based analysis…</p>
+            <span className="text-xs text-slate-400">Progress is approximate</span>
+          </div>
+          <div className="h-1.5 rounded-full bg-slate-100 overflow-hidden">
+            <div className="h-full w-1/3 rounded-full bg-indigo-500 animate-pulse" style={{ width: `${((stageIdx + 1) / ANALYSIS_STAGES.length) * 100}%` }} />
+          </div>
+          <ul className="space-y-2">
+            {ANALYSIS_STAGES.map((s, i) => (
+              <li
+                key={s}
+                className={clsx(
+                  "text-sm flex items-center gap-2 transition-colors",
+                  i === stageIdx ? "text-indigo-700 font-medium" : "text-slate-400",
+                )}
+              >
+                {i === stageIdx ? (
+                  <Loader2 size={14} className="animate-spin shrink-0" />
+                ) : (
+                  <span className="w-3.5 h-3.5 rounded-full border border-slate-200 shrink-0" />
+                )}
+                {s}
+              </li>
+            ))}
+          </ul>
+          <p className="text-xs text-slate-400">
+            Stage highlights are indeterminate while the analysis runs — they do not claim each step has finished.
+          </p>
+        </div>
+      )}
+
+      {result && !loading && (
+        <section className="space-y-5">
+          {(result.warnings ?? []).map((w) => (
+            <div
+              key={w}
+              className="rounded-xl border border-amber-100 bg-amber-50 px-4 py-3 text-sm text-amber-900 flex gap-2"
+            >
+              <AlertTriangle size={16} className="shrink-0 mt-0.5" />
+              {w.includes("unavailable")
+                ? "Advanced AI explanation is temporarily unavailable. Showing deterministic matching results."
+                : w}
+            </div>
+          ))}
+
+          {/* Result header */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 sm:p-6 space-y-4">
+            <div className="flex flex-col sm:flex-row sm:items-end sm:justify-between gap-4">
+              <div>
+                <p className="text-xs font-semibold uppercase tracking-wider text-indigo-600 mb-1">Your Alignment</p>
+                <div className="flex items-baseline gap-3">
+                  <span className="text-4xl sm:text-5xl font-bold text-slate-900 tabular-nums">
+                    {result.overall_score}%
+                  </span>
+                  <span className="text-base sm:text-lg font-semibold text-slate-700">
+                    {alignmentLabel(result.overall_score)}
+                  </span>
+                </div>
+              </div>
+              <div className="flex flex-wrap gap-2">
+                {!authLoading && isAuthenticated ? (
+                  <button
+                    type="button"
+                    className="btn-secondary text-sm flex items-center gap-1.5"
+                    disabled={saving || Boolean(result.saved || result.analysis_id)}
+                    onClick={() => void saveAnalysis()}
+                  >
+                    {saving ? <Loader2 size={14} className="animate-spin" /> : <Save size={14} />}
+                    {result.saved || result.analysis_id ? "Saved" : "Save Analysis"}
+                  </button>
+                ) : (
+                  <Link href="/sign-in" className="btn-secondary text-sm">
+                    Sign in to save this analysis
+                  </Link>
+                )}
+                {(result.saved || result.analysis_id) && (
+                  <>
+                    <button
+                      type="button"
+                      className="btn-secondary text-sm flex items-center gap-1.5"
+                      onClick={() => startCompare("new_job")}
+                    >
+                      <RefreshCw size={14} /> Compare · new job
+                    </button>
+                    <button
+                      type="button"
+                      className="btn-secondary text-sm flex items-center gap-1.5"
+                      onClick={() => startCompare("new_resume")}
+                    >
+                      <RefreshCw size={14} /> Compare · new résumé
+                    </button>
+                  </>
+                )}
+              </div>
+            </div>
+            <p className="text-sm text-slate-500 leading-relaxed max-w-2xl">
+              This score reflects evidence in your résumé against this job description. It is not a hiring prediction.
+            </p>
+            <div className="flex flex-wrap gap-x-4 gap-y-1 text-xs text-slate-500">
+              {result.job_title ? <span>Job: <span className="text-slate-700 font-medium">{result.job_title}</span></span> : null}
+              {result.company_name ? <span>Company: <span className="text-slate-700 font-medium">{result.company_name}</span></span> : null}
+              {result.resume_filename || fileName ? (
+                <span>Resume: <span className="text-slate-700 font-medium">{result.resume_filename || fileName}</span></span>
+              ) : null}
+              {analyzedAt ? (
+                <span>Analyzed: <span className="text-slate-700 font-medium">{analyzedAt.toLocaleString()}</span></span>
+              ) : null}
+            </div>
+          </div>
+
+          {/* Compare deltas */}
+          {baseline && cats && (
+            <div className="rounded-xl border border-indigo-100 bg-indigo-50/50 p-4 sm:p-5 space-y-3">
+              <h3 className="font-semibold text-slate-900 text-sm">Comparison vs previous analysis</h3>
+              <p className="text-sm text-slate-600">
+                Overall: {baseline.overall_score}% → {result.overall_score}%{" "}
+                <span className="font-semibold text-slate-800">
+                  ({result.overall_score - baseline.overall_score >= 0 ? "+" : ""}
+                  {result.overall_score - baseline.overall_score})
+                </span>
+              </p>
+              <div className="grid grid-cols-1 sm:grid-cols-2 gap-2 text-sm">
+                {CATEGORIES.map(({ key, label }) => {
+                  const prev = baseline.category_scores[key];
+                  const curr = cats[key];
+                  const delta = curr - prev;
+                  return (
+                    <div key={key} className="flex justify-between gap-2 rounded-lg bg-white/80 px-3 py-2 border border-indigo-50">
+                      <span className="text-slate-600">{label}</span>
+                      <span className="font-medium text-slate-800 tabular-nums">
+                        {prev}% → {curr}%{" "}
+                        <span className={delta >= 0 ? "text-emerald-600" : "text-rose-600"}>
+                          ({delta >= 0 ? "+" : ""}{delta})
+                        </span>
+                      </span>
+                    </div>
+                  );
+                })}
+              </div>
+            </div>
+          )}
+
+          {/* Category breakdown */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+            <h3 className="font-semibold text-slate-900">Category breakdown</h3>
+            <div className="space-y-3">
+              {CATEGORIES.map(({ key, label }) => {
+                const value = cats?.[key] ?? 0;
+                return (
+                  <div key={key}>
+                    <div className="flex justify-between text-sm mb-1">
+                      <span className="text-slate-700">{label}</span>
+                      <span className="font-semibold text-slate-900 tabular-nums">{value}%</span>
+                    </div>
+                    <div className="h-2 rounded-full bg-slate-100 overflow-hidden">
+                      <div
+                        className="h-full bg-indigo-500 rounded-full transition-all"
+                        style={{ width: `${Math.min(100, Math.max(0, value))}%` }}
+                      />
+                    </div>
+                  </div>
+                );
+              })}
+            </div>
+            <Expand title="How this score is calculated">
+              <ul className="text-sm text-slate-600 space-y-1.5">
+                {CATEGORIES.map(({ label, weight }) => (
+                  <li key={label} className="flex justify-between gap-4">
+                    <span>{label}</span>
+                    <span className="font-medium text-slate-800">{weight}</span>
+                  </li>
+                ))}
+              </ul>
+              {result.formula ? (
+                <p className="text-xs text-slate-400 font-mono mt-3 break-all">{result.formula}</p>
+              ) : null}
+              <p className="text-xs text-slate-500 mt-2">
+                The deterministic weighted score is the source of truth. AI may explain evidence but never overrides this number.
+              </p>
+            </Expand>
+          </div>
+
+          {/* Strong evidence */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+            <h3 className="font-semibold text-slate-900">Strong Evidence</h3>
+            {!strongEvidence.length ? (
+              <p className="text-sm text-slate-500">No strong matches found for this job yet.</p>
+            ) : (
+              <ul className="space-y-3">
+                {strongEvidence.slice(0, 6).map((item, i) => (
+                  <EvidenceBlock key={`${item.requirement}-${i}`} item={item} />
+                ))}
+              </ul>
+            )}
+            {allEvidence.length > 6 && (
+              <Expand title="View all evidence">
+                <ul className="space-y-3">
+                  {allEvidence.map((item, i) => (
+                    <EvidenceBlock key={`all-${item.requirement}-${i}`} item={item} />
+                  ))}
+                </ul>
+              </Expand>
+            )}
+          </div>
+
+          {/* Job requirements */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+            <h3 className="font-semibold text-slate-900">Job Requirements</h3>
+            <p className="text-sm text-slate-500">
+              Strong Match, Partial Match, Related Evidence, Not Demonstrated, and Missing are distinct states.
+            </p>
+            <div className="space-y-2.5">
+              {result.requirement_matches.map((m) => (
+                <RequirementCard key={`${m.requirement}-${m.category}-${m.match_level}`} m={m} />
+              ))}
+            </div>
+          </div>
+
+          {/* Gap categories */}
+          <div className="space-y-3">
+            <h3 className="font-semibold text-slate-900 px-0.5">Gaps</h3>
+            <div className="grid grid-cols-1 md:grid-cols-2 gap-3">
+              <GapCard
+                title="Missing"
+                tone="missing"
+                items={result.gap_analysis.missing_skills}
+                matches={result.requirement_matches}
+              />
+              <GapCard
+                title="Not Demonstrated"
+                tone="not_demonstrated"
+                items={result.gap_analysis.not_demonstrated_skills}
+                matches={result.requirement_matches}
+              />
+              <GapCard
+                title="Weak Evidence"
+                tone="weak"
+                items={result.gap_analysis.weak_evidence}
+                matches={result.requirement_matches}
+              />
+              <GapCard
+                title="Related Evidence"
+                tone="related"
+                items={result.gap_analysis.related_evidence}
+                matches={result.requirement_matches}
+              />
+            </div>
+          </div>
+
+          {/* Resume recommendations */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+            <h3 className="font-semibold text-slate-900">Improve Your Resume for This Role</h3>
+            <p className="text-sm text-slate-500">
+              Suggestions are grounded in existing résumé evidence. JobLens never invents experience.
+            </p>
+            {(["High impact", "Medium impact", "Optional"] as const).map((tier) => {
+              const items = groupedRecs[tier];
+              if (!items.length) return null;
+              return (
+                <div key={tier} className="space-y-2">
+                  <h4 className="text-xs font-semibold uppercase tracking-wider text-slate-500">{tier}</h4>
+                  {items.map((r) => (
+                    <div key={r.title} className="rounded-lg border border-slate-100 bg-slate-50/80 px-3.5 py-3">
+                      <p className="font-medium text-slate-800 text-sm">{r.title}</p>
+                      <p className="text-sm text-slate-600 mt-1">
+                        <span className="font-medium text-slate-700">Why:</span> {r.why || r.detail}
+                      </p>
+                      {r.detail && r.why ? (
+                        <p className="text-sm text-slate-600 mt-1">
+                          <span className="font-medium text-slate-700">Suggested improvement:</span> {r.detail}
+                        </p>
+                      ) : null}
+                    </div>
+                  ))}
+                </div>
+              );
+            })}
+            {(result.gap_analysis.resume_improvement_opportunities || []).slice(0, 4).map((op) => (
+              <div key={op.title} className="rounded-lg border border-slate-100 px-3.5 py-3">
+                <p className="font-medium text-slate-800 text-sm">{op.title}</p>
+                <p className="text-sm text-slate-600 mt-1">{op.detail}</p>
+                {op.why ? <p className="text-xs text-slate-400 mt-1">Why: {op.why}</p> : null}
+              </div>
+            ))}
+          </div>
+
+          {/* Terms worth reviewing */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+            <h3 className="font-semibold text-slate-900">Terms Worth Reviewing</h3>
+            <p className="text-sm text-slate-500">
+              These are terms from the job — not a list to paste into your résumé. Only use words you can support with real experience.
+            </p>
+            <div className="grid grid-cols-1 sm:grid-cols-3 gap-3 text-sm">
+              <div className="rounded-lg border border-emerald-100 bg-emerald-50/40 p-3">
+                <p className="font-semibold text-emerald-800 text-xs uppercase tracking-wide mb-2">
+                  Already supported by your experience
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(terms.supported.length ? terms.supported : ["None"]).map((t) => (
+                    <span key={t} className="px-2 py-0.5 rounded-md bg-white text-emerald-800 text-xs font-medium border border-emerald-100">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-amber-100 bg-amber-50/40 p-3">
+                <p className="font-semibold text-amber-800 text-xs uppercase tracking-wide mb-2">
+                  Possibly relevant but not demonstrated
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(terms.possible.length ? terms.possible : ["None"]).map((t) => (
+                    <span key={t} className="px-2 py-0.5 rounded-md bg-white text-amber-800 text-xs font-medium border border-amber-100">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+              <div className="rounded-lg border border-rose-100 bg-rose-50/40 p-3">
+                <p className="font-semibold text-rose-800 text-xs uppercase tracking-wide mb-2">
+                  Do not add unless true
+                </p>
+                <div className="flex flex-wrap gap-1.5">
+                  {(terms.doNotAdd.length ? terms.doNotAdd : ["None"]).map((t) => (
+                    <span key={t} className="px-2 py-0.5 rounded-md bg-white text-rose-800 text-xs font-medium border border-rose-100">
+                      {t}
+                    </span>
+                  ))}
+                </div>
+              </div>
+            </div>
+          </div>
+
+          {/* Next 3 actions */}
+          <div className="rounded-xl border border-slate-200 bg-white p-5 space-y-3">
+            <h3 className="font-semibold text-slate-900">Your Next 3 Actions</h3>
+            <ol className="space-y-2 list-decimal list-inside text-sm text-slate-700">
+              {(nextActions.length ? nextActions : ["Re-run analysis after updating your résumé evidence."]).map((a) => (
+                <li key={a} className="leading-relaxed pl-1">{a}.</li>
+              ))}
+            </ol>
+          </div>
+        </section>
+      )}
+
+      {/* History */}
+      <section className="rounded-xl border border-slate-200 bg-white p-5 space-y-4">
+        <h2 className="font-semibold text-slate-900 flex items-center gap-2 text-sm sm:text-base">
+          <History size={16} /> Past Analyses
+        </h2>
+        {history?.repeated_gaps?.length ? (
+          <div className="rounded-lg border border-indigo-100 bg-indigo-50 px-3 py-2 text-sm text-indigo-900 space-y-1">
+            {history.repeated_gaps.map((g) => (
+              <p key={g.skill}>{g.message}</p>
+            ))}
+          </div>
+        ) : null}
+        {!history?.items?.length ? (
+          <p className="text-sm text-slate-500">No saved analyses yet.</p>
+        ) : (
+          <ul className="divide-y divide-slate-100">
+            {history.items.map((item) => (
+              <li key={item.id} className="py-3 flex flex-col sm:flex-row sm:items-center gap-2 sm:justify-between">
+                <button type="button" className="text-left" onClick={() => void openHistoryItem(item)}>
+                  <p className="font-medium text-slate-800 text-sm">
+                    {item.job_title || "Untitled role"}
+                    {item.company_name ? ` · ${item.company_name}` : ""}
+                  </p>
+                  <p className="text-xs text-slate-500 mt-0.5">
+                    {item.overall_score ?? "—"}% · Required {item.required_skills_score ?? "—"}% · Preferred{" "}
+                    {item.preferred_skills_score ?? "—"}%
+                    {item.resume_filename ? ` · ${item.resume_filename}` : ""}
+                    {item.created_at ? ` · ${new Date(item.created_at).toLocaleString()}` : ""}
+                  </p>
+                </button>
+                <button
+                  type="button"
+                  className="text-slate-400 hover:text-rose-600 self-start"
+                  title="Delete"
+                  onClick={() => void removeHistoryItem(item.id)}
+                >
+                  <Trash2 size={14} />
+                </button>
+              </li>
+            ))}
+          </ul>
+        )}
+      </section>
+
+      {/* Mobile sticky analyze */}
+      {showStickyAnalyze && (
+        <div className="sm:hidden fixed bottom-0 inset-x-0 z-30 border-t border-slate-200 bg-white/95 backdrop-blur px-4 py-3 pb-[max(0.75rem,env(safe-area-inset-bottom))]">
+          <button
+            type="button"
+            className="btn-primary w-full flex items-center justify-center gap-2 py-3"
+            disabled={loading}
+            onClick={() => void runAnalyze({ save: false })}
+          >
+            {loading ? <Loader2 size={16} className="animate-spin" /> : <Target size={16} />}
+            Analyze Alignment
+          </button>
+        </div>
+      )}
+    </div>
   );
 }

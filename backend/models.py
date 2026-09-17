@@ -106,6 +106,29 @@ class ResumeAnalysis(Base):
     created_at = Column(DateTime, default=func.now())
 
 
+class JoblensAnalysis(Base):
+    """Saved Career Intelligence analysis (seeker product — not CRM/ATS)."""
+
+    __tablename__ = "joblens_analyses"
+
+    id = Column(Integer, primary_key=True, index=True)
+    resume_filename = Column(String(255), nullable=True)
+    resume_version = Column(Integer, nullable=False, default=1)
+    job_title = Column(String(255), nullable=True)
+    company_name = Column(String(255), nullable=True)
+    content_hash = Column(String(64), nullable=False, index=True)
+    job_description_hash = Column(String(64), nullable=True, index=True)
+    # Stored analysis payload (scores, matches, gaps, recommendations) — not raw prompts.
+    result_json = Column(Text, nullable=False)
+    overall_score = Column(Integer, nullable=True)
+    required_skills_score = Column(Integer, nullable=True)
+    preferred_skills_score = Column(Integer, nullable=True)
+    experience_score = Column(Integer, nullable=True)
+    guest_id = Column(String(36), nullable=True, index=True)
+    user_id = Column(Integer, nullable=True, index=True)
+    created_at = Column(DateTime, default=func.now())
+
+
 class JobMatch(Base):
     __tablename__ = "job_matches"
 
@@ -662,6 +685,8 @@ class ZohoConnection(Base):
     status = Column(String(50), default="Active")
     last_sync_at = Column(DateTime, nullable=True)
     last_error = Column(Text, nullable=True)
+    # Safe counts only, e.g. "12 retrieved, 3 new, 9 skipped" — never bodies/tokens.
+    last_sync_summary = Column(String(255), nullable=True)
     created_at = Column(DateTime, default=func.now())
     updated_at = Column(DateTime, default=func.now(), onupdate=func.now())
 
@@ -2332,16 +2357,30 @@ class ZohoOAuthCallbackRequest(BaseModel):
 class ZohoConnectionStatus(BaseModel):
     connected: bool
     status: str = "Disconnected"
+    status_message: str = "Not connected"
+    token_status: str = "Missing"
     mailbox_email: Optional[str] = None
     zoho_account_id: Optional[str] = None
     last_sync_at: Optional[datetime] = None
+    last_sync_result: Optional[str] = None
     last_error: Optional[str] = None
+    can_reconnect: bool = False
 
 
 class ZohoSyncResponse(BaseModel):
     imported: int
     skipped: int
     total_fetched: int
+    request_id: Optional[str] = None
+
+
+class AlreadyImportedDetail(BaseModel):
+    code: str = "already_imported"
+    message: str = "Already imported"
+    job_id: int
+    recruiter_contact_id: Optional[int] = None
+    vendor_id: Optional[int] = None
+    client_id: Optional[int] = None
 
 
 class ImportedEmailResponse(BaseModel):

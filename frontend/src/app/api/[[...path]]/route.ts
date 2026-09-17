@@ -54,6 +54,12 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
   try {
     const headers = new Headers();
     copyHeaders(req.headers, headers);
+    // Explicitly forward Clerk session JWT — never drop Authorization on the BFF hop.
+    const authorization = req.headers.get("authorization");
+    if (authorization) headers.set("authorization", authorization);
+    // Body is re-buffered below; inbound Content-Length can mismatch and break
+    // multipart resume uploads / authenticated POSTs upstream.
+    headers.delete("content-length");
 
     const body =
       req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
@@ -62,6 +68,8 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
       method: req.method,
       headers,
       body: body && body.byteLength > 0 ? body : undefined,
+      // Do not follow redirects that could strip Authorization.
+      redirect: "manual",
     });
   } catch (e) {
     const msg = e instanceof Error ? e.message : "upstream unreachable";

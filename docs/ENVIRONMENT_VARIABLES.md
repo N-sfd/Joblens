@@ -19,8 +19,9 @@ Required and optional configuration for JobLens **Recruitment CRM + ATS**.
 | `FRONTEND_URL` | Recommended | Canonical frontend URL |
 | `STORAGE_PROVIDER` | Yes if uploads | `supabase` (or equivalent) — not `local` on ephemeral hosts |
 | `FILE_STORAGE_*` / bucket keys | If using object storage | See `backend/.env.example` |
-| `ZOHO_CLIENT_ID` / `SECRET` / tokens | If Zoho enabled | Never log refresh tokens |
-| `TOKEN_ENCRYPTION_KEY` | If Zoho tokens encrypted | Rotate on exposure |
+| `ZOHO_CLIENT_ID` / `ZOHO_CLIENT_SECRET` / `ZOHO_REDIRECT_URI` | If Zoho enabled | Redirect must match FE `/ats/settings/zoho/callback`. Never expose to browser |
+| `ZOHO_ACCOUNTS_BASE_URL` / `ZOHO_MAIL_API_BASE_URL` | Optional | Regional hosts (`.eu` / `.in`) when mailbox is not US |
+| `TOKEN_ENCRYPTION_KEY` | If Zoho enabled | Fernet key for refresh tokens at rest; rotate on exposure |
 | `AI_RATE_LIMIT_PER_MINUTE` | Optional | Default 20 |
 | `ZOHO_RATE_LIMIT_PER_MINUTE` | Optional | Default 30 |
 | `CSV_EXPORT_PER_MINUTE` | Optional | Default 10 |
