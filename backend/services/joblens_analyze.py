@@ -173,15 +173,15 @@ async def run_analysis(
     warnings: list[str] = []
     if not ai_enabled():
         warnings.append(
-            "Advanced AI explanation is unavailable. Showing deterministic analysis only."
+            "Advanced AI explanation is temporarily unavailable. Showing deterministic matching results."
         )
 
     parsed_resume, resume_ai = await parse_resume(resume_text)
     parsed_job, job_ai = await parse_job(job_description, job_title=job_title, company=company_name)
     if not resume_ai or not job_ai:
-        if "Advanced AI explanation is unavailable" not in " ".join(warnings):
+        if "Advanced AI explanation is temporarily unavailable" not in " ".join(warnings):
             warnings.append(
-                "Advanced AI explanation is unavailable. Showing deterministic analysis only."
+                "Advanced AI explanation is temporarily unavailable. Showing deterministic matching results."
             )
 
     requirements = list(parsed_job.get("requirements") or [])
