@@ -3,6 +3,9 @@ import { NextResponse } from "next/server";
 
 export const runtime = "nodejs";
 export const dynamic = "force-dynamic";
+// AI endpoints (resume/cover-letter analysis) can run well past a typical
+// CRUD request — give the function room to outlive the upstream fetch below.
+export const maxDuration = 60;
 
 const HOP_BY_HOP = new Set([
   "connection",
@@ -67,14 +70,17 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
       req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
 
     // Bound wait time so a sleeping/wrong Render host fails fast instead of
-    // hanging until the browser's 20s AbortController fires.
+    // hanging until the browser's AbortController fires. AI endpoints (resume/
+    // cover-letter analysis) can legitimately take longer than a plain CRUD
+    // call, so this needs headroom under both the client timeout (see
+    // lib/api.ts) and this function's own maxDuration above.
     upstream = await fetch(target, {
       method: req.method,
       headers,
       body: body && body.byteLength > 0 ? body : undefined,
       // Do not follow redirects that could strip Authorization.
       redirect: "manual",
-      signal: AbortSignal.timeout(12_000),
+      signal: AbortSignal.timeout(40_000),
     });
 
     // FastAPI 307s bare router-prefix requests (e.g. /api/profile -> /api/profile/).
@@ -91,7 +97,7 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
             headers,
             body: body && body.byteLength > 0 ? body : undefined,
             redirect: "manual",
-            signal: AbortSignal.timeout(12_000),
+            signal: AbortSignal.timeout(40_000),
           });
         }
       }
@@ -102,7 +108,7 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
     return NextResponse.json(
       {
         detail: timedOut
-          ? `BACKEND_URL (${origin}) timed out after 12s. Deploy this repo’s backend/ as Render service joblens-crm-api, confirm /health returns {"status":"healthy"}, set Vercel BACKEND_URL to that URL (not salary-prediction joblens-api.onrender.com), then redeploy.`
+          ? `BACKEND_URL (${origin}) timed out after 40s. Deploy this repo’s backend/ as Render service joblens-crm-api, confirm /health returns {"status":"healthy"}, set Vercel BACKEND_URL to that URL (not salary-prediction joblens-api.onrender.com), then redeploy.`
           : `Backend unreachable at ${origin}${pathname} (${msg}). Check BACKEND_URL on Vercel and that the Render service is awake.`,
       },
       { status: 504 },

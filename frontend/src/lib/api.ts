@@ -132,7 +132,10 @@ async function sendOnce(path: string, init: RequestInit | undefined, token: stri
     headers.delete("Content-Type");
   }
 
-  const timeoutMs = 20_000;
+  // AI endpoints (resume/cover-letter analysis) route through the /api proxy's
+  // own 40s upstream timeout — this needs headroom above that or the client
+  // aborts first and masks the real upstream response with "Failed to fetch".
+  const timeoutMs = 45_000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   if (init?.signal) {
