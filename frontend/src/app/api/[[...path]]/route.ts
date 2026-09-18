@@ -76,6 +76,26 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
       redirect: "manual",
       signal: AbortSignal.timeout(12_000),
     });
+
+    // FastAPI 307s bare router-prefix requests (e.g. /api/profile -> /api/profile/).
+    // Following that in the browser is a cross-origin hop to the raw Render host,
+    // which strips Authorization. Follow same-origin redirects here instead, where
+    // we still hold the header.
+    if (upstream.status === 307 || upstream.status === 308) {
+      const location = upstream.headers.get("location");
+      if (location) {
+        const redirectTarget = new URL(location, origin);
+        if (redirectTarget.origin === new URL(origin).origin) {
+          upstream = await fetch(redirectTarget, {
+            method: req.method,
+            headers,
+            body: body && body.byteLength > 0 ? body : undefined,
+            redirect: "manual",
+            signal: AbortSignal.timeout(12_000),
+          });
+        }
+      }
+    }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "upstream unreachable";
     const timedOut = /abort|timeout/i.test(msg);
