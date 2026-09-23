@@ -290,6 +290,11 @@ export default function ResumePage() {
             <div className="flex flex-col sm:flex-row items-center gap-8">
               <ScoreCircle score={result.analysis.ats_score} label="ATS Score" size={140} />
               <div className="flex-1 w-full space-y-3">
+                {result.analysis.warnings && result.analysis.warnings.length > 0 && (
+                  <p className="text-xs text-amber-700 bg-amber-50 border border-amber-100 rounded-lg px-3 py-2">
+                    {result.analysis.warnings[0]}
+                  </p>
+                )}
                 {[
                   { label: "Formatting Score", score: result.analysis.formatting_score },
                   { label: "Content Score", score: result.analysis.content_score },

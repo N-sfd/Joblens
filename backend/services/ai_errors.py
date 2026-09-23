@@ -48,4 +48,9 @@ def raise_clean_ai_error(logger: logging.Logger, action: str, exc: Exception) ->
         raise HTTPException(status_code=500, detail="AI service is not configured correctly. Please try again later.")
     if isinstance(exc, APIStatusError) and status_code == 429:
         raise HTTPException(status_code=429, detail="The AI service is busy right now. Please try again in a minute.")
+    if isinstance(exc, ValueError) and "GROQ_API_KEY" in str(exc):
+        raise HTTPException(
+            status_code=503,
+            detail="AI service is not configured (missing GROQ_API_KEY on the API host). Set it in Render and redeploy.",
+        )
     raise HTTPException(status_code=500, detail=f"{action} could not be completed. Please try again.")

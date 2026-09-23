@@ -1,12 +1,26 @@
 from openai import OpenAI
 import json
+import logging
 import os
+import re
 from typing import Optional
 from services.ats_engine import keyword_match, formatting_compliance
+
+logger = logging.getLogger(__name__)
 
 _client: Optional[OpenAI] = None
 MODEL = "llama-3.3-70b-versatile"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+
+# Common résumé skill tokens for heuristic extraction when Groq is offline.
+_SKILL_HINTS = [
+    "python", "javascript", "typescript", "java", "c++", "c#", "go", "rust", "ruby", "php",
+    "react", "angular", "vue", "node", "fastapi", "django", "flask", "spring", "dotnet",
+    "sql", "postgresql", "mysql", "mongodb", "redis", "aws", "azure", "gcp", "docker",
+    "kubernetes", "terraform", "linux", "git", "ci/cd", "graphql", "rest", "html", "css",
+    "pandas", "numpy", "machine learning", "nlp", "excel", "tableau", "power bi",
+    "salesforce", "jira", "agile", "scrum", "leadership", "communication",
+]
 
 
 def get_client() -> OpenAI:
@@ -22,6 +36,126 @@ def get_client() -> OpenAI:
             base_url=GROQ_BASE_URL,
         )
     return _client
+
+
+def _extract_skill_hints(resume_text: str) -> tuple[list[str], list[str]]:
+    lower = resume_text.lower()
+    technical: list[str] = []
+    soft: list[str] = []
+    soft_set = {"leadership", "communication", "agile", "scrum"}
+    for skill in _SKILL_HINTS:
+        if skill in lower:
+            label = skill.upper() if skill in {"sql", "aws", "gcp", "html", "css", "nlp"} else skill.title()
+            if skill in soft_set:
+                soft.append(label)
+            else:
+                technical.append(label)
+    return technical[:12], soft[:6]
+
+
+def heuristic_analyze_resume(resume_text: str) -> dict:
+    """Deterministic ATS-style résumé read when Groq is missing or failing.
+
+    Mirrors Career Intelligence: never block the seeker product on AI outage.
+    """
+    formatting = formatting_compliance(resume_text)
+    words = resume_text.split()
+    word_count = len(words)
+    lower = resume_text.lower()
+    sections = [s for s in ("experience", "education", "skills", "summary", "projects") if s in lower]
+    technical, soft = _extract_skill_hints(resume_text)
+
+    content = 40
+    if word_count >= 150:
+        content += 15
+    if word_count >= 300:
+        content += 10
+    if len(sections) >= 2:
+        content += 15
+    if len(sections) >= 4:
+        content += 5
+    if technical:
+        content += min(15, 3 * len(technical))
+    if re.search(r"\d+\+?\s*(years?|yrs)", lower):
+        content += 5
+    content = max(0, min(100, content))
+
+    fmt_score = int(formatting["score"])
+    ats = round(fmt_score * 0.45 + content * 0.55)
+    ats = max(0, min(100, ats))
+
+    strengths: list[str] = []
+    if technical:
+        strengths.append(f"Clear technical skills detected ({', '.join(technical[:4])}).")
+    if len(sections) >= 3:
+        strengths.append("Standard section headers help ATS parsers extract content.")
+    if word_count >= 200:
+        strengths.append("Résumé length is in a typical ATS-parsable range.")
+    if not strengths:
+        strengths.append("Résumé text was readable enough for a basic structural scan.")
+
+    weaknesses = list(formatting.get("issues") or [])
+    if not technical:
+        weaknesses.append("Few recognizable technical skills found — spell out tools and stack names.")
+    if len(sections) < 2:
+        weaknesses.append("Add labeled sections such as Experience, Education, and Skills.")
+    weaknesses = weaknesses[:5] or ["Add measurable achievements (metrics, scope, outcomes)."]
+
+    recommendations = []
+    for issue in weaknesses[:3]:
+        recommendations.append({"priority": "high" if "email" in issue.lower() or "section" in issue.lower() else "medium", "suggestion": issue})
+    if len(recommendations) < 3:
+        recommendations.append({"priority": "low", "suggestion": "Quantify impact in bullets (%, $, time saved, scale)."})
+
+    summary = (
+        f"Structural ATS scan scored this résumé at {ats}/100 "
+        f"(formatting {fmt_score}, content {content}). "
+        "Advanced AI coaching is temporarily unavailable — results are deterministic."
+    )
+
+    return {
+        "ats_score": ats,
+        "formatting_score": fmt_score,
+        "content_score": content,
+        "overall_summary": summary,
+        "strengths": strengths[:5],
+        "weaknesses": weaknesses[:5],
+        "skills_identified": {"technical": technical, "soft": soft},
+        "experience_summary": (
+            "Experience section detected." if "experience" in lower else "No clear Experience section detected."
+        ),
+        "education_summary": (
+            "Education section detected." if "education" in lower else "No clear Education section detected."
+        ),
+        "recommendations": recommendations[:5],
+        "keywords_missing": [],
+        "formatting_suggestions": list(formatting.get("issues") or [])[:5],
+        "ai_used": False,
+        "warnings": [
+            "Advanced AI explanation is temporarily unavailable. Showing deterministic ATS structural results."
+        ],
+    }
+
+
+async def analyze_resume(resume_text: str) -> dict:
+    try:
+        client = get_client()
+        response = client.chat.completions.create(
+            model=MODEL,
+            max_tokens=2048,
+            response_format={"type": "json_object"},
+            messages=[{"role": "user", "content": RESUME_ANALYSIS_PROMPT.format(resume_text=resume_text)}],
+        )
+        data = json.loads(response.choices[0].message.content)
+        data.setdefault("formatting_suggestions", [])
+        data["ai_used"] = True
+        return data
+    except Exception as e:
+        logger.warning(
+            "analyze_resume falling back to heuristic error_code=%s",
+            type(e).__name__,
+        )
+        return heuristic_analyze_resume(resume_text)
 
 
 RESUME_ANALYSIS_PROMPT = """\
@@ -115,19 +249,6 @@ Instructions:
 - Do NOT include a date line or address block — just the letter body starting from the salutation
 
 Return ONLY the cover letter text with proper paragraph breaks. No markdown, no explanations."""
-
-
-async def analyze_resume(resume_text: str) -> dict:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
-        max_tokens=2048,
-        response_format={"type": "json_object"},
-        messages=[{"role": "user", "content": RESUME_ANALYSIS_PROMPT.format(resume_text=resume_text)}],
-    )
-    data = json.loads(response.choices[0].message.content)
-    data.setdefault("formatting_suggestions", [])
-    return data
 
 
 async def match_job(resume_text: str, job_description: str) -> dict:

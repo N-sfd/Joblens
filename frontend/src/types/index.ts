@@ -230,6 +230,8 @@ export interface ResumeAnalysis {
   recommendations: { priority: "high" | "medium" | "low"; suggestion: string }[];
   keywords_missing: string[];
   formatting_suggestions: string[];
+  ai_used?: boolean;
+  warnings?: string[];
 }
 
 export type MatchRecommendation = "Strong Match" | "Good Match" | "Weak Match" | "Not Recommended";

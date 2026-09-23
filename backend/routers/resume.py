@@ -168,13 +168,10 @@ async def resume_history(
 
 @router.post("/analyze-text")
 async def analyze_resume_text(body: dict):
-    text = body.get("text", "")
+    text = (body.get("text") or body.get("resume_text") or "")
     if len(text.strip()) < 50:
         raise HTTPException(status_code=422, detail="Resume text is too short.")
-    try:
-        analysis = await analyze_resume(text)
-    except Exception as e:
-        raise_clean_ai_error(logger, "Resume analysis", e)
+    analysis = await analyze_resume(text)
     return {"analysis": analysis}
 
 
