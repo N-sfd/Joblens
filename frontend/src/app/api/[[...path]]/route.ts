@@ -7,6 +7,19 @@ export const dynamic = "force-dynamic";
 // CRUD request — give the function room to outlive the upstream fetch below.
 export const maxDuration = 60;
 
+/** Only forward headers the CRM API needs. Copying hop-by-hop / Vercel headers
+ *  (transfer-encoding, content-length, accept-encoding, …) makes undici throw
+ *  "fetch failed" on POST and surfaces in the UI as a blank Failed to fetch. */
+const FORWARD_REQUEST_HEADERS = [
+  "authorization",
+  "content-type",
+  "accept",
+  "cookie",
+  "x-guest-id",
+  "x-request-id",
+  "x-csrf-token",
+] as const;
+
 const HOP_BY_HOP = new Set([
   "connection",
   "keep-alive",
@@ -17,6 +30,8 @@ const HOP_BY_HOP = new Set([
   "transfer-encoding",
   "upgrade",
   "host",
+  "content-encoding",
+  "content-length",
 ]);
 
 function backendOrigin(): string | null {
@@ -25,7 +40,16 @@ function backendOrigin(): string | null {
   return raw.replace(/\/$/, "").replace(/\/api\/?$/i, "");
 }
 
-function copyHeaders(from: Headers, to: Headers) {
+function buildUpstreamHeaders(req: NextRequest): Headers {
+  const headers = new Headers();
+  for (const name of FORWARD_REQUEST_HEADERS) {
+    const value = req.headers.get(name);
+    if (value) headers.set(name, value);
+  }
+  return headers;
+}
+
+function copyResponseHeaders(from: Headers, to: Headers) {
   from.forEach((value, key) => {
     const lower = key.toLowerCase();
     if (HOP_BY_HOP.has(lower) || lower === "set-cookie") return;
@@ -33,11 +57,26 @@ function copyHeaders(from: Headers, to: Headers) {
   });
 }
 
-const UPSTREAM_TIMEOUT_MS = 18_000;
-const WAKE_HEALTH_TIMEOUT_MS = 22_000;
+const UPSTREAM_TIMEOUT_MS = 25_000;
+const WAKE_HEALTH_TIMEOUT_MS = 20_000;
 
-function isTimeoutError(e: unknown): boolean {
-  return e instanceof Error && /abort|timeout/i.test(e.message);
+function errorCause(e: unknown): string {
+  if (!(e instanceof Error)) return String(e);
+  const cause = (e as Error & { cause?: unknown }).cause;
+  if (cause instanceof Error) {
+    const code = (cause as Error & { code?: string }).code;
+    return code ? `${cause.message} [${code}]` : cause.message;
+  }
+  if (cause && typeof cause === "object" && "code" in cause) {
+    return String((cause as { code: unknown }).code);
+  }
+  return e.message;
+}
+
+function isRetryableUpstreamError(e: unknown): boolean {
+  if (!(e instanceof Error)) return false;
+  const msg = `${e.message} ${errorCause(e)}`;
+  return /abort|timeout|fetch failed|econnreset|econnrefused|etimedout|socket|network/i.test(msg);
 }
 
 async function wakeBackend(origin: string): Promise<boolean> {
@@ -70,9 +109,8 @@ async function fetchUpstream(
     signal: AbortSignal.timeout(timeoutMs),
   });
 
-  // FastAPI 307s bare router-prefix requests (e.g. /api/profile -> /api/profile/).
-  // Following that in the browser is a cross-origin hop to the raw Render host,
-  // which strips Authorization. Follow same-origin redirects here instead.
+  // FastAPI 307/308s bare router-prefix requests (e.g. /api/profile -> /api/profile/).
+  // Follow same-origin redirects here so Authorization / cookies stay on this hop.
   if (upstream.status === 307 || upstream.status === 308) {
     const location = upstream.headers.get("location");
     if (location) {
@@ -113,40 +151,30 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
         : "/api";
   const target = new URL(pathname + req.nextUrl.search, origin);
 
-  const headers = new Headers();
-  copyHeaders(req.headers, headers);
-  // Explicitly forward Clerk session JWT — never drop Authorization on the BFF hop.
-  const authorization = req.headers.get("authorization");
-  if (authorization) headers.set("authorization", authorization);
-  // Body is re-buffered below; inbound Content-Length can mismatch and break
-  // multipart resume uploads / authenticated POSTs upstream.
-  headers.delete("content-length");
-
+  const headers = buildUpstreamHeaders(req);
   const body =
     req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
   const init = { method: req.method, headers, body };
 
   let upstream: Response;
   try {
-    // Bound wait time so a sleeping Render host fails before maxDuration.
-    // On timeout, ping /health once (wakes free-tier cold starts) then retry.
     try {
       upstream = await fetchUpstream(target, init, UPSTREAM_TIMEOUT_MS);
     } catch (first) {
-      if (!isTimeoutError(first) || pathname === "/health" || pathname === "/health/ready") {
+      if (!isRetryableUpstreamError(first) || pathname === "/health" || pathname === "/health/ready") {
         throw first;
       }
       await wakeBackend(origin);
       upstream = await fetchUpstream(target, init, UPSTREAM_TIMEOUT_MS);
     }
   } catch (e) {
-    const msg = e instanceof Error ? e.message : "upstream unreachable";
-    const timedOut = isTimeoutError(e);
+    const cause = errorCause(e);
+    const timedOut = /abort|timeout/i.test(cause);
     return NextResponse.json(
       {
         detail: timedOut
-          ? `The API at ${origin} is waking up or overloaded (timed out). Render free-tier services sleep when idle — wait ~30s and try again. If this keeps happening, open ${origin}/health and confirm {"status":"healthy"}.`
-          : `Backend unreachable at ${origin}${pathname} (${msg}). Check BACKEND_URL on Vercel and that the Render service is awake.`,
+          ? `The API at ${origin} is waking up or overloaded (timed out). Wait ~30s and try again, or open ${origin}/health and confirm {"status":"healthy"}.`
+          : `Backend unreachable at ${origin}${pathname} (${cause}). The Render service may be asleep — wait ~30s and try again.`,
       },
       { status: 504 },
     );
@@ -199,7 +227,7 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
   }
 
   const outHeaders = new Headers();
-  copyHeaders(upstream.headers, outHeaders);
+  copyResponseHeaders(upstream.headers, outHeaders);
   // Node fetch exposes Set-Cookie via getSetCookie(); forEach can drop or join them.
   outHeaders.delete("set-cookie");
   const getSetCookie = (upstream.headers as Headers & { getSetCookie?: () => string[] }).getSetCookie;

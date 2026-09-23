@@ -12,7 +12,7 @@ import logging
 import os
 from collections import Counter
 
-from fastapi import APIRouter, Depends, File, Form, HTTPException, Query, Request, UploadFile
+from fastapi import APIRouter, Depends, HTTPException, Query, Request, UploadFile
 from pydantic import BaseModel, Field
 from sqlalchemy.orm import Session
 
@@ -191,20 +191,39 @@ async def analyze(
     request: Request,
     owner: Owner = Depends(get_owner),
     db: Session = Depends(get_db),
-    # multipart optional
-    file: UploadFile | None = File(None),
-    resume_text: str | None = Form(None),
-    job_description: str | None = Form(None),
-    job_title: str | None = Form(None),
-    company_name: str | None = Form(None),
-    save: str | None = Form("true"),
-    force_new_version: str | None = Form("false"),
 ):
-    """Analyze résumé (file or text) against a job description."""
+    """Analyze résumé (file or text) against a job description.
+
+    Parses JSON vs multipart manually. Declaring File()/Form() params makes
+    Starlette treat every request as form-encoded and can reset JSON POSTs
+    proxied from Vercel (browser shows \"Failed to fetch\").
+    """
     _joblens_rate_limit(request, owner)
 
-    # JSON body fallback when not multipart
-    if job_description is None and file is None and resume_text is None:
+    content_type = (request.headers.get("content-type") or "").lower()
+    file_upload: UploadFile | None = None
+    resume_text: str | None = None
+    job_description: str | None = None
+    job_title: str | None = None
+    company_name: str | None = None
+    save = "true"
+    force_new_version = "false"
+    custom_weights = None
+    resume_filename: str | None = None
+
+    if "multipart/form-data" in content_type:
+        form = await request.form()
+        raw_file = form.get("file")
+        if raw_file is not None and hasattr(raw_file, "read"):
+            file_upload = raw_file  # type: ignore[assignment]
+        resume_text = _form_str(form.get("resume_text"))
+        job_description = _form_str(form.get("job_description"))
+        job_title = _form_str(form.get("job_title"))
+        company_name = _form_str(form.get("company_name"))
+        save = _form_str(form.get("save")) or "true"
+        force_new_version = _form_str(form.get("force_new_version")) or "false"
+        resume_filename = file_upload.filename if file_upload is not None else None
+    else:
         try:
             body = await request.json()
         except Exception:
@@ -218,20 +237,14 @@ async def analyze(
             force_new_version = "true" if body.get("force_new_version") else "false"
             custom_weights = body.get("custom_weights")
             resume_filename = body.get("resume_filename")
-        else:
-            custom_weights = None
-            resume_filename = None
-    else:
-        custom_weights = None
-        resume_filename = file.filename if file else None
 
     filename = resume_filename
     text = (resume_text or "").strip()
-    if file is not None:
-        content = await file.read()
+    if file_upload is not None:
+        content = await file_upload.read()
         if len(content) > MAX_RESUME_BYTES:
             raise HTTPException(status_code=413, detail="The uploaded résumé is too large (max 10 MB).")
-        filename = file.filename or filename
+        filename = file_upload.filename or filename
         ext = "." + (filename or "").rsplit(".", 1)[-1].lower() if filename and "." in filename else ""
         if ext and ext not in ALLOWED_EXT:
             raise HTTPException(status_code=400, detail="Unsupported format. Upload PDF, DOCX, or TXT.")
@@ -288,6 +301,16 @@ async def analyze(
     result["saved"] = bool(analysis_id)
     result["duplicate"] = duplicate
     return result
+
+
+def _form_str(value: object) -> str | None:
+    if value is None:
+        return None
+    if isinstance(value, str):
+        return value
+    if hasattr(value, "read"):
+        return None
+    return str(value)
 
 
 @router.get("/analyses")

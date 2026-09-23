@@ -173,12 +173,14 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const hint = aborted
       ? " The API timed out — Render free-tier services sleep when idle. Wait ~30s and try again, or open your BACKEND_URL /health and confirm {\"status\":\"healthy\"}."
       : onDeployed
-        ? " Check BACKEND_URL on Vercel (same-origin /api proxy) and that ALLOWED_ORIGINS includes this site."
+        ? " The connection to the API dropped. Wait a moment and try again — if it keeps failing, the Render backend may be asleep."
         : " Is the backend running? Start it on :8000 or set NEXT_PUBLIC_API_URL.";
-    throw new ApiError(
-      mapAtsHttpError({ status: 0, networkFailure: true }) + hint,
-      0,
-    );
+    const raw = e instanceof Error ? e.message : "";
+    const base =
+      /failed to fetch|networkerror|load failed/i.test(raw)
+        ? "Could not reach the JobLens API."
+        : mapAtsHttpError({ status: 0, networkFailure: true });
+    throw new ApiError(base + hint, 0);
   }
 
   // One safe refresh retry after an expired/invalid session token.
