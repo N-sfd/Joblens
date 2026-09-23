@@ -33,6 +33,64 @@ function copyHeaders(from: Headers, to: Headers) {
   });
 }
 
+const UPSTREAM_TIMEOUT_MS = 18_000;
+const WAKE_HEALTH_TIMEOUT_MS = 22_000;
+
+function isTimeoutError(e: unknown): boolean {
+  return e instanceof Error && /abort|timeout/i.test(e.message);
+}
+
+async function wakeBackend(origin: string): Promise<boolean> {
+  try {
+    const res = await fetch(new URL("/health", origin), {
+      method: "GET",
+      redirect: "manual",
+      signal: AbortSignal.timeout(WAKE_HEALTH_TIMEOUT_MS),
+    });
+    return res.ok;
+  } catch {
+    return false;
+  }
+}
+
+async function fetchUpstream(
+  target: URL,
+  init: {
+    method: string;
+    headers: Headers;
+    body: ArrayBuffer | undefined;
+  },
+  timeoutMs: number,
+): Promise<Response> {
+  let upstream = await fetch(target, {
+    method: init.method,
+    headers: init.headers,
+    body: init.body && init.body.byteLength > 0 ? init.body : undefined,
+    redirect: "manual",
+    signal: AbortSignal.timeout(timeoutMs),
+  });
+
+  // FastAPI 307s bare router-prefix requests (e.g. /api/profile -> /api/profile/).
+  // Following that in the browser is a cross-origin hop to the raw Render host,
+  // which strips Authorization. Follow same-origin redirects here instead.
+  if (upstream.status === 307 || upstream.status === 308) {
+    const location = upstream.headers.get("location");
+    if (location) {
+      const redirectTarget = new URL(location, target.origin);
+      if (redirectTarget.origin === target.origin) {
+        upstream = await fetch(redirectTarget, {
+          method: init.method,
+          headers: init.headers,
+          body: init.body && init.body.byteLength > 0 ? init.body : undefined,
+          redirect: "manual",
+          signal: AbortSignal.timeout(timeoutMs),
+        });
+      }
+    }
+  }
+  return upstream;
+}
+
 async function proxy(req: NextRequest, path: string[] | undefined) {
   const origin = backendOrigin();
   if (!origin) {
@@ -55,60 +113,39 @@ async function proxy(req: NextRequest, path: string[] | undefined) {
         : "/api";
   const target = new URL(pathname + req.nextUrl.search, origin);
 
+  const headers = new Headers();
+  copyHeaders(req.headers, headers);
+  // Explicitly forward Clerk session JWT — never drop Authorization on the BFF hop.
+  const authorization = req.headers.get("authorization");
+  if (authorization) headers.set("authorization", authorization);
+  // Body is re-buffered below; inbound Content-Length can mismatch and break
+  // multipart resume uploads / authenticated POSTs upstream.
+  headers.delete("content-length");
+
+  const body =
+    req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
+  const init = { method: req.method, headers, body };
+
   let upstream: Response;
   try {
-    const headers = new Headers();
-    copyHeaders(req.headers, headers);
-    // Explicitly forward Clerk session JWT — never drop Authorization on the BFF hop.
-    const authorization = req.headers.get("authorization");
-    if (authorization) headers.set("authorization", authorization);
-    // Body is re-buffered below; inbound Content-Length can mismatch and break
-    // multipart resume uploads / authenticated POSTs upstream.
-    headers.delete("content-length");
-
-    const body =
-      req.method === "GET" || req.method === "HEAD" ? undefined : await req.arrayBuffer();
-
-    // Bound wait time so a sleeping/wrong Render host fails fast instead of
-    // hanging until the browser's AbortController fires. AI endpoints (resume/
-    // cover-letter analysis) can legitimately take longer than a plain CRUD
-    // call, so this needs headroom under both the client timeout (see
-    // lib/api.ts) and this function's own maxDuration above.
-    upstream = await fetch(target, {
-      method: req.method,
-      headers,
-      body: body && body.byteLength > 0 ? body : undefined,
-      // Do not follow redirects that could strip Authorization.
-      redirect: "manual",
-      signal: AbortSignal.timeout(40_000),
-    });
-
-    // FastAPI 307s bare router-prefix requests (e.g. /api/profile -> /api/profile/).
-    // Following that in the browser is a cross-origin hop to the raw Render host,
-    // which strips Authorization. Follow same-origin redirects here instead, where
-    // we still hold the header.
-    if (upstream.status === 307 || upstream.status === 308) {
-      const location = upstream.headers.get("location");
-      if (location) {
-        const redirectTarget = new URL(location, origin);
-        if (redirectTarget.origin === new URL(origin).origin) {
-          upstream = await fetch(redirectTarget, {
-            method: req.method,
-            headers,
-            body: body && body.byteLength > 0 ? body : undefined,
-            redirect: "manual",
-            signal: AbortSignal.timeout(40_000),
-          });
-        }
+    // Bound wait time so a sleeping Render host fails before maxDuration.
+    // On timeout, ping /health once (wakes free-tier cold starts) then retry.
+    try {
+      upstream = await fetchUpstream(target, init, UPSTREAM_TIMEOUT_MS);
+    } catch (first) {
+      if (!isTimeoutError(first) || pathname === "/health" || pathname === "/health/ready") {
+        throw first;
       }
+      await wakeBackend(origin);
+      upstream = await fetchUpstream(target, init, UPSTREAM_TIMEOUT_MS);
     }
   } catch (e) {
     const msg = e instanceof Error ? e.message : "upstream unreachable";
-    const timedOut = /abort|timeout/i.test(msg);
+    const timedOut = isTimeoutError(e);
     return NextResponse.json(
       {
         detail: timedOut
-          ? `BACKEND_URL (${origin}) timed out after 40s. Deploy this repo’s backend/ as Render service joblens-crm-api, confirm /health returns {"status":"healthy"}, set Vercel BACKEND_URL to that URL (not salary-prediction joblens-api.onrender.com), then redeploy.`
+          ? `The API at ${origin} is waking up or overloaded (timed out). Render free-tier services sleep when idle — wait ~30s and try again. If this keeps happening, open ${origin}/health and confirm {"status":"healthy"}.`
           : `Backend unreachable at ${origin}${pathname} (${msg}). Check BACKEND_URL on Vercel and that the Render service is awake.`,
       },
       { status: 504 },

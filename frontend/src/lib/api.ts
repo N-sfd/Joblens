@@ -135,7 +135,7 @@ async function sendOnce(path: string, init: RequestInit | undefined, token: stri
   // AI endpoints (resume/cover-letter analysis) route through the /api proxy's
   // own 40s upstream timeout — this needs headroom above that or the client
   // aborts first and masks the real upstream response with "Failed to fetch".
-  const timeoutMs = 45_000;
+  const timeoutMs = 55_000;
   const controller = new AbortController();
   const timeoutId = setTimeout(() => controller.abort(), timeoutMs);
   if (init?.signal) {
@@ -171,7 +171,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     const host = typeof window !== "undefined" ? window.location.hostname : "";
     const onDeployed = Boolean(host) && host !== "localhost" && host !== "127.0.0.1";
     const hint = aborted
-      ? " The API timed out. Vercel BACKEND_URL must be this repo’s CRM FastAPI (/health → {\"status\":\"healthy\"}), not joblens-api.onrender.com. Deploy backend/ on Render (joblens-crm-api), wake the service, then retry."
+      ? " The API timed out — Render free-tier services sleep when idle. Wait ~30s and try again, or open your BACKEND_URL /health and confirm {\"status\":\"healthy\"}."
       : onDeployed
         ? " Check BACKEND_URL on Vercel (same-origin /api proxy) and that ALLOWED_ORIGINS includes this site."
         : " Is the backend running? Start it on :8000 or set NEXT_PUBLIC_API_URL.";
