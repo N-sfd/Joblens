@@ -2,6 +2,7 @@ import { getGuestId } from "./guestId";
 import { getClerkToken, waitForClerkSession } from "./clerkToken";
 import { mapAtsHttpError, type AtsErrorContext } from "./atsApiErrors";
 import { isClerkConfigured } from "./clerkConfigured";
+import { wakeBackend } from "./wakeBackend";
 
 /** Origin only (no /api). Avoids https://host/api + /api/jobs → /api/api/jobs (404). */
 function normalizeOrigin(url: string): string {
@@ -163,10 +164,7 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
     token = await resolveAtsBearerToken();
   }
 
-  let res: Response;
-  try {
-    res = await sendOnce(path, init, token);
-  } catch (e) {
+  const mapNetworkError = (e: unknown): ApiError => {
     const aborted = e instanceof Error && e.name === "AbortError";
     const host = typeof window !== "undefined" ? window.location.hostname : "";
     const onDeployed = Boolean(host) && host !== "localhost" && host !== "127.0.0.1";
@@ -180,7 +178,40 @@ async function request<T>(path: string, init?: RequestInit): Promise<T> {
       /failed to fetch|networkerror|load failed/i.test(raw)
         ? "Could not reach the JobLens API."
         : mapAtsHttpError({ status: 0, networkFailure: true });
-    throw new ApiError(base + hint, 0);
+    return new ApiError(base + hint, 0);
+  };
+
+  let res: Response;
+  try {
+    res = await sendOnce(path, init, token);
+  } catch (e) {
+    // One wake+retry: free Render cold starts often exceed the first timeout.
+    if (typeof window !== "undefined" && path !== "/api/health") {
+      const woken = await wakeBackend();
+      if (woken) {
+        try {
+          res = await sendOnce(path, init, token);
+        } catch (e2) {
+          throw mapNetworkError(e2);
+        }
+      } else {
+        throw mapNetworkError(e);
+      }
+    } else {
+      throw mapNetworkError(e);
+    }
+  }
+
+  // Gateway timeout from the BFF often means Render was still sleeping — wake and retry once.
+  if (res.status === 504 && typeof window !== "undefined" && path !== "/api/health") {
+    const woken = await wakeBackend();
+    if (woken) {
+      try {
+        res = await sendOnce(path, init, token);
+      } catch (e) {
+        throw mapNetworkError(e);
+      }
+    }
   }
 
   // One safe refresh retry after an expired/invalid session token.
