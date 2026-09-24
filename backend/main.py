@@ -205,6 +205,12 @@ async def health_ready():
     else:
         checks["environment"] = env or "development"
 
+    # Soft signal — never include key material. Helps diagnose AI fallback banners.
+    if (os.getenv("GROQ_API_KEY") or os.getenv("OPENAI_API_KEY") or os.getenv("ANTHROPIC_API_KEY") or "").strip():
+        checks["ai_key"] = "present"
+    else:
+        checks["ai_key"] = "missing"
+
     status_code = 200 if ready else 503
     from fastapi.responses import JSONResponse
 

@@ -9,7 +9,8 @@ from services.ats_engine import keyword_match, formatting_compliance
 logger = logging.getLogger(__name__)
 
 _client: Optional[OpenAI] = None
-MODEL = "llama-3.3-70b-versatile"
+# Groq retired llama-3.3-70b-versatile (404). Override with GROQ_MODEL if needed.
+MODEL = (os.getenv("GROQ_MODEL") or "openai/gpt-oss-20b").strip() or "openai/gpt-oss-20b"
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
 
 # Common résumé skill tokens for heuristic extraction when Groq is offline.
