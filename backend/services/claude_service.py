@@ -10,8 +10,12 @@ logger = logging.getLogger(__name__)
 
 _client: Optional[OpenAI] = None
 # Groq retired llama-3.3-70b-versatile (404). Override with GROQ_MODEL if needed.
-MODEL = (os.getenv("GROQ_MODEL") or "openai/gpt-oss-20b").strip() or "openai/gpt-oss-20b"
+DEFAULT_MODEL = "openai/gpt-oss-20b"
+MODEL = (os.getenv("GROQ_MODEL") or DEFAULT_MODEL).strip() or DEFAULT_MODEL
+# Tried in order when GROQ_MODEL (or the default) is retired.
+MODEL_FALLBACKS = (DEFAULT_MODEL, "qwen/qwen3.8-27b")
 GROQ_BASE_URL = "https://api.groq.com/openai/v1"
+_working_model: Optional[str] = None
 
 # Common résumé skill tokens for heuristic extraction when Groq is offline.
 _SKILL_HINTS = [
@@ -24,10 +28,17 @@ _SKILL_HINTS = [
 ]
 
 
+def _clean_api_key(raw: str | None) -> str:
+    value = (raw or "").strip()
+    if len(value) >= 2 and value[0] == value[-1] and value[0] in ("'", '"'):
+        value = value[1:-1].strip()
+    return value
+
+
 def get_client() -> OpenAI:
     global _client
     if _client is None:
-        api_key = (os.getenv("GROQ_API_KEY") or "").strip()
+        api_key = _clean_api_key(os.getenv("GROQ_API_KEY"))
         if not api_key:
             raise ValueError(
                 "GROQ_API_KEY is not configured. Add it to backend/.env for resume and job parsing."
@@ -37,6 +48,66 @@ def get_client() -> OpenAI:
             base_url=GROQ_BASE_URL,
         )
     return _client
+
+
+def _model_chain() -> list[str]:
+    if _working_model:
+        return [_working_model]
+    chosen = (os.getenv("GROQ_MODEL") or MODEL).strip() or MODEL
+    chain: list[str] = []
+    for name in (chosen, *MODEL_FALLBACKS):
+        if name and name not in chain:
+            chain.append(name)
+    return chain
+
+
+def _model_unavailable(exc: Exception) -> bool:
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 404:
+        return True
+    return "model_not_found" in text or "does not exist" in text or "you do not have access" in text
+
+
+def ai_failure_message(exc: Exception) -> str:
+    """Safe user copy. Never include the API key or raw provider payload."""
+    status = getattr(exc, "status_code", None)
+    text = str(exc).lower()
+    if status == 401 or "invalid api key" in text or "incorrect api key" in text:
+        return (
+            "The Groq API key on the server was rejected. "
+            "In Render, set GROQ_API_KEY to a current key from console.groq.com, then redeploy."
+        )
+    if _model_unavailable(exc):
+        return (
+            "The configured Groq model is no longer available. "
+            "On Render, remove GROQ_MODEL or set it to openai/gpt-oss-20b, then redeploy."
+        )
+    if status == 429:
+        return "The AI service is busy right now. Showing a structural scan until you try again."
+    return "Advanced AI explanation is temporarily unavailable. Showing deterministic ATS structural results."
+
+
+def groq_chat(**kwargs):
+    """Chat completion that skips retired model ids before giving up."""
+    global _working_model
+    client = get_client()
+    last: Exception | None = None
+    for model in _model_chain():
+        try:
+            response = client.chat.completions.create(model=model, **kwargs)
+            _working_model = model
+            return response
+        except Exception as exc:
+            last = exc
+            if _model_unavailable(exc):
+                logger.warning("groq.model_unavailable model=%s", model)
+                _working_model = None
+                continue
+            raise
+    if last is not None:
+        raise last
+    raise RuntimeError("No Groq model configured.")
 
 
 def _extract_skill_hints(resume_text: str) -> tuple[list[str], list[str]]:
@@ -54,7 +125,7 @@ def _extract_skill_hints(resume_text: str) -> tuple[list[str], list[str]]:
     return technical[:12], soft[:6]
 
 
-def heuristic_analyze_resume(resume_text: str) -> dict:
+def heuristic_analyze_resume(resume_text: str, warning: str | None = None) -> dict:
     """Deterministic ATS-style résumé read when Groq is missing or failing.
 
     Mirrors Career Intelligence: never block the seeker product on AI outage.
@@ -133,16 +204,15 @@ def heuristic_analyze_resume(resume_text: str) -> dict:
         "formatting_suggestions": list(formatting.get("issues") or [])[:5],
         "ai_used": False,
         "warnings": [
-            "Advanced AI explanation is temporarily unavailable. Showing deterministic ATS structural results."
+            warning
+            or "Advanced AI explanation is temporarily unavailable. Showing deterministic ATS structural results."
         ],
     }
 
 
 async def analyze_resume(resume_text: str) -> dict:
     try:
-        client = get_client()
-        response = client.chat.completions.create(
-            model=MODEL,
+        response = groq_chat(
             max_tokens=2048,
             response_format={"type": "json_object"},
             messages=[{"role": "user", "content": RESUME_ANALYSIS_PROMPT.format(resume_text=resume_text)}],
@@ -150,13 +220,15 @@ async def analyze_resume(resume_text: str) -> dict:
         data = json.loads(response.choices[0].message.content)
         data.setdefault("formatting_suggestions", [])
         data["ai_used"] = True
+        data.pop("warnings", None)
         return data
     except Exception as e:
         logger.warning(
-            "analyze_resume falling back to heuristic error_code=%s",
+            "analyze_resume falling back to heuristic error_code=%s status=%s",
             type(e).__name__,
+            getattr(e, "status_code", None),
         )
-        return heuristic_analyze_resume(resume_text)
+        return heuristic_analyze_resume(resume_text, warning=ai_failure_message(e))
 
 
 RESUME_ANALYSIS_PROMPT = """\
@@ -253,9 +325,7 @@ Return ONLY the cover letter text with proper paragraph breaks. No markdown, no 
 
 
 async def match_job(resume_text: str, job_description: str) -> dict:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=2048,
         response_format={"type": "json_object"},
         messages=[
@@ -392,9 +462,7 @@ Return ONLY a JSON array — no markdown, no explanation:
 
 
 async def generate_resume_bullets_generic(resume_text: str) -> list:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=1024,
         response_format={"type": "json_object"},
         messages=[
@@ -408,9 +476,7 @@ async def generate_resume_bullets_generic(resume_text: str) -> list:
 
 
 async def create_interview_questions_generic(resume_text: str) -> list:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=2048,
         response_format={"type": "json_object"},
         messages=[
@@ -424,9 +490,7 @@ async def create_interview_questions_generic(resume_text: str) -> list:
 
 
 async def generate_resume_bullets(resume_text: str, job_description: str) -> list:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=1024,
         response_format={"type": "json_object"},
         messages=[
@@ -447,9 +511,7 @@ async def generate_resume_bullets(resume_text: str, job_description: str) -> lis
 
 
 async def create_interview_questions(resume_text: str, job_description: str) -> list:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=2048,
         response_format={"type": "json_object"},
         messages=[
@@ -491,9 +553,7 @@ async def generate_follow_up_email(
     recruiter_contact: str = "",
     notes: str = "",
 ) -> dict:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=512,
         response_format={"type": "json_object"},
         messages=[
@@ -535,9 +595,7 @@ Return this exact JSON structure (never omit a key):
 
 async def parse_job_posting(raw_text: str) -> dict:
     """Parses a pasted job posting/description into JobApplication fields for the job tracker."""
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=768,
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": JOB_POSTING_PARSE_PROMPT.format(raw_text=raw_text)}],
@@ -573,9 +631,7 @@ async def generate_negotiation_advice(
     salary_range: str = "",
     notes: str = "",
 ) -> dict:
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=1024,
         response_format={"type": "json_object"},
         messages=[
@@ -641,9 +697,7 @@ async def parse_employee_resume(resume_text: str) -> dict:
 
     Returns the full structured shape plus legacy aliases (name/skills/
     total_experience/summary) so older callers keep working."""
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=1536,
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": EMPLOYEE_RESUME_PARSE_PROMPT.format(resume_text=resume_text)}],
@@ -739,9 +793,7 @@ def _format_rate(parsed: dict) -> str:
 
 async def parse_job_requirement(raw_text: str) -> dict:
     """Parses a pasted recruiter email/job description into structured fields."""
-    client = get_client()
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=1536,
         response_format={"type": "json_object"},
         messages=[{"role": "user", "content": JOB_REQUIREMENT_PARSE_PROMPT.format(raw_text=raw_text)}],
@@ -789,10 +841,8 @@ async def generate_cover_letter(
     company_name: str = "the company",
     tone: str = "professional",
 ) -> str:
-    client = get_client()
     tone_guide = TONE_GUIDE.get(tone, TONE_GUIDE["professional"])
-    response = client.chat.completions.create(
-        model=MODEL,
+    response = groq_chat(
         max_tokens=1024,
         messages=[
             {

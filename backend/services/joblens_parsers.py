@@ -161,11 +161,9 @@ async def _chat_json(system: str, user: str) -> dict[str, Any] | None:
     if not ai_enabled():
         return None
     try:
-        from services.claude_service import get_client, MODEL
+        from services.claude_service import groq_chat
 
-        client = get_client()
-        resp = client.chat.completions.create(
-            model=MODEL,
+        resp = groq_chat(
             temperature=0.1,
             messages=[
                 {"role": "system", "content": system},
